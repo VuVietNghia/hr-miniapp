@@ -8,15 +8,20 @@ import AiHistoryPanel from './ai-history-panel';
 import SkillsPanel from './skills-panel';
 import SandboxConnectPanel from './sandbox-connect-panel';
 
-type Tab = 'records' | 'files' | 'chat' | 'history' | 'skills' | 'sandbox';
+import PipelineDashboard from './pipeline-dashboard';
+import TestAi from './test-ai';
+
+type Tab = 'records' | 'pipeline' | 'files' | 'chat' | 'history' | 'skills' | 'sandbox' | 'testAi';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'records', label: 'Records' },
+  { id: 'pipeline', label: 'CV Pipeline' },
   { id: 'files', label: 'Files' },
   { id: 'chat', label: 'AI Chat' },
   { id: 'history', label: 'AI History' },
   { id: 'skills', label: 'Skills' },
   { id: 'sandbox', label: 'Sandbox' },
+  { id: 'testAi', label: 'Test AI' },
 ];
 
 function ThemedApp() {
@@ -42,11 +47,13 @@ function ThemedApp() {
       </div>
 
       {tab === 'records' && <HRManagementDashboard />}
+      {tab === 'pipeline' && <PipelineDashboard />}
       {tab === 'files' && <FileUploadPanel />}
       {tab === 'chat' && <AiChatPanel />}
       {tab === 'history' && <AiHistoryPanel />}
       {tab === 'skills' && <SkillsPanel />}
       {tab === 'sandbox' && <SandboxConnectPanel />}
+      {tab === 'testAi' && <TestAi />}
     </ThemeProvider>
   );
 }
