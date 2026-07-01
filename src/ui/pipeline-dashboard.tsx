@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { usePrivosApp, usePrivosContext } from '@privos/app-react';
 import { PipelineService, CVFile, ProcessingStatus } from './pipeline-service';
 import { MarkdownScreeningStrategy } from './screening-strategy';
+import { MarkdownPathContextBuilder } from './cv-context-builder';
 
 // Using Vite's ?raw import to inject the markdown files directly as strings
 import chuanHoaData from '../../../Format CV và Template chấm điểm CV/chuan_hoa_data.md?raw';
@@ -27,7 +28,8 @@ export default function PipelineDashboard() {
   useEffect(() => {
     if (app && roomId) {
       const strategy = new MarkdownScreeningStrategy(chuanHoaData, sangLocCv);
-      serviceRef.current = new PipelineService(app, roomId, strategy);
+      const contextBuilder = new MarkdownPathContextBuilder();
+      serviceRef.current = new PipelineService(app, roomId, strategy, contextBuilder);
       loadFiles();
     }
   }, [app, roomId]);

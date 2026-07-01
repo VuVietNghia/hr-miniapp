@@ -1,14 +1,7 @@
 import { McpApp } from '@privos/app-react';
 import { restCall } from './privos-rest';
 import { IScreeningStrategy } from './screening-strategy';
-import * as pdfjsLib from 'pdfjs-dist';
-
-// Import worker code as a raw string to bypass Vite's external asset emission
-// This is necessary because the MCP Relay only serves a single inlined HTML/JS file.
-import pdfWorkerRaw from 'pdfjs-dist/build/pdf.worker.mjs?raw';
-const workerBlob = new Blob([pdfWorkerRaw], { type: 'text/javascript' });
-const workerBlobUrl = URL.createObjectURL(workerBlob);
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerBlobUrl;
+import { ICvContextBuilder } from './cv-context-builder';
 
 export interface CVFile {
   _id: string;
@@ -33,11 +26,13 @@ export class PipelineService {
   private app: McpApp;
   private roomId: string;
   private strategy: IScreeningStrategy;
+  private contextBuilder: ICvContextBuilder;
 
-  constructor(app: McpApp, roomId: string, strategy: IScreeningStrategy) {
+  constructor(app: McpApp, roomId: string, strategy: IScreeningStrategy, contextBuilder: ICvContextBuilder) {
     this.app = app;
     this.roomId = roomId;
     this.strategy = strategy;
+    this.contextBuilder = contextBuilder;
   }
 
   async fetchAvailableFiles(): Promise<CVFile[]> {
@@ -62,42 +57,12 @@ export class PipelineService {
     const fileId = res?.file?._id || res?.file?.id;
     if (!fileId) throw new Error('Upload failed: No file ID returned.');
     
-    // Đọc luôn text từ file vừa upload
-    let rawText = '';
-    if (file.name.toLowerCase().endsWith('.pdf')) {
-      rawText = await this.extractTextFromFile(file);
-    }
-    
+    // Không cần trích xuất text nữa vì AI sẽ tự đọc
     return {
       _id: fileId,
       name: file.name,
       size: file.size,
-      rawText
     };
-  }
-  
-  private async extractTextFromFile(file: File): Promise<string> {
-    const arrayBuffer = await file.arrayBuffer();
-    return this.parsePdfArrayBuffer(arrayBuffer);
-  }
-
-  private async extractTextFromURL(url: string): Promise<string> {
-    // Gọi API qua PrivOS nếu có downloadUrl, nhưng vì browser bị CORS, nên tải qua Relay hoặc fetch
-    const res = await fetch(url);
-    const arrayBuffer = await res.arrayBuffer();
-    return this.parsePdfArrayBuffer(arrayBuffer);
-  }
-
-  private async parsePdfArrayBuffer(arrayBuffer: ArrayBuffer): Promise<string> {
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    let fullText = '';
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items.map((item: any) => item.str).join(' ');
-      fullText += pageText + '\n';
-    }
-    return fullText;
   }
 
   async deleteFile(fileId: string): Promise<boolean> {
@@ -140,27 +105,23 @@ export class PipelineService {
     if (onLog) onLog(`Bắt đầu xử lý CV: ${cv.name}`);
     
     try {
-      let extractedText = cv.rawText;
-      if (!extractedText && cv.name.toLowerCase().endsWith('.pdf')) {
-         if (onLog) onLog(`Đang trích xuất nội dung PDF...`);
-         if (cv.downloadUrl) {
-            extractedText = await this.extractTextFromURL(cv.downloadUrl);
-         } else {
-            throw new Error("Không thể trích xuất text vì thiếu rawText và downloadUrl");
-         }
-      }
-      if (!extractedText) {
-          throw new Error("Chỉ hỗ trợ file PDF. Không đọc được nội dung.");
-      }
-      
-      if (onLog) onLog(`Trích xuất thành công ${extractedText.length} ký tự từ CV.`);
+      const cvContext = this.contextBuilder.buildContext(this.roomId, cv.name);
+      if (onLog) onLog(`Sinh Context đường dẫn file: ${cv.name}...`);
     
       // BƯỚC 1: Chuẩn hóa tên file (Sử dụng Dependency Injection Strategy)
       if (onLog) onLog(`[Bước 1] Chuẩn hóa tên file gốc...`);
-      const renamePrompt = this.strategy.getRenamePrompt();
-      const aiRenameRes = await this.askAI(renamePrompt, extractedText, cv.name, onLog);
+      const renamePrompt = this.strategy.getRenamePrompt(cvContext);
+      const aiRenameRes = await this.askAI(renamePrompt, cv.name, onLog);
       
-      const cleanName = aiRenameRes.text.trim().replace(/[^a-zA-Z0-9_-]/g, '');
+      let cleanName = '';
+      const filenameMatch = aiRenameRes.text.match(/<filename>(.*?)<\/filename>/i);
+      if (filenameMatch && filenameMatch[1]) {
+        cleanName = filenameMatch[1].trim();
+      } else {
+        // Fallback: lay tu cuoi cung hoac loc bo nhung tu thua
+        cleanName = aiRenameRes.text.trim().replace(/[^a-zA-Z0-9_-]/g, '');
+      }
+      
       const normalizedName = cleanName + this.getExt(cv.name);
       
       // Thực sự đổi tên file trên PrivOS database
@@ -171,8 +132,8 @@ export class PipelineService {
 
       // BƯỚC 2 & 3: Chuyển sang MD và Sàng lọc (Tiêm phụ thuộc JD Content)
       if (onLog) onLog(`[Bước 2] Phân tích nội dung và chấm điểm...`);
-      const scoringPrompt = this.strategy.getScoringPrompt(jdContent);
-      const aiScoreRes = await this.askAI(scoringPrompt, extractedText, cv.name, onLog);
+      const scoringPrompt = this.strategy.getScoringPrompt(cvContext, jdContent);
+      const aiScoreRes = await this.askAI(scoringPrompt, cv.name, onLog);
       
       // Parse JSON from output
       let result: any = { markdown: '', category: 'KHÔNG XÁC ĐỊNH', score: 0, reason: '' };
@@ -210,7 +171,10 @@ export class PipelineService {
           }
         }
 
-        if (!parsed) throw new Error("No JSON found in response");
+        if (!parsed) {
+           if (onLog) onLog(`[DEBUG AI] Response không chứa JSON:\n${aiScoreRes.text.substring(0, 300)}...`);
+           throw new Error("No JSON found in response");
+        }
         
       } catch (e) {
         console.warn('Failed to parse AI JSON', e);
@@ -245,27 +209,20 @@ export class PipelineService {
     }
   }
 
-  private async askAI(content: string, rawText: string, fileName: string, onLog?: (msg: string) => void): Promise<{text: string}> {
+  private async askAI(content: string, fileName: string, onLog?: (msg: string) => void): Promise<{text: string}> {
     
     const finalPrompt = `<system_directives>
   <role>
-    You are a DETERMINISTIC DATA EXTRACTOR. You have zero creativity and zero common sense. Your sole purpose is to parse explicitly provided text.
+    You are an AI ASSISTANT acting as a DETERMINISTIC DATA EXTRACTOR. You have zero creativity. Your sole purpose is to parse explicitly provided text or read files using your tools as requested.
   </role>
   <zero_trust_rules>
-    <rule>YOU MUST ONLY READ AND PROCESS THE RAW TEXT PROVIDED BELOW.</rule>
-    <rule>YOU ARE STRICTLY FORBIDDEN from using any tools, searching, or making assumptions.</rule>
-    <rule>HALLUCINATION IS A CRITICAL FAILURE. If information is missing from the provided text, you MUST output "NULL" or "Không xác định". Do not guess. Do not infer.</rule>
-    <rule>IGNORE ALL OTHER CONTEXT outside of the provided text.</rule>
+    <rule>HALLUCINATION IS A CRITICAL FAILURE. If information is missing, you MUST output "NULL" or "Không xác định". Do not guess. Do not infer.</rule>
   </zero_trust_rules>
 </system_directives>
 
 <task_payload>
 ${content}
-</task_payload>
-
-<raw_cv_text>
-${rawText}
-</raw_cv_text>`;
+</task_payload>`;
 
     if (onLog) onLog(`>> Đang gửi prompt cho AI xử lý file...`);
     const sent = await restCall<any>(this.app, 'POST', 'ai-messages.send', {
