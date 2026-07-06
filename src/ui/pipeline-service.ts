@@ -51,7 +51,7 @@ export class PipelineService {
 
   async uploadCV(file: File): Promise<CVFile> {
     const dataUri = await this.readAsDataUri(file);
-    
+
     const uploadPromise = this.app.uploadFile({
       channelId: this.roomId,
       fileName: file.name,
@@ -59,12 +59,12 @@ export class PipelineService {
       mimeType: file.type || 'application/octet-stream',
     });
 
-    const timeoutPromise = new Promise((_, reject) => 
+    const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('Upload timeout sau 20s (Có thể do file quá lớn gây nghẽn kết nối websocket)')), 20000)
     );
 
     const res: any = await Promise.race([uploadPromise, timeoutPromise]);
-    
+
     const fileId = res?.file?._id || res?.file?.id;
     if (!fileId) throw new Error('Upload failed: No file ID returned.');
 
@@ -120,31 +120,24 @@ export class PipelineService {
       // BƯỚC 1-5: Gọi trực tiếp Skill @hr-cv-processor của PrivOS AI
       if (onLog) onLog(`[Bước 1-5] Gửi Prompt tự động xử lý CV (Nhúng logic HR CV Processor)...`);
       const processorPrompt = `
-        # NHIỆM VỤ CỦA BẠN
-        Bạn BẮT BUỘC phải thực hiện xử lý CV theo đúng quy trình 5 BƯỚC như đã định nghĩa trong tài liệu chuẩn.
-        Dưới đây là tóm tắt quy trình:
-        - BƯỚC 1: BẮT BUỘC COPY file raw người dùng gửi vào ĐÚNG thư mục: RoomFiles/hr-miniapp/raws-cv/
-        - BƯỚC 2: Tìm và đọc bản text auto-parse trong thư mục ẩn .markdown/.
-        - BƯỚC 3: Chuẩn hóa format CV và Đánh giá sàng lọc (chấm điểm). LƯU Ý: SỬ DỤNG BẢNG TIÊU CHUẨN TUYỂN DỤNG CỤ THỂ BÊN DƯỚI ĐỂ CHẤM ĐIỂM!
-        - BƯỚC 4: LƯU FILE MD VÀO OUTPUTS CV (CHÚ Ý CHỐNG TRÙNG LẶP).
-        - BƯỚC 5: TỔNG HỢP VÀ GHI NỐI (APPEND) VÀO MỘT FILE CSV ĐẶT TẠI: RoomFiles/hr-miniapp/outputs-cv/[YYYY-MM-DD]_KetQua_${jdName.replace(/\.[^/.]+$/, "")}.csv
+        # YÊU CẦU XỬ LÝ CV
+        Thực hiện ĐÚNG 5 bước theo Hướng dẫn: @Files:6a2fd032670a67e0f437dc08/cv_processing_guidelines.md
 
-        ==============================================
-        [ BẢNG TIÊU CHUẨN TUYỂN DỤNG TỪ FILE JD: ${jdName} ]
+        1. Copy CV gốc vào \`RoomFiles/hr-miniapp/raws-cv/\`
+        2. Đọc file text auto-parse tương ứng.
+        3. Chấm điểm theo JD: ${jdName}
+        4. Lưu kết quả (MD) vào \`RoomFiles/hr-miniapp/outputs-cv/\` (chống trùng lặp).
+        5. Append kết quả vào CSV (BẮT BUỘC CHỈ CÓ ĐÚNG 4 CỘT: Vị trí, Tổng điểm, Kết quả, Đường dẫn MD): \`RoomFiles/hr-miniapp/outputs-cv/[YYYY-MM-DD]_KetQua_${jdName.replace(/\.[^/.]+$/, "")}.csv\`
+
+        [TIÊU CHUẨN JD]
         ${jdContent}
-        ==============================================
 
-        QUAN TRỌNG: Trước khi làm bất cứ điều gì, bạn BẮT BUỘC phải tham khảo và tuân thủ tuyệt đối các quy tắc định dạng bắt buộc trong tài liệu Hướng Dẫn chi tiết sau: 
-        @Files:6a2fd032670a67e0f437dc08/cv_processing_guidelines.md
-
-        Hãy áp dụng quy trình 5 bước trên để xử lý file CV này: @Files:${this.roomId}/hr-miniapp/cv-lon-xon/${cv.name}
-
-        KHI HOÀN TẤT TOÀN BỘ, bạn BẮT BUỘC phải trả về duy nhất tên file MD đã lưu thành công ở BƯỚC 4 trong thẻ <saved_file>.
-        Ví dụ: <saved_file>2026-07-06_CV_LuuSonTruong_1.md</saved_file>
+        KHI HOÀN TẤT, TRẢ VỀ: <saved_file>Tên-File-Da-Luu.md</saved_file>
+        File CV cần xử lý: @Files:${this.roomId}/hr-miniapp/cv-lon-xon/${cv.name}
         `;
-      
+
       const aiProcessRes = await this.askAI(processorPrompt, cv.name, cv._id, onLog);
-      
+
       // Parse <saved_file>
       let newMdName = '';
       const fileMatch = aiProcessRes.text.match(/<saved_file>\s*([\s\S]*?)\s*<\/saved_file>/i);
@@ -165,13 +158,13 @@ export class PipelineService {
 
       // Lấy nội dung file MD chuẩn từ outputs-cv để chấm điểm
       if (onLog) onLog(`[Đọc File] Đang tải ${newMdName} từ outputs-cv để trích xuất JSON lên giao diện...`);
-      
+
       let finalMarkdown = '';
       const processPaths = [
         `${this.roomId}/hr-miniapp/outputs-cv/${newMdName}`,
         `hr-miniapp/outputs-cv/${newMdName}`
       ];
-      
+
       for (const path of processPaths) {
         finalMarkdown = await getFileContent(this.app, path);
         if (finalMarkdown && finalMarkdown.trim().length > 0) break;
@@ -263,7 +256,7 @@ export class PipelineService {
   private async askAI(content: string, fileName: string, fileId?: string, onLog?: (msg: string) => void): Promise<{ text: string }> {
 
     let finalPrompt = content;
-    
+
     // Nếu prompt không bắt đầu bằng tag Skill, bọc vào system_directives cũ
     if (!content.trim().startsWith('@')) {
       finalPrompt = `<system_directives>
