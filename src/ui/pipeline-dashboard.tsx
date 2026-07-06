@@ -5,8 +5,8 @@ import { MarkdownScreeningStrategy } from './screening-strategy';
 import { MarkdownPathContextBuilder } from './cv-context-builder';
 
 // Using Vite's ?raw import to inject the markdown files directly as strings
-import chuanHoaData from '../../../Format CV và Template chấm điểm CV/chuan_hoa_data.md?raw';
-import sangLocCv from '../../../Format CV và Template chấm điểm CV/sang_loc_cv.md?raw';
+import chuanHoaData from './data/chuan_hoa_data.md?raw';
+import sangLocCv from './data/sang_loc_cv.md?raw';
 
 export default function PipelineDashboard() {
   const app = usePrivosApp();
@@ -20,6 +20,7 @@ export default function PipelineDashboard() {
   
   // Custom JD state & Logs
   const [jdContent, setJdContent] = useState<string>('');
+  const [jdName, setJdName] = useState<string>('');
   const [logs, setLogs] = useState<string[]>([]);
   const logEndRef = useRef<HTMLDivElement>(null);
   
@@ -92,6 +93,7 @@ export default function PipelineDashboard() {
     const reader = new FileReader();
     reader.onload = () => {
       setJdContent(String(reader.result));
+      setJdName(file.name);
       addLog(`Đã tải lên Job Description: ${file.name}`);
     };
     reader.readAsText(file);
@@ -119,12 +121,13 @@ export default function PipelineDashboard() {
 
     for (const cv of filesToProcess) {
       addLog(`==> ĐANG CHẠY: ${cv.name}`);
-      await serviceRef.current.processSingleCV(
+      await serviceRef.current.processCV(
         cv, 
         (update) => {
           setStatuses(prev => ({ ...prev, [cv._id]: { ...prev[cv._id], ...update } }));
         }, 
         jdContent,
+        jdName,
         (msg) => addLog(msg)
       );
       
@@ -223,7 +226,7 @@ export default function PipelineDashboard() {
         @media (min-width: 1024px) {
           .dashboard-layout {
             display: grid;
-            grid-template-columns: 1fr 2fr;
+            grid-template-columns: minmax(0, 4fr) minmax(0, 6fr);
             align-items: start;
           }
         }
@@ -268,7 +271,7 @@ export default function PipelineDashboard() {
           </div>
 
           {/* Module 2: File Ingestion */}
-          <div className="panel" style={{ opacity: jdContent ? 1 : 0.5, pointerEvents: jdContent ? 'auto' : 'none', transition: 'opacity 0.3s' }}>
+          <div className="panel">
             <h2 style={{ fontFamily: '"Space Grotesk", sans-serif', fontSize: '16px', textTransform: 'uppercase', color: '#888', marginTop: 0 }}>
               02 // File Ingestion
             </h2>
@@ -308,11 +311,11 @@ export default function PipelineDashboard() {
                     }} onClick={() => !processing && handleToggleSelect(f._id)}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <div style={{ 
-                          width: '12px', height: '12px', 
+                          width: '12px', height: '12px', flexShrink: 0,
                           backgroundColor: selectedIds.has(f._id) ? '#CCFF00' : 'transparent',
                           border: '1px solid #CCFF00'
                         }} />
-                        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name}</span>
+                        <span style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>{f.name}</span>
                       </div>
                     </li>
                   ))}

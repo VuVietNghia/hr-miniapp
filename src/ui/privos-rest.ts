@@ -27,3 +27,46 @@ export async function restCall<T = any>(
   }
   return body as T;
 }
+
+export async function getFileContent(app: McpApp, path: string): Promise<string> {
+  try {
+    const res = await app.rest({
+      method: 'GET',
+      path: 'api/files/content',
+      query: {
+        path: path,
+        basePath: '/app/data/projects/workspace/RoomFiles'
+      }
+    } as any);
+    const body: any = res?.body ?? res;
+    return body?.content || '';
+  } catch (err) {
+    console.error('Failed to get file content', err);
+    return '';
+  }
+}
+
+export async function createOrUpdateFile(app: McpApp, path: string, content: string): Promise<boolean> {
+  try {
+    // path is expected to be `${roomId}/path/to/file`
+    const parts = path.split('/');
+    const roomId = parts[0];
+    const fileName = parts.slice(1).join('/');
+    
+    // Xử lý base64 encode chuẩn cho chuỗi UTF-8 (tiếng Việt)
+    const base64Content = btoa(unescape(encodeURIComponent(content)));
+    
+    const res: any = await app.uploadFile({
+      channelId: roomId,
+      fileName: fileName,
+      base64Data: 'data:text/markdown;base64,' + base64Content,
+      mimeType: 'text/markdown'
+    });
+    
+    if (!res) throw new Error("No response from uploadFile");
+    return true;
+  } catch (err: any) {
+    console.error('Failed to create/update file', err);
+    throw new Error(`Failed to create/update file: ${err.message || err}`);
+  }
+}

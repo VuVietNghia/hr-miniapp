@@ -1,5 +1,5 @@
 import { McpApp } from '@privos/app-react';
-import { restCall } from './privos-rest';
+import { restCall, getFileContent, createOrUpdateFile } from './privos-rest';
 import { IScreeningStrategy } from './screening-strategy';
 import { ICvContextBuilder } from './cv-context-builder';
 
@@ -36,7 +36,10 @@ export class PipelineService {
   }
 
   async fetchAvailableFiles(): Promise<CVFile[]> {
-    const body = await restCall<any>(this.app, 'GET', `file-management.files.channel/${this.roomId}`);
+    const body = await restCall<any>(this.app, 'GET', `file-management.files.channel/${this.roomId}`, {
+      query: { count: 50 },
+      timeoutMs: 15000 // Thêm timeout 15s để tránh treo app khi file list quá lớn hoặc rớt mạng
+    });
     const list = body?.files ?? body?.data ?? (Array.isArray(body) ? body : []);
     return list.map((f: any) => ({
       _id: f._id,
@@ -48,15 +51,23 @@ export class PipelineService {
 
   async uploadCV(file: File): Promise<CVFile> {
     const dataUri = await this.readAsDataUri(file);
-    const res: any = await this.app.uploadFile({
+    
+    const uploadPromise = this.app.uploadFile({
       channelId: this.roomId,
       fileName: file.name,
       base64Data: dataUri,
       mimeType: file.type || 'application/octet-stream',
     });
+
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Upload timeout sau 20s (Có thể do file quá lớn gây nghẽn kết nối websocket)')), 20000)
+    );
+
+    const res: any = await Promise.race([uploadPromise, timeoutPromise]);
+    
     const fileId = res?.file?._id || res?.file?.id;
     if (!fileId) throw new Error('Upload failed: No file ID returned.');
-    
+
     // Không cần trích xuất text nữa vì AI sẽ tự đọc
     return {
       _id: fileId,
@@ -95,110 +106,106 @@ export class PipelineService {
     }
   }
 
-  async processSingleCV(
+  async processCV(
     cv: CVFile,
     updateStatus: (status: Partial<ProcessingStatus>) => void,
     jdContent: string,
+    jdName: string,
     onLog?: (msg: string) => void
   ): Promise<void> {
     updateStatus({ status: 'renaming' });
     if (onLog) onLog(`Bắt đầu xử lý CV: ${cv.name}`);
-    
+
     try {
-      const cvContext = this.contextBuilder.buildContext(this.roomId, cv.name);
-      if (onLog) onLog(`Sinh Context đường dẫn file: ${cv.name}...`);
-    
-      // BƯỚC 1: Chuẩn hóa tên file (Sử dụng Dependency Injection Strategy)
-      if (onLog) onLog(`[Bước 1] Chuẩn hóa tên file gốc...`);
-      const renamePrompt = this.strategy.getRenamePrompt(cvContext);
-      const aiRenameRes = await this.askAI(renamePrompt, cv.name, onLog);
+      // BƯỚC 1-5: Gọi trực tiếp Skill @hr-cv-processor của PrivOS AI
+      if (onLog) onLog(`[Bước 1-5] Gửi Prompt tự động xử lý CV (Nhúng logic HR CV Processor)...`);
+      const processorPrompt = `
+        # NHIỆM VỤ CỦA BẠN
+        Bạn BẮT BUỘC phải thực hiện xử lý CV theo đúng quy trình 5 BƯỚC như đã định nghĩa trong tài liệu chuẩn.
+        Dưới đây là tóm tắt quy trình:
+        - BƯỚC 1: BẮT BUỘC COPY file raw người dùng gửi vào ĐÚNG thư mục: RoomFiles/hr-miniapp/raws-cv/
+        - BƯỚC 2: Tìm và đọc bản text auto-parse trong thư mục ẩn .markdown/.
+        - BƯỚC 3: Chuẩn hóa format CV và Đánh giá sàng lọc (chấm điểm). LƯU Ý: SỬ DỤNG BẢNG TIÊU CHUẨN TUYỂN DỤNG CỤ THỂ BÊN DƯỚI ĐỂ CHẤM ĐIỂM!
+        - BƯỚC 4: LƯU FILE MD VÀO OUTPUTS CV (CHÚ Ý CHỐNG TRÙNG LẶP).
+        - BƯỚC 5: TỔNG HỢP VÀ GHI NỐI (APPEND) VÀO MỘT FILE CSV ĐẶT TẠI: RoomFiles/hr-miniapp/outputs-cv/[YYYY-MM-DD]_KetQua_${jdName.replace(/\.[^/.]+$/, "")}.csv
+
+        ==============================================
+        [ BẢNG TIÊU CHUẨN TUYỂN DỤNG TỪ FILE JD: ${jdName} ]
+        ${jdContent}
+        ==============================================
+
+        QUAN TRỌNG: Trước khi làm bất cứ điều gì, bạn BẮT BUỘC phải tham khảo và tuân thủ tuyệt đối các quy tắc định dạng bắt buộc trong tài liệu Hướng Dẫn chi tiết sau: 
+        @Files:6a2fd032670a67e0f437dc08/cv_processing_guidelines.md
+
+        Hãy áp dụng quy trình 5 bước trên để xử lý file CV này: @Files:${this.roomId}/hr-miniapp/cv-lon-xon/${cv.name}
+
+        KHI HOÀN TẤT TOÀN BỘ, bạn BẮT BUỘC phải trả về duy nhất tên file MD đã lưu thành công ở BƯỚC 4 trong thẻ <saved_file>.
+        Ví dụ: <saved_file>2026-07-06_CV_LuuSonTruong_1.md</saved_file>
+        `;
       
-      let cleanName = '';
-      const filenameMatch = aiRenameRes.text.match(/<filename>(.*?)<\/filename>/i);
-      if (filenameMatch && filenameMatch[1]) {
-        cleanName = filenameMatch[1].trim();
+      const aiProcessRes = await this.askAI(processorPrompt, cv.name, cv._id, onLog);
+      
+      // Parse <saved_file>
+      let newMdName = '';
+      const fileMatch = aiProcessRes.text.match(/<saved_file>\s*([\s\S]*?)\s*<\/saved_file>/i);
+      if (fileMatch && fileMatch[1]) {
+        newMdName = fileMatch[1].trim();
       } else {
-        // Fallback: lay tu cuoi cung hoac loc bo nhung tu thua
-        cleanName = aiRenameRes.text.trim().replace(/[^a-zA-Z0-9_-]/g, '');
+        // Fallback: Thử tìm một tên file MD chuẩn trong response
+        const fallbackMatch = aiProcessRes.text.match(/([0-9]{4}-[0-9]{2}-[0-9]{2}_CV_[a-zA-Z0-9_]+\.md)/i);
+        if (fallbackMatch && fallbackMatch[1]) {
+          newMdName = fallbackMatch[1].trim();
+        } else {
+          throw new Error("AI không trả về tên file <saved_file>. Response: " + aiProcessRes.text.substring(0, 100));
+        }
       }
-      
-      const normalizedName = cleanName + this.getExt(cv.name);
-      
-      // Thực sự đổi tên file trên PrivOS database
-      if (onLog) onLog(`Gọi API đổi tên file thành: ${normalizedName}...`);
-      await this.renameFile(cv._id, normalizedName);
-      
-      updateStatus({ normalizedName, status: 'scoring' });
 
-      // BƯỚC 2 & 3: Chuyển sang MD và Sàng lọc (Tiêm phụ thuộc JD Content)
-      if (onLog) onLog(`[Bước 2] Phân tích nội dung và chấm điểm...`);
+      if (onLog) onLog(`[Giữ nguyên File Gốc] AI đã tạo file MD: ${newMdName}`);
+      updateStatus({ normalizedName: newMdName, status: 'scoring' });
+
+      // Lấy nội dung file MD chuẩn từ outputs-cv để chấm điểm
+      if (onLog) onLog(`[Đọc File] Đang tải ${newMdName} từ outputs-cv để trích xuất JSON lên giao diện...`);
+      
+      let finalMarkdown = '';
+      const processPaths = [
+        `${this.roomId}/hr-miniapp/outputs-cv/${newMdName}`,
+        `hr-miniapp/outputs-cv/${newMdName}`
+      ];
+      
+      for (const path of processPaths) {
+        finalMarkdown = await getFileContent(this.app, path);
+        if (finalMarkdown && finalMarkdown.trim().length > 0) break;
+      }
+
+      if (!finalMarkdown || finalMarkdown.trim().length === 0) {
+        if (onLog) onLog(`[CẢNH BÁO] Không đọc được nội dung từ outputs-cv. Dùng tạm nội dung AI sinh ra...`);
+        finalMarkdown = aiProcessRes.text;
+      }
+      // TODO: Thêm hàm xóa file ẩn nếu cần, hiện tại API createOrUpdateFile đã ghi file mới.
+
+      // BƯỚC 5: Đánh giá & Chấm điểm
+      if (onLog) onLog(`[Bước 5] Chấm điểm...`);
+      const cvContext = `<cv_data>\n${finalMarkdown}\n</cv_data>`;
       const scoringPrompt = this.strategy.getScoringPrompt(cvContext, jdContent);
-      const aiScoreRes = await this.askAI(scoringPrompt, cv.name, onLog);
-      
-      // Parse JSON from output
-      let result: any = { markdown: '', category: 'KHÔNG XÁC ĐỊNH', score: 0, reason: '' };
-      try {
-        // Lấy tất cả các block ```json ... ```
-        const jsonBlocks = [...aiScoreRes.text.matchAll(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/gi)];
-        let parsed = false;
-        
-        // Thử parse từ block cuối cùng (thường là câu trả lời cuối)
-        if (jsonBlocks.length > 0) {
-          for (let i = jsonBlocks.length - 1; i >= 0; i--) {
-            try {
-              const data = JSON.parse(jsonBlocks[i][1]);
-              if (data.category !== undefined || data.markdown !== undefined || data.score !== undefined) {
-                result = { ...result, ...data };
-                parsed = true;
-                break;
-              }
-            } catch (e) {}
-          }
-        }
-        
-        // Nếu không có block markdown json, thử tìm object {} cuối cùng
-        if (!parsed) {
-          const objectBlocks = [...aiScoreRes.text.matchAll(/\{[\s\S]*?\}/g)];
-          for (let i = objectBlocks.length - 1; i >= 0; i--) {
-            try {
-              const data = JSON.parse(objectBlocks[i][0]);
-              if (data.category !== undefined || data.markdown !== undefined || data.score !== undefined) {
-                result = { ...result, ...data };
-                parsed = true;
-                break;
-              }
-            } catch (e) {}
-          }
-        }
+      const aiScoreRes = await this.askAI(scoringPrompt, cv.name, undefined, onLog);
 
-        if (!parsed) {
-           if (onLog) onLog(`[DEBUG AI] Response không chứa JSON:\n${aiScoreRes.text.substring(0, 300)}...`);
-           throw new Error("No JSON found in response");
-        }
-        
-      } catch (e) {
-        console.warn('Failed to parse AI JSON', e);
-        result.reason = 'AI response could not be parsed. Error: ' + String(e);
+      let result: any = { category: 'KHÔNG XÁC ĐỊNH', score: 0, reason: '' };
+      const parsedScore = this.parseAIResponse(aiScoreRes.text);
+      if (parsedScore) {
+        result = { ...result, ...parsedScore };
+      } else {
+        result.reason = 'AI response could not be parsed as JSON.';
+        if (onLog) onLog(`[DEBUG] RAW AI SCORE RESPONSE:\n${aiScoreRes.text.substring(0, 500)}...`);
       }
-      
+
       let finalReason = result.reason || 'Processed successfully';
-      
-      // Chặn và cảnh báo nếu AI không đọc từ thẻ rawText
-      if (result.verification && String(result.verification.text_analyzed).toLowerCase().includes('no')) {
-         finalReason = '⚠️ AI TỪ CHỐI ĐỌC DỮ LIỆU TEXT!\n' + finalReason;
-         result.category = 'LỖI ĐỌC NHẦM TEXT';
-         result.score = 0;
-      }
 
       if (result.extracted_evidence && Array.isArray(result.extracted_evidence)) {
         finalReason += '\n\n[BẰNG CHỨNG TỪ CV]\n- ' + result.extracted_evidence.join('\n- ');
       }
 
-      // Xóa file CV gốc sau khi lấy dữ liệu xong
-      await this.deleteFile(cv._id);
-
-      updateStatus({ 
-        status: 'completed', 
+      updateStatus({
+        status: 'completed',
         score: result.score || 0,
         category: result.category || 'KHÔNG XÁC ĐỊNH',
         reason: finalReason
@@ -209,9 +216,57 @@ export class PipelineService {
     }
   }
 
-  private async askAI(content: string, fileName: string, onLog?: (msg: string) => void): Promise<{text: string}> {
+  private parseMarkdownResponse(text: string): { metadata: any, markdown: string } {
+    let metadata: any = null;
+    let markdown = '';
+
+    try {
+      const metaMatch = text.match(/<metadata>\s*(\{[\s\S]*?\})\s*<\/metadata>/i);
+      if (metaMatch && metaMatch[1]) {
+        metadata = JSON.parse(metaMatch[1]);
+      }
+    } catch (e) {
+      console.warn('Failed to parse metadata block', e);
+    }
+
+    const mdMatch = text.match(/<markdown>\s*([\s\S]*?)\s*<\/markdown>/i);
+    if (mdMatch && mdMatch[1]) {
+      markdown = mdMatch[1].trim();
+    } else {
+      // Fallback: lay toan bo text neu khong co the markdown
+      markdown = text.replace(/<metadata>[\s\S]*?<\/metadata>/i, '').trim();
+    }
+
+    return { metadata, markdown };
+  }
+
+  private parseAIResponse(text: string): any {
+    try {
+      const jsonBlocks = [...text.matchAll(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/gi)];
+      if (jsonBlocks.length > 0) {
+        for (let i = jsonBlocks.length - 1; i >= 0; i--) {
+          try {
+            return JSON.parse(jsonBlocks[i][1]);
+          } catch (e) { }
+        }
+      }
+      const objectBlocks = [...text.matchAll(/\{[\s\S]*?\}/g)];
+      for (let i = objectBlocks.length - 1; i >= 0; i--) {
+        try {
+          return JSON.parse(objectBlocks[i][0]);
+        } catch (e) { }
+      }
+    } catch (e) { }
+    return null;
+  }
+
+  private async askAI(content: string, fileName: string, fileId?: string, onLog?: (msg: string) => void): Promise<{ text: string }> {
+
+    let finalPrompt = content;
     
-    const finalPrompt = `<system_directives>
+    // Nếu prompt không bắt đầu bằng tag Skill, bọc vào system_directives cũ
+    if (!content.trim().startsWith('@')) {
+      finalPrompt = `<system_directives>
   <role>
     You are an AI ASSISTANT acting as a DETERMINISTIC DATA EXTRACTOR. You have zero creativity. Your sole purpose is to parse explicitly provided text or read files using your tools as requested.
   </role>
@@ -223,6 +278,7 @@ export class PipelineService {
 <task_payload>
 ${content}
 </task_payload>`;
+    }
 
     if (onLog) onLog(`>> Đang gửi prompt cho AI xử lý file...`);
     const sent = await restCall<any>(this.app, 'POST', 'ai-messages.send', {
@@ -231,8 +287,8 @@ ${content}
         entityId: this.roomId,
         roomId: this.roomId,
         flowChatId: this.roomId,
-        content: finalPrompt
-        // fileIds: [fileId] // Xóa fileIds để AI không dùng tool đọc file nữa
+        content: finalPrompt,
+        ...(fileId ? { fileIds: [fileId] } : {})
       },
       timeoutMs: 60000,
     });
@@ -246,7 +302,7 @@ ${content}
     }
 
     // Tăng số lần lặp và thời gian chờ để đảm bảo AI có đủ thời gian đọc và xuất MD
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 150; i++) {
       await new Promise(r => setTimeout(r, 2000));
       const res = await restCall<any>(this.app, 'GET', 'ai-messages.list', {
         query: { sessionId, count: 20 }

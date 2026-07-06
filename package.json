@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": false,
   "description": "HR management demo (relay WebSocket) -- connects to Privos via WS, no public URL needed",
-  "title": "Test PrivOS AI",
+  "title": "HR Mini APP",
   "icon": "/public/icon.svg",
   "scopes": [
     "lists:read",
