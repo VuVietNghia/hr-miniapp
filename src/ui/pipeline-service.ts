@@ -52,9 +52,25 @@ export class PipelineService {
   async uploadCV(file: File): Promise<CVFile> {
     const dataUri = await this.readAsDataUri(file);
 
+    // Tiền kiểm tra danh sách file hiện có để tránh lỗi DUPLICATE_FILE
+    const existingFiles = await this.fetchAvailableFiles();
+    const existingNames = new Set(existingFiles.map(f => f.name));
+
+    let finalName = file.name;
+    let counter = 1;
+
+    const dotIndex = finalName.lastIndexOf('.');
+    const baseName = dotIndex !== -1 ? finalName.substring(0, dotIndex) : finalName;
+    const extension = dotIndex !== -1 ? finalName.substring(dotIndex) : '';
+
+    while (existingNames.has(finalName)) {
+      finalName = `${baseName}(${counter})${extension}`;
+      counter++;
+    }
+
     const uploadPromise = this.app.uploadFile({
       channelId: this.roomId,
-      fileName: file.name,
+      fileName: finalName,
       base64Data: dataUri,
       mimeType: file.type || 'application/octet-stream',
     });
@@ -71,7 +87,7 @@ export class PipelineService {
     // Không cần trích xuất text nữa vì AI sẽ tự đọc
     return {
       _id: fileId,
-      name: file.name,
+      name: finalName,
       size: file.size,
     };
   }
