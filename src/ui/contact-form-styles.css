@@ -12,6 +12,7 @@
   --bg-table-head: #F7F8FA;
   --bg-editing: #FFFEF0;
   --bg-field-panel: #F7F8FA;
+  --surface-2: #F2F3F5;
   --text: #1F2329;
   --text-secondary: #2F343D;
   --text-muted: #6C737A;
@@ -20,13 +21,25 @@
   --border-light: #EBECEF;
   --accent: #156FF5;
   --accent-hover: #095AD2;
+  --accent-warm: #F59E0B;
+  --accent-warm-bg: rgba(245, 158, 11, 0.1);
   --success-bg: #C1EBDD;
   --success-text: #148660;
+  --status-pass: #148660;
+  --status-warn: #D97706;
+  --status-warn-bg: rgba(217, 119, 6, 0.1);
+  --status-fail: #DC2626;
+  --status-fail-bg: rgba(220, 38, 38, 0.1);
   --error-bg: #FFE9EC;
   --error-text: #EC0D2A;
   --danger: #EC0D2A;
   --danger-hover: #D40C26;
   --overlay: rgba(0, 0, 0, 0.4);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-card: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-card-hover: 0 4px 12px rgba(0,0,0,.1);
 }
 
 /* Dark theme — surfaceColor from host overrides --bg for exact room background match */
@@ -38,21 +51,34 @@
   --bg-table-head: #131a1e;
   --bg-editing: #131a1e;
   --bg-field-panel: #080d0f;
+  --surface-2: #1a2228;
   --text: #E4E7EA;
   --text-secondary: #9EA2A8;
   --text-muted: #9EA2A8;
   --text-faint: #6C737A;
   --border: #353B45;
   --border-light: #2F343D;
-  --accent: #095AD2;
-  --accent-hover: #10529E;
+  --accent: #4B8EF5;
+  --accent-hover: #3A7AE0;
+  --accent-warm: #D97706;
+  --accent-warm-bg: rgba(217, 119, 6, 0.15);
   --success-bg: #1A3A2A;
   --success-text: #58AD90;
+  --status-pass: #58AD90;
+  --status-warn: #F59E0B;
+  --status-warn-bg: rgba(245, 158, 11, 0.12);
+  --status-fail: #F87171;
+  --status-fail-bg: rgba(248, 113, 113, 0.12);
   --error-bg: #3A1A1A;
   --error-text: #D88892;
   --danger: #BB0B21;
   --danger-hover: #D40C26;
   --overlay: rgba(0, 0, 0, 0.6);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-card: 0 1px 3px rgba(0,0,0,.3);
+  --shadow-card-hover: 0 4px 16px rgba(0,0,0,.4);
 }
 
 body {

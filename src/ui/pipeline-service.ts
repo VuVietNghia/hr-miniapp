@@ -139,11 +139,11 @@ export class PipelineService {
         # YÊU CẦU XỬ LÝ CV
         Thực hiện ĐÚNG 5 bước theo Hướng dẫn: @Files:6a2fd032670a67e0f437dc08/cv_processing_guidelines.md
 
-        1. Copy CV gốc vào \`RoomFiles/hr-miniapp/raws-cv/\`
+        1. Copy CV gốc vào \`RoomFiles/hr-miniapp/raws-cv/\` (BẮT BUỘC chèn thêm timestamp [YYYYMMDD_HHMMSS] vào cuối tên file gốc trước đuôi .pdf để đảm bảo 100% không bao giờ bị trùng tên).
         2. Đọc file text auto-parse tương ứng.
-        3. Chấm điểm theo JD: ${jdName}
-        4. Lưu kết quả (MD) vào \`RoomFiles/hr-miniapp/outputs-cv/\` (chống trùng lặp).
-        5. Append kết quả vào CSV (BẮT BUỘC CHỈ CÓ ĐÚNG 4 CỘT: Vị trí, Tổng điểm, Kết quả, Đường dẫn MD): \`RoomFiles/hr-miniapp/outputs-cv/[YYYY-MM-DD]_KetQua_${jdName.replace(/\.[^/.]+$/, "")}.csv\`
+        3. Đánh giá mức độ phù hợp của CV so với JD đính kèm.
+        4. Lưu kết quả (MD) vào \`RoomFiles/hr-miniapp/outputs-cv/\` (chống trùng lặp, Vị trí ứng tuyển lấy từ CV, TUYỆT ĐỐI KHÔNG lấy theo tên JD).
+        5. Append kết quả vào CSV (BẮT BUỘC CHỈ CÓ ĐÚNG 4 CỘT: Vị trí trong CV, Tổng điểm, Kết quả, Đường dẫn MD): \`RoomFiles/hr-miniapp/outputs-cv/[YYYY-MM-DD]_KetQua_${jdName.replace(/\.[^/.]+$/, "")}.csv\`
 
         [TIÊU CHUẨN JD]
         ${jdContent}
@@ -313,10 +313,18 @@ ${content}
     // Tăng số lần lặp và thời gian chờ để đảm bảo AI có đủ thời gian đọc và xuất MD
     for (let i = 0; i < 150; i++) {
       await new Promise(r => setTimeout(r, 2000));
-      const res = await restCall<any>(this.app, 'GET', 'ai-messages.list', {
-        query: { sessionId, count: 20 }
-      });
-      const list = Array.isArray(res.messages) ? res.messages : [];
+      
+      let res;
+      try {
+        res = await restCall<any>(this.app, 'GET', 'ai-messages.list', {
+          query: { sessionId, count: 20 }
+        });
+      } catch (err: any) {
+        if (onLog) onLog(`>> Lỗi mạng tạm thời, đang thử lại... (Chi tiết: ${err.message || err})`);
+        continue; // Bỏ qua lần lặp này và thử lại ở lần sau
+      }
+
+      const list = Array.isArray(res?.messages) ? res.messages : [];
       const aiMsg = [...list].reverse().find((m: any) => m.type === 'ai');
 
       if (aiMsg) {
