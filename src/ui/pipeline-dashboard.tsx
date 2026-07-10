@@ -19,6 +19,7 @@ export interface IPipelineService {
     jdName: string,
     onLog?: (msg: string) => void
   ): Promise<void>;
+  getMarkdownContent(normalizedName: string): Promise<string>;
 }
 
 interface PipelineDashboardProps {
@@ -42,17 +43,17 @@ function StatusBadge({ category }: { category: string }) {
 
 function ProcessingBadge({ status }: { status: ProcessingStatus['status'] }) {
   const map: Record<string, { label: string; color: string }> = {
-    pending:   { label: 'Chờ xử lý',  color: 'var(--text-faint)' },
-    renaming:  { label: 'Đang xử lý…', color: 'var(--accent)' },
-    scoring:   { label: 'Chấm điểm…', color: 'var(--accent-warm)' },
+    pending: { label: 'Chờ xử lý', color: 'var(--text-faint)' },
+    renaming: { label: 'Đang xử lý…', color: 'var(--accent)' },
+    scoring: { label: 'Chấm điểm…', color: 'var(--accent-warm)' },
     completed: { label: 'Hoàn thành', color: 'var(--status-pass)' },
-    error:     { label: 'Lỗi',        color: 'var(--status-fail)' },
+    error: { label: 'Lỗi', color: 'var(--status-fail)' },
   };
   const { label, color } = map[status] ?? { label: status, color: 'var(--text-muted)' };
   return <span style={{ fontSize: '12px', color, fontWeight: 500 }}>{label}</span>;
 }
 
-function CVResultCard({ s }: { s: ProcessingStatus }) {
+function CVResultCard({ s, onSendEmail }: { s: ProcessingStatus, onSendEmail?: (s: ProcessingStatus) => void }) {
   const [isOpen, setIsOpen] = useState(false);
   const hasDetails = !!(s.reason || s.errorMsg);
 
@@ -64,8 +65,8 @@ function CVResultCard({ s }: { s: ProcessingStatus }) {
       transition: 'box-shadow 0.2s',
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
-        <div 
-          style={{ flex: 1, minWidth: 0, cursor: hasDetails ? 'pointer' : 'default' }} 
+        <div
+          style={{ flex: 1, minWidth: 0, cursor: hasDetails ? 'pointer' : 'default' }}
           onClick={() => hasDetails && setIsOpen(!isOpen)}
           title={hasDetails ? "Nhấn để xem chi tiết" : ""}
         >
@@ -74,10 +75,10 @@ function CVResultCard({ s }: { s: ProcessingStatus }) {
               {s.normalizedName || s.originalName}
             </p>
             {hasDetails && (
-              <span style={{ 
-                fontSize: '9px', color: 'var(--text-faint)', 
-                transform: isOpen ? 'rotate(180deg)' : 'none', 
-                transition: 'transform 0.2s', display: 'inline-block' 
+              <span style={{
+                fontSize: '9px', color: 'var(--text-faint)',
+                transform: isOpen ? 'rotate(180deg)' : 'none',
+                transition: 'transform 0.2s', display: 'inline-block'
               }}>▼</span>
             )}
           </div>
@@ -95,6 +96,11 @@ function CVResultCard({ s }: { s: ProcessingStatus }) {
           <StatusBadge category={s.category} />
           {s.score !== undefined && (
             <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{s.score}/100</span>
+          )}
+          {s.score !== undefined && s.score >= 80 && onSendEmail && (
+            <button className="pl-btn" style={{ padding: '4px 8px', fontSize: '11px', marginLeft: 'auto' }} onClick={(e) => { e.stopPropagation(); onSendEmail(s); }}>
+              ✉ Gửi Mail
+            </button>
           )}
         </div>
       )}
@@ -123,17 +129,36 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   const app = usePrivosApp();
   const { roomId } = usePrivosContext();
 
-  const [files, setFiles]             = useState<CVFile[]>([]);
+  const [files, setFiles] = useState<CVFile[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [statuses, setStatuses]       = useState<Record<string, ProcessingStatus>>({});
-  const [loading, setLoading]         = useState(false);
-  const [processing, setProcessing]   = useState(false);
-  const [jdContent, setJdContent]     = useState('');
-  const [jdName, setJdName]           = useState('');
-  const [logs, setLogs]               = useState<string[]>([]);
-  const [logOpen, setLogOpen]         = useState(false);
-  const logEndRef                     = useRef<HTMLDivElement>(null);
-  const serviceRef                    = useRef<IPipelineService | null>(null);
+  const [statuses, setStatuses] = useState<Record<string, ProcessingStatus>>({});
+  const [loading, setLoading] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [jdContent, setJdContent] = useState('');
+  const [jdName, setJdName] = useState('');
+  const [logs, setLogs] = useState<string[]>([]);
+  const [logOpen, setLogOpen] = useState(false);
+  const logEndRef = useRef<HTMLDivElement>(null);
+  const serviceRef = useRef<IPipelineService | null>(null);
+
+  const emailConfig = {
+    serviceId: import.meta.env.VITE_EMAILJS_SERVICE_ID || '',
+    templateId: import.meta.env.VITE_EMAILJS_TEMPLATE_ID || '',
+    publicKey: import.meta.env.VITE_EMAILJS_PUBLIC_KEY || ''
+  };
+  const [draftOpen, setDraftOpen] = useState(false);
+  const [draftContent, setDraftContent] = useState('');
+  const [draftCandidateEmail, setDraftCandidateEmail] = useState('');
+  const [draftCandidateName, setDraftCandidateName] = useState('');
+  const [sendingEmail, setSendingEmail] = useState(false);
+
+  // Note: localStorage is forbidden in Privos sandboxed iframe without allow-same-origin.
+  // So we only keep it in memory for the current session.
+  useEffect(() => {
+    // Cannot use localStorage here
+  }, []);
+
+
 
   useEffect(() => {
     if (!app || !roomId) return;
@@ -212,6 +237,82 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
     await loadFiles();
   };
 
+  const handleSendEmailClick = async (s: ProcessingStatus) => {
+    if (!emailConfig.serviceId || !emailConfig.templateId || !emailConfig.publicKey) {
+      alert('Vui lòng cấu hình EmailJS trong file .env (VITE_EMAILJS_SERVICE_ID, ...)');
+      return;
+    }
+    if (!serviceRef.current || !s.normalizedName) return;
+
+    setSendingEmail(true);
+    try {
+      const mdContent = await serviceRef.current.getMarkdownContent(s.normalizedName);
+
+      const emailMatch = mdContent.match(/\*\*Email:\*\*\s*(.*)/i) || mdContent.match(/- Email:\s*(.*)/i);
+      const email = emailMatch ? emailMatch[1].trim() : '';
+
+      const nameMatch = mdContent.match(/# 📄 Thông Tin Ứng Viên:\s*(.*)/i);
+      const name = nameMatch ? nameMatch[1].trim() : s.originalName;
+
+      const draftMatch = mdContent.match(/## 📧 Email Mời Phỏng Vấn \(Draft\)[\s\S]*?(Kính gửi[\s\S]*)/i);
+      let draft = '';
+      if (draftMatch && draftMatch[1]) {
+        const endMatch = draftMatch[1].indexOf('```');
+        draft = endMatch !== -1 ? draftMatch[1].substring(0, endMatch).trim() : draftMatch[1].trim();
+      } else {
+        draft = 'Kính gửi ' + name + ',\n\nChúng tôi rất ấn tượng với CV của bạn...\n\nTrân trọng,\nBộ phận Tuyển dụng';
+      }
+
+      setDraftCandidateEmail(email);
+      setDraftCandidateName(name);
+      setDraftContent(draft);
+      setDraftOpen(true);
+    } catch (err) {
+      alert('Lỗi tải file MD để lấy thông tin Email!');
+      console.error(err);
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  const confirmSendEmail = async () => {
+    if (!draftCandidateEmail) {
+      alert('Không tìm thấy Email ứng viên!');
+      return;
+    }
+    setSendingEmail(true);
+    try {
+      const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          service_id: emailConfig.serviceId,
+          template_id: emailConfig.templateId,
+          user_id: emailConfig.publicKey,
+          template_params: {
+            to_email: draftCandidateEmail,
+            to_name: draftCandidateName,
+            name: draftCandidateName,
+            from_name: 'Phòng Tuyển Dụng Privos',
+            reply_to: 'hr@privos.com',
+            user_email: draftCandidateEmail,
+            'Content interview': draftContent
+          }
+        })
+      });
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+      alert('Gửi mail thành công!');
+      setDraftOpen(false);
+    } catch (err) {
+      console.error(err);
+      alert('Lỗi gửi mail: ' + JSON.stringify(err));
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
   const resultList = Object.values(statuses);
 
   return (
@@ -273,14 +374,24 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
       <div className="pl-root" style={{ backgroundColor: 'var(--bg)', color: 'var(--text)', minHeight: '100vh', padding: '28px 24px' }}>
 
         {/* Header */}
-        <header style={{ marginBottom: '24px' }}>
-          <h1 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.2px' }}>
-            CV Pipeline
-          </h1>
-          <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
-            Xử lý & chấm điểm CV tự động
-            {jdName && <span style={{ marginLeft: '8px', color: 'var(--accent)', fontWeight: 500 }}>· {jdName}</span>}
-          </p>
+        <header style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.2px' }}>
+              CV Pipeline
+            </h1>
+            <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
+              Xử lý & chấm điểm CV tự động
+              {jdName && <span style={{ marginLeft: '8px', color: 'var(--accent)', fontWeight: 500 }}>· {jdName}</span>}
+            </p>
+          </div>
+          <button className="pl-btn" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }} onClick={() => {
+            setDraftCandidateEmail('vvn0068@gmail.com');
+            setDraftCandidateName('Nguyễn Văn Mock');
+            setDraftContent('Kính gửi anh/chị Nguyễn Văn Mock,\n\nChúng tôi rất ấn tượng với hồ sơ của anh/chị và xin chúc mừng anh/chị đã vượt qua vòng lọc CV ban đầu.\n\nPhòng Nhân sự trân trọng kính mời anh/chị tham gia buổi phỏng vấn để trao đổi chi tiết hơn về vị trí ứng tuyển cũng như định hướng công việc sắp tới.\n\nChi tiết về thời gian và hình thức phỏng vấn sẽ được chúng tôi cập nhật qua email này trong thời gian sớm nhất. Xin vui lòng phản hồi email này để xác nhận sự quan tâm của anh/chị đối với vị trí ứng tuyển.\n\nTrân trọng,\nPhòng Tuyển Dụng - Privos HR');
+            setDraftOpen(true);
+          }}>
+            ✉ Test Gửi Mail (Mock)
+          </button>
         </header>
 
         {/* Grid */}
@@ -322,12 +433,12 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
                   : files.length === 0
                     ? <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-faint)' }}>Không có file nào</p>
                     : files.map(f => (
-                        <div key={f._id} className={`pl-file-item${selectedIds.has(f._id) ? ' sel' : ''}`}
-                          onClick={() => !processing && handleToggleSelect(f._id)} title={f.name}>
-                          <span className="pl-check" />
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{f.name}</span>
-                        </div>
-                      ))
+                      <div key={f._id} className={`pl-file-item${selectedIds.has(f._id) ? ' sel' : ''}`}
+                        onClick={() => !processing && handleToggleSelect(f._id)} title={f.name}>
+                        <span className="pl-check" />
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{f.name}</span>
+                      </div>
+                    ))
                 }
               </div>
               <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid var(--border-light)' }}>
@@ -371,13 +482,53 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
               )
               : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {resultList.map(s => <CVResultCard key={s.fileId} s={s} />)}
+                  {resultList.map(s => <CVResultCard key={s.fileId} s={s} onSendEmail={handleSendEmailClick} />)}
                 </div>
               )
             }
           </div>
 
         </div>
+
+        {/* --- Modals --- */}
+        {draftOpen && (
+          <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+            <div className="pl-card" style={{ width: '500px', backgroundColor: 'var(--bg-card)' }}>
+              <h3 style={{ margin: '0 0 16px', fontSize: '16px' }}>Soạn thư mời phỏng vấn</h3>
+
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                <label style={{ flex: 1, fontSize: '13px' }}>
+                  Tên ứng viên:
+                  <input type="text" value={draftCandidateName} onChange={e => setDraftCandidateName(e.target.value)} style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '4px', border: '1px solid var(--border)' }} />
+                </label>
+                <label style={{ flex: 1, fontSize: '13px' }}>
+                  Email ứng viên:
+                  <input type="text" value={draftCandidateEmail} onChange={e => setDraftCandidateEmail(e.target.value)} style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '4px', border: '1px solid var(--border)' }} />
+                </label>
+              </div>
+
+              <label style={{ display: 'block', marginBottom: '20px', fontSize: '13px' }}>
+                Nội dung thư:
+                <textarea
+                  value={draftContent}
+                  onChange={e => setDraftContent(e.target.value)}
+                  rows={10}
+                  style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '4px', border: '1px solid var(--border)', resize: 'vertical', fontFamily: 'inherit' }}
+                />
+              </label>
+
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button className="pl-btn" onClick={() => setDraftOpen(false)} disabled={sendingEmail}>Hủy</button>
+                  <button className="pl-btn pl-btn-primary" onClick={confirmSendEmail} disabled={sendingEmail}>
+                    {sendingEmail ? 'Đang gửi...' : 'Gửi Mail (EmailJS)'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     </>
   );

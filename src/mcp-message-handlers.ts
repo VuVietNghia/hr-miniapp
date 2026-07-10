@@ -162,9 +162,9 @@ function getInlineUiHtml(): string {
 	const distDir = path.join(__dirname, '../dist/ui');
 
 	// In dev watch mode, check if build output changed since last cache
-	const assetsPath = path.join(distDir, 'assets');
-	if (fs.existsSync(assetsPath)) {
-		const stat = fs.statSync(assetsPath);
+	const indexHtmlPath = path.join(distDir, 'index.html');
+	if (fs.existsSync(indexHtmlPath)) {
+		const stat = fs.statSync(indexHtmlPath);
 		if (stat.mtimeMs !== lastBuildMtime) {
 			cachedUiHtml = null;
 			lastBuildMtime = stat.mtimeMs;
@@ -173,32 +173,11 @@ function getInlineUiHtml(): string {
 
 	if (cachedUiHtml) return cachedUiHtml;
 
-	// Find built JS and CSS files in dist/ui/assets/
-	const assetsDir = path.join(distDir, 'assets');
-	if (!fs.existsSync(assetsDir)) {
+	if (!fs.existsSync(indexHtmlPath)) {
 		throw new Error('UI not built. Run `npm run build` first, then restart.');
 	}
 
-	const files = fs.readdirSync(assetsDir);
-	const jsFile = files.find((f) => f.endsWith('.js'));
-	const cssFile = files.find((f) => f.endsWith('.css'));
-
-	const jsContent = jsFile ? fs.readFileSync(path.join(assetsDir, jsFile), 'utf-8') : '';
-	const cssContent = cssFile ? fs.readFileSync(path.join(assetsDir, cssFile), 'utf-8') : '';
-
-	cachedUiHtml = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${pkg.title || 'Demo HR Management'}</title>
-  <style>${cssContent}</style>
-</head>
-<body>
-  <div id="root"></div>
-  <script type="module">${jsContent}</script>
-</body>
-</html>`;
+	cachedUiHtml = fs.readFileSync(indexHtmlPath, 'utf-8');
 
 	return cachedUiHtml;
 }

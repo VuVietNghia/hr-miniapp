@@ -313,7 +313,7 @@ ${content}
     // Tăng số lần lặp và thời gian chờ để đảm bảo AI có đủ thời gian đọc và xuất MD
     for (let i = 0; i < 150; i++) {
       await new Promise(r => setTimeout(r, 2000));
-      
+
       let res;
       try {
         res = await restCall<any>(this.app, 'GET', 'ai-messages.list', {
@@ -339,7 +339,19 @@ ${content}
     throw new Error('AI polling timeout');
   }
 
-  private readAsDataUri(file: File): Promise<string> {
+  async getMarkdownContent(normalizedName: string): Promise<string> {
+    const processPaths = [
+      `${this.roomId}/hr-miniapp/outputs-cv/${normalizedName}`,
+      `hr-miniapp/outputs-cv/${normalizedName}`
+    ];
+    for (const path of processPaths) {
+      const content = await getFileContent(this.app, path);
+      if (content && content.trim().length > 0) return content;
+    }
+    return '';
+  }
+
+  private async readAsDataUri(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result));
