@@ -3,6 +3,7 @@ import { usePrivosApp, usePrivosContext } from '@privos/app-react';
 import { PipelineService, CVFile, ProcessingStatus } from './pipeline-service';
 import { MarkdownScreeningStrategy } from './screening-strategy';
 import { MarkdownPathContextBuilder } from './cv-context-builder';
+import { getInterviewEmailTemplate } from './email-templates';
 
 import chuanHoaData from './data/chuan_hoa_data.md?raw';
 import sangLocCv from './data/sang_loc_cv.md?raw';
@@ -24,6 +25,14 @@ export interface IPipelineService {
 
 interface PipelineDashboardProps {
   serviceFactory?: (app: ReturnType<typeof usePrivosApp>, roomId: string) => IPipelineService;
+}
+
+export interface DraftCandidate {
+  id: string;
+  name: string;
+  email: string;
+  status: 'pending' | 'sending' | 'success' | 'error';
+  selected?: boolean;
 }
 
 // ─── Sub-components ─────────────────────────────────────────────────────────────
@@ -148,8 +157,7 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   };
   const [draftOpen, setDraftOpen] = useState(false);
   const [draftContent, setDraftContent] = useState('');
-  const [draftCandidateEmail, setDraftCandidateEmail] = useState('');
-  const [draftCandidateName, setDraftCandidateName] = useState('');
+  const [draftCandidates, setDraftCandidates] = useState<DraftCandidate[]>([]);
   const [sendingEmail, setSendingEmail] = useState(false);
 
   // Note: localStorage is forbidden in Privos sandboxed iframe without allow-same-origin.
@@ -260,11 +268,16 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
         const endMatch = draftMatch[1].indexOf('```');
         draft = endMatch !== -1 ? draftMatch[1].substring(0, endMatch).trim() : draftMatch[1].trim();
       } else {
-        draft = 'Kính gửi ' + name + ',\n\nChúng tôi rất ấn tượng với CV của bạn...\n\nTrân trọng,\nBộ phận Tuyển dụng';
+        draft = getInterviewEmailTemplate(name);
       }
 
-      setDraftCandidateEmail(email);
-      setDraftCandidateName(name);
+      setDraftCandidates([{
+        id: s.fileId,
+        name: name,
+        email: email,
+        status: 'pending',
+        selected: true
+      }]);
       setDraftContent(draft);
       setDraftOpen(true);
     } catch (err) {
@@ -275,39 +288,124 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
     }
   };
 
-  const confirmSendEmail = async () => {
-    if (!draftCandidateEmail) {
-      alert('Không tìm thấy Email ứng viên!');
+  const handleSendBulkEmailResults = async () => {
+    if (!emailConfig.serviceId || !emailConfig.templateId || !emailConfig.publicKey) {
+      alert('Vui lòng cấu hình EmailJS trong file .env (VITE_EMAILJS_SERVICE_ID, ...)');
       return;
     }
+    if (!serviceRef.current) return;
+    
+    const passedCandidates = resultList.filter(s => s.score !== undefined && s.score >= 80 && s.normalizedName);
+    if (passedCandidates.length === 0) {
+      alert('Không tìm thấy ứng viên đạt tiêu chuẩn (>= 80 điểm) để gửi mail.');
+      return;
+    }
+
     setSendingEmail(true);
     try {
-      const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          service_id: emailConfig.serviceId,
-          template_id: emailConfig.templateId,
-          user_id: emailConfig.publicKey,
-          template_params: {
-            to_email: draftCandidateEmail,
-            to_name: draftCandidateName,
-            name: draftCandidateName,
-            from_name: 'Phòng Tuyển Dụng Privos',
-            reply_to: 'hr@privos.com',
-            user_email: draftCandidateEmail,
-            'Content interview': draftContent
-          }
-        })
-      });
-      if (!res.ok) {
-        throw new Error(await res.text());
+      const candidates: DraftCandidate[] = [];
+      
+      for (const s of passedCandidates) {
+        if (!s.normalizedName) continue;
+        const mdContent = await serviceRef.current.getMarkdownContent(s.normalizedName);
+        
+        // Cố gắng tìm email từ nội dung markdown
+        const emailMatch = mdContent.match(/\*\*Email:\*\*\s*(.*)/i) || mdContent.match(/- Email:\s*(.*)/i);
+        const email = emailMatch ? emailMatch[1].trim() : '';
+        
+        // Cố gắng tìm tên từ tiêu đề
+        const nameMatch = mdContent.match(/# 📄 Thông Tin Ứng Viên:\s*(.*)/i);
+        const name = nameMatch ? nameMatch[1].trim() : s.originalName;
+        
+        candidates.push({
+          id: s.fileId,
+          name: name,
+          email: email,
+          status: 'pending',
+          selected: true
+        });
       }
-      alert('Gửi mail thành công!');
-      setDraftOpen(false);
+      
+      if (candidates.length === 0) {
+        alert('Không tìm thấy thông tin ứng viên nào hợp lệ để gửi mail.');
+        return;
+      }
+      
+      setDraftCandidates(candidates);
+      setDraftContent(candidates.length === 1 ? getInterviewEmailTemplate(candidates[0].name) : getInterviewEmailTemplate());
+      setDraftOpen(true);
+    } catch (e) {
+      console.error(e);
+      alert('Đã xảy ra lỗi khi chuẩn bị gửi mail hàng loạt!');
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  const confirmSendEmail = async () => {
+    if (draftCandidates.length === 0) return;
+    
+    setSendingEmail(true);
+    try {
+      let successCount = 0;
+      const candidatesToSend = draftCandidates.filter(c => c.selected !== false);
+      
+      for (let i = 0; i < draftCandidates.length; i++) {
+        const candidate = draftCandidates[i];
+        if (candidate.selected === false) continue;
+        
+        if (!candidate.email) {
+          setDraftCandidates(prev => prev.map((c, idx) => idx === i ? { ...c, status: 'error' } : c));
+          continue;
+        }
+        
+        setDraftCandidates(prev => prev.map((c, idx) => idx === i ? { ...c, status: 'sending' } : c));
+        
+        const personalizedContent = draftContent.replace(/\{\{Tên Ứng Viên\}\}/g, candidate.name);
+        
+        try {
+          const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              service_id: emailConfig.serviceId,
+              template_id: emailConfig.templateId,
+              user_id: emailConfig.publicKey,
+              template_params: {
+                to_email: candidate.email,
+                to_name: candidate.name,
+                name: candidate.name,
+                from_name: 'Phòng Tuyển Dụng Privos',
+                reply_to: 'hr@privos.com',
+                user_email: candidate.email,
+                'Go to interview': personalizedContent,
+                'Content interview': personalizedContent,
+                message: personalizedContent,
+                message_html: personalizedContent.replace(/\n/g, '<br>'),
+                content: personalizedContent,
+                notes: personalizedContent,
+                body: personalizedContent
+              }
+            })
+          });
+          
+          if (!res.ok) throw new Error(await res.text());
+          
+          setDraftCandidates(prev => prev.map((c, idx) => idx === i ? { ...c, status: 'success' } : c));
+          successCount++;
+        } catch (e) {
+          console.error(e);
+          setDraftCandidates(prev => prev.map((c, idx) => idx === i ? { ...c, status: 'error' } : c));
+        }
+      }
+      
+      if (successCount === candidatesToSend.length && candidatesToSend.length > 0) {
+        setDraftOpen(false);
+      }
+      alert(`Đã gửi mail thành công cho ${successCount}/${candidatesToSend.length} ứng viên!`);
     } catch (err) {
+      alert('Đã xảy ra lỗi hệ thống khi gửi mail!');
       console.error(err);
-      alert('Lỗi gửi mail: ' + JSON.stringify(err));
     } finally {
       setSendingEmail(false);
     }
@@ -385,9 +483,13 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
             </p>
           </div>
           <button className="pl-btn" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }} onClick={() => {
-            setDraftCandidateEmail('vvn0068@gmail.com');
-            setDraftCandidateName('Nguyễn Văn Mock');
-            setDraftContent('Kính gửi anh/chị Nguyễn Văn Mock,\n\nChúng tôi rất ấn tượng với hồ sơ của anh/chị và xin chúc mừng anh/chị đã vượt qua vòng lọc CV ban đầu.\n\nPhòng Nhân sự trân trọng kính mời anh/chị tham gia buổi phỏng vấn để trao đổi chi tiết hơn về vị trí ứng tuyển cũng như định hướng công việc sắp tới.\n\nChi tiết về thời gian và hình thức phỏng vấn sẽ được chúng tôi cập nhật qua email này trong thời gian sớm nhất. Xin vui lòng phản hồi email này để xác nhận sự quan tâm của anh/chị đối với vị trí ứng tuyển.\n\nTrân trọng,\nPhòng Tuyển Dụng - Privos HR');
+            setDraftCandidates([{
+              id: 'mock',
+              name: 'Nguyễn Văn Mock',
+              email: 'vvn0068@gmail.com',
+              status: 'pending'
+            }]);
+            setDraftContent(getInterviewEmailTemplate('Nguyễn Văn Mock'));
             setDraftOpen(true);
           }}>
             ✉ Test Gửi Mail (Mock)
@@ -441,8 +543,8 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
                     ))
                 }
               </div>
-              <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid var(--border-light)' }}>
-                <button className="pl-btn pl-btn-primary" style={{ width: '100%', justifyContent: 'center' }}
+              <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid var(--border-light)', display: 'flex', gap: '8px' }}>
+                <button className="pl-btn pl-btn-primary" style={{ flex: 1, justifyContent: 'center' }}
                   onClick={startPipeline} disabled={selectedIds.size === 0 || processing || !jdContent}>
                   {processing ? '⟳ Đang xử lý…' : `Chạy Pipeline (${selectedIds.size})`}
                 </button>
@@ -470,7 +572,14 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
           <div className="pl-card" style={{ padding: '16px 20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <p className="pl-label" style={{ margin: 0 }}>03 · Kết quả chấm</p>
-              {resultList.length > 0 && <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{resultList.length} CV</span>}
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {resultList.length > 0 && <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{resultList.length} CV</span>}
+                {resultList.some(s => s.score !== undefined && s.score >= 80) && (
+                   <button className="pl-btn" style={{ padding: '4px 8px', fontSize: '11px', borderColor: 'var(--accent)', color: 'var(--accent)' }} onClick={handleSendBulkEmailResults} disabled={sendingEmail}>
+                     ✉ Gửi Mail Hàng Loạt
+                   </button>
+                )}
+              </div>
             </div>
             {resultList.length === 0
               ? (
@@ -494,18 +603,45 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
         {draftOpen && (
           <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
             <div className="pl-card" style={{ width: '500px', backgroundColor: 'var(--bg-card)' }}>
-              <h3 style={{ margin: '0 0 16px', fontSize: '16px' }}>Soạn thư mời phỏng vấn</h3>
+              <h3 style={{ margin: '0 0 16px', fontSize: '16px' }}>
+                {draftCandidates.length > 1 ? `Soạn thư mời phỏng vấn (${draftCandidates.length} ứng viên)` : 'Soạn thư mời phỏng vấn'}
+              </h3>
 
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                <label style={{ flex: 1, fontSize: '13px' }}>
-                  Tên ứng viên:
-                  <input type="text" value={draftCandidateName} onChange={e => setDraftCandidateName(e.target.value)} style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '4px', border: '1px solid var(--border)' }} />
-                </label>
-                <label style={{ flex: 1, fontSize: '13px' }}>
-                  Email ứng viên:
-                  <input type="text" value={draftCandidateEmail} onChange={e => setDraftCandidateEmail(e.target.value)} style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '4px', border: '1px solid var(--border)' }} />
-                </label>
-              </div>
+              {draftCandidates.length === 1 ? (
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                  <label style={{ flex: 1, fontSize: '13px' }}>
+                    Tên ứng viên:
+                    <input type="text" value={draftCandidates[0].name} onChange={e => setDraftCandidates([{ ...draftCandidates[0], name: e.target.value }])} style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '4px', border: '1px solid var(--border)' }} disabled={sendingEmail} />
+                  </label>
+                  <label style={{ flex: 1, fontSize: '13px' }}>
+                    Email ứng viên:
+                    <input type="text" value={draftCandidates[0].email} onChange={e => setDraftCandidates([{ ...draftCandidates[0], email: e.target.value }])} style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '4px', border: '1px solid var(--border)' }} disabled={sendingEmail} />
+                  </label>
+                </div>
+              ) : (
+                <div style={{ marginBottom: '12px', maxHeight: '150px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '4px', padding: '8px' }}>
+                  <p style={{ margin: '0 0 8px', fontSize: '12px', fontWeight: 'bold' }}>
+                    Danh sách nhận ({draftCandidates.filter(c => c.selected !== false).length}/{draftCandidates.length}):
+                  </p>
+                  {draftCandidates.map((c, i) => (
+                    <label key={i} style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', cursor: c.status === 'pending' && !sendingEmail ? 'pointer' : 'default' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={c.selected !== false}
+                        onChange={(e) => {
+                           if (c.status !== 'pending' || sendingEmail) return;
+                           setDraftCandidates(prev => prev.map((item, idx) => idx === i ? { ...item, selected: e.target.checked } : item));
+                        }}
+                        disabled={c.status !== 'pending' || sendingEmail}
+                      />
+                      <span style={{ flex: 1 }}>{c.name} ({c.email || 'Không có email'})</span>
+                      {c.status === 'success' && <span style={{ color: 'var(--status-pass)' }}>Thành công</span>}
+                      {c.status === 'error' && <span style={{ color: 'var(--status-fail)' }}>Lỗi</span>}
+                      {c.status === 'sending' && <span style={{ color: 'var(--accent)' }}>Đang gửi...</span>}
+                    </label>
+                  ))}
+                </div>
+              )}
 
               <label style={{ display: 'block', marginBottom: '20px', fontSize: '13px' }}>
                 Nội dung thư:
@@ -514,14 +650,15 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
                   onChange={e => setDraftContent(e.target.value)}
                   rows={10}
                   style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '4px', border: '1px solid var(--border)', resize: 'vertical', fontFamily: 'inherit' }}
+                  disabled={sendingEmail}
                 />
               </label>
 
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button className="pl-btn" onClick={() => setDraftOpen(false)} disabled={sendingEmail}>Hủy</button>
-                  <button className="pl-btn pl-btn-primary" onClick={confirmSendEmail} disabled={sendingEmail}>
-                    {sendingEmail ? 'Đang gửi...' : 'Gửi Mail (EmailJS)'}
+                  <button className="pl-btn pl-btn-primary" onClick={confirmSendEmail} disabled={sendingEmail || draftCandidates.length === 0}>
+                    {sendingEmail ? 'Đang gửi...' : `Gửi Mail (${draftCandidates.length})`}
                   </button>
                 </div>
               </div>

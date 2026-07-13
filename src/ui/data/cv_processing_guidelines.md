@@ -39,49 +39,18 @@ Sử dụng nội dung từ "Nguồn Dữ Liệu Gốc", định dạng lại CV
 - ⛔ **KHÔNG TUYỂN VỊ TRÍ NÀY:** Ứng tuyển vị trí không có trong JD hiện tại.
 
 ### TEMPLATE KẾT QUẢ BẮT BUỘC (Markdown):
-```markdown
-# 📄 Thông Tin Ứng Viên: [Họ và Tên]
-
-- **Vị trí ứng tuyển:** [Tên vị trí GHI TRONG CV, TUYỆT ĐỐI KHÔNG ghi tên JD vào đây. Nếu không ghi, điền "KhongXacDinh"]
-- **Số điện thoại:** [SĐT]
-- **Email:** [Email]
-
-## 🎓 Học Vấn
-- [Trường/Chứng chỉ 1] - [Năm]
-
-## 💼 Kinh Nghiệm Làm Việc
-- **[Tên Công ty]** | [Vị trí] | [Thời gian]
-  - [Mô tả công việc - Bê nguyên văn]
-
-## 🛠 Kỹ Năng
-- [Kỹ năng 1]
-
-## 📊 Đánh Giá Sàng Lọc
-- **Tổng điểm:** [Điểm / 100]
-- **Kết quả:** [✅ ĐẠT / 🟡 CÂN NHẮC / ❌ KHÔNG ĐẠT / ⛔ KHÔNG TUYỂN]
-- **Lý do:** [Giải thích ngắn gọn dựa trên tiêu chuẩn JD và kinh nghiệm của ứng viên]
-
-*(NẾU KẾT QUẢ LÀ "✅ ĐẠT", BẠN BẮT BUỘC SOẠN THÊM MỤC SAU)*
-## 📧 Email Mời Phỏng Vấn (Draft)
-Kính gửi [Tên ứng viên],
-
-Chúc mừng bạn đã vượt qua vòng hồ sơ cho vị trí [Tên vị trí trong CV] tại công ty chúng tôi.
-Chúng tôi rất ấn tượng với kinh nghiệm của bạn về [1-2 kỹ năng nổi bật rút từ CV].
-
-Chúng tôi muốn mời bạn tham gia buổi phỏng vấn trực tuyến để trao đổi thêm.
-Chi tiết lịch hẹn: [Để trống để HR điền]
-
-Trân trọng,
-Bộ phận Tuyển dụng
-```
+> **CẢNH BÁO CỐT LÕI:** BẠN BẮT BUỘC PHẢI TRÌNH BÀY FILE MARKDOWN ĐÚNG Y HỆT THEO CẤU TRÚC ĐƯỢC QUY ĐỊNH TẠI FILE TEMPLATE DƯỚI ĐÂY. BẠN PHẢI LẬP BẢNG CHẤM ĐIỂM CHI TIẾT THEO YÊU CẦU TRONG TEMPLATE.
+> 
+> 👉 Đọc cấu trúc template tại: `@Files:6a2fd032670a67e0f437dc08/hr-miniapp/template/cv_md_template.md`
 
 ## BƯỚC 4: LƯU FILE VÀO OUTPUTS CV (CHỐNG TRÙNG LẶP)
 - Trích xuất Họ và Tên ứng viên cùng với Vị trí ứng tuyển TỪ TRONG NỘI DUNG CV. **LƯU Ý CỐT LÕI:** Vị trí ứng tuyển phải lấy đúng theo những gì ứng viên viết trong CV, TUYỆT ĐỐI KHÔNG lấy tên tiêu đề của file JD hay tên JD để đặt tên. Nếu trong CV không ghi rõ vị trí, hãy dùng `KhongXacDinh`.
 - Loại bỏ dấu tiếng Việt và dấu cách cho cả Tên và Vị trí ứng tuyển (VD: `Lưu Sơn Trường` -> `LuuSonTruong`, `Lập trình viên` -> `LapTrinhVien`).
 - Tên file chuẩn: `[YYYY-MM-DD]_CV_[TenKhongDau]_[ViTriUngTuyenKhongDau].md`.
 - Dùng công cụ **Write File** để lưu nội dung vừa được chuẩn hóa vào:
-  `6a2fd032670a67e0f437dc08/hr-miniapp/outputs-cv/[Tên_file_chuẩn]`
-- **QUAN TRỌNG (CHỐNG TRÙNG LẶP):** Trước khi lưu, nếu bạn phát hiện (do lỗi ghi đè hoặc tự kiểm tra) rằng file đã tồn tại trong thư mục `outputs-cv/`, bạn **BẮT BUỘC** phải tạo ra tên file mới bằng cách thêm số thứ tự vào cuối tên file.
+  - NẾU ỨNG VIÊN ĐẠT HOẶC CÂN NHẮC: `6a2fd032670a67e0f437dc08/hr-miniapp/outputs-cv/pass/[Tên_file_chuẩn]`
+  - NẾU ỨNG VIÊN KHÔNG ĐẠT HOẶC KHÔNG TUYỂN: `6a2fd032670a67e0f437dc08/hr-miniapp/outputs-cv/fail/[Tên_file_chuẩn]`
+- **QUAN TRỌNG (CHỐNG TRÙNG LẶP):** Trước khi lưu, nếu bạn phát hiện (do lỗi ghi đè hoặc tự kiểm tra) rằng file đã tồn tại trong thư mục (pass hoặc fail), bạn **BẮT BUỘC** phải tạo ra tên file mới bằng cách thêm số thứ tự vào cuối tên file.
   - Ví dụ: Thay vì lưu đè `2026-07-03_CV_NguyenVanA_LapTrinhVien.md`, hãy đổi thành `2026-07-03_CV_NguyenVanA_LapTrinhVien_1.md` (nếu trùng tiếp thì `_2.md`...) rồi thử lưu lại.
 
 ## BƯỚC 5: TỔNG HỢP VÀO FILE CSV CHUNG TRONG NGÀY
@@ -92,7 +61,7 @@ Bộ phận Tuyển dụng
   - **TUYỆT ĐỐI KHÔNG TỰ BỊA THÊM CỘT.** Cấu trúc CSV bắt buộc CHỈ CÓ ĐÚNG 4 CỘT phân cách bằng dấu phẩy (,):
     `Vị trí trong CV, Tổng điểm, Kết quả, Đường dẫn file MD`
   - **MẪU DỮ LIỆU ĐÚNG CHUẨN:**
-    `Thực tập sinh IT, 85/100, ✅ ĐẠT, 6a2fd032670a67e0f437dc08/hr-miniapp/outputs-cv/2026-07-06_CV_NguyenVanA_ThucTapSinhIT.md`
+    `Thực tập sinh IT, 85/100, ✅ ĐẠT, 6a2fd032670a67e0f437dc08/hr-miniapp/outputs-cv/pass/2026-07-06_CV_NguyenVanA_ThucTapSinhIT.md`
   - Nếu file CHƯA tồn tại: Dùng lệnh **Write File** tạo mới file, DÒNG ĐẦU TIÊN BẮT BUỘC LÀ:
     `Vị trí trong CV, Tổng điểm, Kết quả, Đường dẫn file MD`
     Sau đó xuống dòng ghi kết quả CV.

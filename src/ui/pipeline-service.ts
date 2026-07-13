@@ -142,11 +142,15 @@ export class PipelineService {
         1. Copy CV gốc vào \`RoomFiles/hr-miniapp/raws-cv/\` (BẮT BUỘC chèn thêm timestamp [YYYYMMDD_HHMMSS] vào cuối tên file gốc trước đuôi .pdf để đảm bảo 100% không bao giờ bị trùng tên).
         2. Đọc file text auto-parse tương ứng.
         3. Đánh giá mức độ phù hợp của CV so với JD đính kèm.
-        4. Lưu kết quả (MD) vào \`RoomFiles/hr-miniapp/outputs-cv/\` (chống trùng lặp, Vị trí ứng tuyển lấy từ CV, TUYỆT ĐỐI KHÔNG lấy theo tên JD).
+        4. Lưu kết quả (MD): NẾU ĐẠT/CÂN NHẮC -> \`RoomFiles/hr-miniapp/outputs-cv/pass/\`. NẾU KHÔNG ĐẠT/KHÔNG TUYỂN -> \`RoomFiles/hr-miniapp/outputs-cv/fail/\` (chống trùng lặp, Vị trí ứng tuyển lấy từ CV, TUYỆT ĐỐI KHÔNG lấy theo tên JD).
         5. Append kết quả vào CSV (BẮT BUỘC CHỈ CÓ ĐÚNG 4 CỘT: Vị trí trong CV, Tổng điểm, Kết quả, Đường dẫn MD): \`RoomFiles/hr-miniapp/outputs-cv/[YYYY-MM-DD]_KetQua_${jdName.replace(/\.[^/.]+$/, "")}.csv\`
 
         [TIÊU CHUẨN JD]
+        <jd_content>
         ${jdContent}
+        </jd_content>
+
+        [CẢNH BÁO QUAN TRỌNG: Bạn BẮT BUỘC phải xuất file Markdown theo ĐÚNG cấu trúc trong file template: @Files:6a2fd032670a67e0f437dc08/hr-miniapp/cv_md_template.md. Hãy lập bảng điểm chi tiết cho TỪNG tiêu chí trong JD đúng như template yêu cầu!]
 
         KHI HOÀN TẤT, TRẢ VỀ: <saved_file>Tên-File-Da-Luu.md</saved_file>
         File CV cần xử lý: @Files:${this.roomId}/hr-miniapp/cv-lon-xon/${cv.name}
@@ -177,6 +181,10 @@ export class PipelineService {
 
       let finalMarkdown = '';
       const processPaths = [
+        `${this.roomId}/hr-miniapp/outputs-cv/pass/${newMdName}`,
+        `hr-miniapp/outputs-cv/pass/${newMdName}`,
+        `${this.roomId}/hr-miniapp/outputs-cv/fail/${newMdName}`,
+        `hr-miniapp/outputs-cv/fail/${newMdName}`,
         `${this.roomId}/hr-miniapp/outputs-cv/${newMdName}`,
         `hr-miniapp/outputs-cv/${newMdName}`
       ];
