@@ -21,6 +21,7 @@ export interface IPipelineService {
     onLog?: (msg: string) => void
   ): Promise<void>;
   getMarkdownContent(normalizedName: string): Promise<string>;
+  ensureTemplatesExist?(forceReset?: boolean): Promise<void>;
 }
 
 interface PipelineDashboardProps {
@@ -173,6 +174,8 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
     serviceRef.current = serviceFactory
       ? serviceFactory(app, roomId)
       : new PipelineService(app, roomId, new MarkdownScreeningStrategy(chuanHoaData, sangLocCv), new MarkdownPathContextBuilder());
+    
+    serviceRef.current.ensureTemplatesExist?.(false).catch(console.error);
     loadFiles();
   }, [app, roomId]);
 
@@ -482,18 +485,27 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
               {jdName && <span style={{ marginLeft: '8px', color: 'var(--accent)', fontWeight: 500 }}>· {jdName}</span>}
             </p>
           </div>
-          <button className="pl-btn" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }} onClick={() => {
-            setDraftCandidates([{
-              id: 'mock',
-              name: 'Nguyễn Văn Mock',
-              email: 'vvn0068@gmail.com',
-              status: 'pending'
-            }]);
-            setDraftContent(getInterviewEmailTemplate('Nguyễn Văn Mock'));
-            setDraftOpen(true);
-          }}>
-            ✉ Test Gửi Mail (Mock)
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button className="pl-btn" style={{ borderColor: 'var(--text-muted)', color: 'var(--text-muted)' }} onClick={() => {
+              if (window.confirm('Hành động này sẽ ghi đè các file hướng dẫn AI (Template & Guidelines) về trạng thái mặc định. Bạn có chắc chắn không?')) {
+                serviceRef.current?.ensureTemplatesExist?.(true).then(() => alert('Đã khôi phục mặc định thành công!')).catch((e: any) => alert('Lỗi: ' + e));
+              }
+            }}>
+              ↺ Reset Templates
+            </button>
+            <button className="pl-btn" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }} onClick={() => {
+              setDraftCandidates([{
+                id: 'mock',
+                name: 'Nguyễn Văn Mock',
+                email: 'vvn0068@gmail.com',
+                status: 'pending'
+              }]);
+              setDraftContent(getInterviewEmailTemplate('Nguyễn Văn Mock'));
+              setDraftOpen(true);
+            }}>
+              ✉ Test Gửi Mail (Mock)
+            </button>
+          </div>
         </header>
 
         {/* Grid */}

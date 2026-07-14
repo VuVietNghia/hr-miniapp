@@ -2,6 +2,8 @@ import { McpApp } from '@privos/app-react';
 import { restCall, getFileContent, createOrUpdateFile } from './privos-rest';
 import { IScreeningStrategy } from './screening-strategy';
 import { ICvContextBuilder } from './cv-context-builder';
+import cvProcessingGuidelinesRaw from './data/cv_processing_guidelines.md?raw';
+import cvMdTemplateRaw from './data/cv_md_template.md?raw';
 
 export interface CVFile {
   _id: string;
@@ -33,6 +35,31 @@ export class PipelineService {
     this.roomId = roomId;
     this.strategy = strategy;
     this.contextBuilder = contextBuilder;
+  }
+
+  async ensureTemplatesExist(forceReset = false): Promise<void> {
+    const guidelinePath = `${this.roomId}/hr-miniapp/cv_processing_guidelines.md`;
+    const templatePath = `${this.roomId}/hr-miniapp/cv_md_template.md`;
+
+    const checkAndUpload = async (path: string, rawContent: string, isGuideline: boolean) => {
+      if (!forceReset) {
+        const existing = await getFileContent(this.app, path);
+        if (existing && existing.trim().length > 0) return; // File already exists
+      }
+
+      // Replace hardcoded room ID in guidelines with current room ID
+      let finalContent = rawContent;
+      if (isGuideline) {
+        finalContent = finalContent.replace(/6a2fd032670a67e0f437dc08/g, this.roomId);
+      }
+
+      await createOrUpdateFile(this.app, path, finalContent);
+    };
+
+    await Promise.all([
+      checkAndUpload(guidelinePath, cvProcessingGuidelinesRaw, true),
+      checkAndUpload(templatePath, cvMdTemplateRaw, false)
+    ]);
   }
 
   async fetchAvailableFiles(): Promise<CVFile[]> {
@@ -137,7 +164,7 @@ export class PipelineService {
       if (onLog) onLog(`[Bước 1-5] Gửi Prompt tự động xử lý CV (Nhúng logic HR CV Processor)...`);
       const processorPrompt = `
         # YÊU CẦU XỬ LÝ CV
-        Thực hiện ĐÚNG 5 bước theo Hướng dẫn: @Files:6a2fd032670a67e0f437dc08/cv_processing_guidelines.md
+        Thực hiện ĐÚNG 5 bước theo Hướng dẫn: @Files:${this.roomId}/hr-miniapp/cv_processing_guidelines.md
 
         1. Copy CV gốc vào \`RoomFiles/hr-miniapp/raws-cv/\` (BẮT BUỘC chèn thêm timestamp [YYYYMMDD_HHMMSS] vào cuối tên file gốc trước đuôi .pdf để đảm bảo 100% không bao giờ bị trùng tên).
         2. Đọc file text auto-parse tương ứng.
@@ -150,7 +177,7 @@ export class PipelineService {
         ${jdContent}
         </jd_content>
 
-        [CẢNH BÁO QUAN TRỌNG: Bạn BẮT BUỘC phải xuất file Markdown theo ĐÚNG cấu trúc trong file template: @Files:6a2fd032670a67e0f437dc08/hr-miniapp/cv_md_template.md. Hãy lập bảng điểm chi tiết cho TỪNG tiêu chí trong JD đúng như template yêu cầu!]
+        [CẢNH BÁO QUAN TRỌNG: Bạn BẮT BUỘC phải xuất file Markdown theo ĐÚNG cấu trúc trong file template: @Files:${this.roomId}/hr-miniapp/cv_md_template.md. Hãy lập bảng điểm chi tiết cho TỪNG tiêu chí trong JD đúng như template yêu cầu!]
 
         KHI HOÀN TẤT, TRẢ VỀ: <saved_file>Tên-File-Da-Luu.md</saved_file>
         File CV cần xử lý: @Files:${this.roomId}/hr-miniapp/cv-lon-xon/${cv.name}

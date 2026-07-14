@@ -53,17 +53,3 @@
 
 ### Điểm cần cải thiện:
 [Tóm tắt những điểm ứng viên còn yếu hoặc thiếu sót]
-
----
-*(NẾU KẾT QUẢ LÀ "✅ ĐẠT", BẠN BẮT BUỘC SOẠN THÊM MỤC SAU)*
-## 📧 Email Mời Phỏng Vấn (Draft)
-Kính gửi [Tên ứng viên],
-
-Chúc mừng bạn đã vượt qua vòng hồ sơ cho vị trí [Tên vị trí trong CV] tại công ty chúng tôi.
-Chúng tôi rất ấn tượng với kinh nghiệm của bạn về [1-2 kỹ năng nổi bật rút từ CV].
-
-Chúng tôi muốn mời bạn tham gia buổi phỏng vấn trực tuyến để trao đổi thêm.
-Chi tiết lịch hẹn: [Để trống để HR điền]
-
-Trân trọng,
-Bộ phận Tuyển dụng

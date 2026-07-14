@@ -1,76 +1,87 @@
 # HƯỚNG DẪN XỬ LÝ VÀ CHẤM ĐIỂM CV (ANTI-HALLUCINATION)
 
-**MỤC ĐÍCH TỐI THƯỢNG:** 
-- KHÔNG BAO GIỜ tự bịa đặt hoặc suy diễn thông tin.
-- Bắt buộc phải trích xuất dữ liệu dựa trên bản Text (Markdown) gốc do hệ thống Auto-parse tạo ra.
-- Đảm bảo 100% các CV sau khi xử lý đều có chung một cấu trúc trình bày thống nhất và được ĐÁNH GIÁ SÀNG LỌC theo tiêu chuẩn.
+**MỤC ĐÍCH TỐI THƯỢNG:**
 
----
+* KHÔNG BAO GIỜ tự bịa đặt hoặc suy diễn thông tin.
+* Bắt buộc phải trích xuất dữ liệu dựa trên bản Text (Markdown) gốc do hệ thống Auto-parse tạo ra.
+* Đảm bảo 100% các CV sau khi xử lý đều có chung một cấu trúc trình bày thống nhất và được ĐÁNH GIÁ SÀNG LỌC theo tiêu chuẩn.
+
+***
 
 ## BƯỚC 1: COPY FILE RAW VÀO THƯ MỤC RAWS-CV (BẮT BUỘC)
+
 Ngay khi nhận được yêu cầu xử lý một file CV raw (ví dụ: `NguyenVanA.pdf`), bạn phải thực hiện quy trình sau để lưu trữ bản gốc:
 
-- **Cách làm:** Thay vì phải gọi tool kiểm tra danh sách file (rất mất thời gian và dễ lỗi), bạn hãy ĐỔI TÊN file gốc bằng cách chèn thêm **Ngày giờ (Timestamp)** vào ngay trước đuôi `.pdf`. 
-- **Ví dụ:** File gốc là `NguyenVanA.pdf`, ở thời điểm hiện tại (ví dụ 16:05:30 ngày 09/07/2026), bạn sẽ đặt tên là `NguyenVanA_20260709_160530.pdf`.
-- **Thực thi:** Dùng công cụ Copy (hoặc lệnh tương đương) để copy file này vào `raws-cv/` với cái tên Timestamp vừa tạo. Bằng cách này 100% sẽ không bao giờ bị trùng tên! KHÔNG CẦN LOOP HAY KIỂM TRA LẠI.
+* **Cách làm:** Thay vì phải gọi tool kiểm tra danh sách file (rất mất thời gian và dễ lỗi), bạn hãy ĐỔI TÊN file gốc bằng cách chèn thêm **Ngày giờ (Timestamp)** vào ngay trước đuôi `.pdf`.
+* **Ví dụ:** File gốc là `NguyenVanA.pdf`, ở thời điểm hiện tại (ví dụ 16:05:30 ngày 09/07/2026), bạn sẽ đặt tên là `NguyenVanA_20260709_160530.pdf`.
+* **Thực thi:** Dùng công cụ Copy (hoặc lệnh tương đương) để copy file này vào `raws-cv/` với cái tên Timestamp vừa tạo. Bằng cách này 100% sẽ không bao giờ bị trùng tên! KHÔNG CẦN LOOP HAY KIỂM TRA LẠI.
 
 **(TUYỆT ĐỐI KHÔNG ĐƯỢC GHI ĐÈ FILE CŨ VÀ KHÔNG BỎ QUA BƯỚC NÀY)**
+
 ## BƯỚC 2: TÌM VÀ ĐỌC BẢN TEXT GỐC (BẮT BUỘC)
+
 Khi nhận được yêu cầu xử lý CV, AI **KHÔNG ĐƯỢC** đọc thẳng file PDF. Thay vào đó, AI phải tìm bản text đã được bóc tách nằm trong thư mục ẩn theo các đường dẫn sau (thay khoảng trắng bằng dấu `_`):
+
 1. `6a2fd032670a67e0f437dc08/.markdown/[Tên_File_Có_Gạch_Dưới].pdf.md`
 2. `6a2fd032670a67e0f437dc08/.markdown/[Tên_File_Có_Gạch_Dưới].md`
 3. `6a2fd032670a67e0f437dc08/.markdown/hr-miniapp/cv-lon-xon/[Tên_File_Có_Gạch_Dưới].md`
 
-*Lưu ý: Nội dung lấy từ file MD này chính là "Nguồn Dữ Liệu Gốc". Nếu không tìm thấy file, hãy dừng lại báo lỗi.*
+_Lưu ý: Nội dung lấy từ file MD này chính là "Nguồn Dữ Liệu Gốc". Nếu không tìm thấy file, hãy dừng lại báo lỗi._
 
 ## BƯỚC 3: CHUẨN HÓA FORMAT & ĐÁNH GIÁ SÀNG LỌC
-Sử dụng nội dung từ "Nguồn Dữ Liệu Gốc", định dạng lại CV theo cấu trúc sau. 
+
+Sử dụng nội dung từ "Nguồn Dữ Liệu Gốc", định dạng lại CV theo cấu trúc sau.
 **Yêu cầu:** Sắp xếp lại nội dung, giữ nguyên văn kỹ năng/kinh nghiệm. Sau đó, dựa vào thông tin trích xuất, thực hiện **ĐÁNH GIÁ SÀNG LỌC** theo 3 tiêu chí dưới đây đối chiếu với JD đính kèm:
 
 ### 3 Tiêu Chí Đánh Giá Chính:
+
 1. **Vị trí ứng tuyển:** Có đúng với danh sách tuyển dụng trong JD hay không?
 2. **Kinh nghiệm & Yêu cầu cốt lõi:** Có đạt yêu cầu tối thiểu của JD không?
 3. **Mức lương mong muốn:** Có nằm trong Budget (nếu JD có đề cập) không?
 
 ### Phân Loại Kết Quả Rẽ Nhánh:
-- ✅ **ĐẠT (Mời phỏng vấn):** Đúng vị trí + Kinh nghiệm đạt yêu cầu + Lương trong budget.
-- 🟡 **CÂN NHẮC (Cần xem thêm):** Đúng vị trí nhưng thiếu 1 tiêu chí (ít kinh nghiệm hơn yêu cầu hoặc lương hơi cao nhưng có thể thương lượng).
-- ❌ **KHÔNG ĐẠT (Từ chối):** Lương vượt budget quá xa HOẶC không đủ yêu cầu cơ bản của JD.
-- ⛔ **KHÔNG TUYỂN VỊ TRÍ NÀY:** Ứng tuyển vị trí không có trong JD hiện tại.
+
+* ✅ **ĐẠT (Mời phỏng vấn):** Đúng vị trí + Kinh nghiệm đạt yêu cầu + Lương trong budget.
+* 🟡 **CÂN NHẮC (Cần xem thêm):** Đúng vị trí nhưng thiếu 1 tiêu chí (ít kinh nghiệm hơn yêu cầu hoặc lương hơi cao nhưng có thể thương lượng).
+* ❌ **KHÔNG ĐẠT (Từ chối):** Lương vượt budget quá xa HOẶC không đủ yêu cầu cơ bản của JD.
+* ⛔ **KHÔNG TUYỂN VỊ TRÍ NÀY:** Ứng tuyển vị trí không có trong JD hiện tại.
 
 ### TEMPLATE KẾT QUẢ BẮT BUỘC (Markdown):
+
 > **CẢNH BÁO CỐT LÕI:** BẠN BẮT BUỘC PHẢI TRÌNH BÀY FILE MARKDOWN ĐÚNG Y HỆT THEO CẤU TRÚC ĐƯỢC QUY ĐỊNH TẠI FILE TEMPLATE DƯỚI ĐÂY. BẠN PHẢI LẬP BẢNG CHẤM ĐIỂM CHI TIẾT THEO YÊU CẦU TRONG TEMPLATE.
-> 
-> 👉 Đọc cấu trúc template tại: `@Files:6a2fd032670a67e0f437dc08/hr-miniapp/template/cv_md_template.md`
+>
+> 👉 Đọc cấu trúc template tại: `@Files:6a2fd032670a67e0f437dc08/hr-miniapp/cv_md_template.md`
 
 ## BƯỚC 4: LƯU FILE VÀO OUTPUTS CV (CHỐNG TRÙNG LẶP)
-- Trích xuất Họ và Tên ứng viên cùng với Vị trí ứng tuyển TỪ TRONG NỘI DUNG CV. **LƯU Ý CỐT LÕI:** Vị trí ứng tuyển phải lấy đúng theo những gì ứng viên viết trong CV, TUYỆT ĐỐI KHÔNG lấy tên tiêu đề của file JD hay tên JD để đặt tên. Nếu trong CV không ghi rõ vị trí, hãy dùng `KhongXacDinh`.
-- Loại bỏ dấu tiếng Việt và dấu cách cho cả Tên và Vị trí ứng tuyển (VD: `Lưu Sơn Trường` -> `LuuSonTruong`, `Lập trình viên` -> `LapTrinhVien`).
-- Tên file chuẩn: `[YYYY-MM-DD]_CV_[TenKhongDau]_[ViTriUngTuyenKhongDau].md`.
-- Dùng công cụ **Write File** để lưu nội dung vừa được chuẩn hóa vào:
-  - NẾU ỨNG VIÊN ĐẠT HOẶC CÂN NHẮC: `6a2fd032670a67e0f437dc08/hr-miniapp/outputs-cv/pass/[Tên_file_chuẩn]`
-  - NẾU ỨNG VIÊN KHÔNG ĐẠT HOẶC KHÔNG TUYỂN: `6a2fd032670a67e0f437dc08/hr-miniapp/outputs-cv/fail/[Tên_file_chuẩn]`
-- **QUAN TRỌNG (CHỐNG TRÙNG LẶP):** Trước khi lưu, nếu bạn phát hiện (do lỗi ghi đè hoặc tự kiểm tra) rằng file đã tồn tại trong thư mục (pass hoặc fail), bạn **BẮT BUỘC** phải tạo ra tên file mới bằng cách thêm số thứ tự vào cuối tên file.
-  - Ví dụ: Thay vì lưu đè `2026-07-03_CV_NguyenVanA_LapTrinhVien.md`, hãy đổi thành `2026-07-03_CV_NguyenVanA_LapTrinhVien_1.md` (nếu trùng tiếp thì `_2.md`...) rồi thử lưu lại.
+
+* Trích xuất Họ và Tên ứng viên cùng với Vị trí ứng tuyển TỪ TRONG NỘI DUNG CV. **LƯU Ý CỐT LÕI:** Vị trí ứng tuyển phải lấy đúng theo những gì ứng viên viết trong CV, TUYỆT ĐỐI KHÔNG lấy tên tiêu đề của file JD hay tên JD để đặt tên. Nếu trong CV không ghi rõ vị trí, hãy dùng `KhongXacDinh`.
+* Loại bỏ dấu tiếng Việt và dấu cách cho cả Tên và Vị trí ứng tuyển (VD: `Lưu Sơn Trường` -> `LuuSonTruong`, `Lập trình viên` -> `LapTrinhVien`).
+* Tên file chuẩn: `[YYYY-MM-DD]_CV_[TenKhongDau]_[ViTriUngTuyenKhongDau].md`.
+* Dùng công cụ **Write File** để lưu nội dung vừa được chuẩn hóa vào:
+  * NẾU ỨNG VIÊN ĐẠT HOẶC CÂN NHẮC: `6a2fd032670a67e0f437dc08/hr-miniapp/outputs-cv/pass/[Tên_file_chuẩn]`
+  * NẾU ỨNG VIÊN KHÔNG ĐẠT HOẶC KHÔNG TUYỂN: `6a2fd032670a67e0f437dc08/hr-miniapp/outputs-cv/fail/[Tên_file_chuẩn]`
+* **QUAN TRỌNG (CHỐNG TRÙNG LẶP):** Trước khi lưu, nếu bạn phát hiện (do lỗi ghi đè hoặc tự kiểm tra) rằng file đã tồn tại trong thư mục (pass hoặc fail), bạn **BẮT BUỘC** phải tạo ra tên file mới bằng cách thêm số thứ tự vào cuối tên file.
+  * Ví dụ: Thay vì lưu đè `2026-07-03_CV_NguyenVanA_LapTrinhVien.md`, hãy đổi thành `2026-07-03_CV_NguyenVanA_LapTrinhVien_1.md` (nếu trùng tiếp thì `_2.md`...) rồi thử lưu lại.
 
 ## BƯỚC 5: TỔNG HỢP VÀO FILE CSV CHUNG TRONG NGÀY
-- Dựa vào kết quả ở Bước 3, AI tiến hành cập nhật kết quả vào file CSV tương ứng với **JD đang được sử dụng**.
-- **VỊ TRÍ LƯU FILE CSV:** `6a2fd032670a67e0f437dc08/hr-miniapp/outputs-cv/` (Tên file chỉ định trong Prompt).
-- **LƯU Ý CỐT LÕI (CHỐNG HALLUCINATION):** 
-  - Bạn BẮT BUỘC phải **GHI NỐI (APPEND)** dữ liệu của ứng viên mới vào cuối file CSV này. TUYỆT ĐỐI KHÔNG ĐƯỢC xóa trắng dữ liệu cũ.
-  - **TUYỆT ĐỐI KHÔNG TỰ BỊA THÊM CỘT.** Cấu trúc CSV bắt buộc CHỈ CÓ ĐÚNG 4 CỘT phân cách bằng dấu phẩy (,):
-    `Vị trí trong CV, Tổng điểm, Kết quả, Đường dẫn file MD`
-  - **MẪU DỮ LIỆU ĐÚNG CHUẨN:**
-    `Thực tập sinh IT, 85/100, ✅ ĐẠT, 6a2fd032670a67e0f437dc08/hr-miniapp/outputs-cv/pass/2026-07-06_CV_NguyenVanA_ThucTapSinhIT.md`
-  - Nếu file CHƯA tồn tại: Dùng lệnh **Write File** tạo mới file, DÒNG ĐẦU TIÊN BẮT BUỘC LÀ:
-    `Vị trí trong CV, Tổng điểm, Kết quả, Đường dẫn file MD`
-    Sau đó xuống dòng ghi kết quả CV.
-  - Nếu file ĐÃ tồn tại: Dùng lệnh **Edit File / Replace** để thêm đúng 1 dòng dữ liệu 4 cột xuống dưới cùng. KHÔNG SỬA CẤU TRÚC HEADER HIỆN TẠI.
 
----
----
-**YÊU CẦU ĐẦU RA CUỐI CÙNG (STRICT OUTPUT FORMAT):**
-Khi hoàn tất toàn bộ 5 bước trên, bạn BẮT BUỘC phải trả về kết quả theo chuẩn sau để hệ thống tự động nhận diện:
-- Phải trả về thẻ `<saved_file>` chứa ĐÚNG tên file MD đã lưu thành công ở BƯỚC 4.
-- VD chuẩn xác: `<saved_file>2026-07-03_CV_NguyenVanA_LapTrinhVien_1.md</saved_file>`
-- TUYỆT ĐỐI KHÔNG bọc thẻ `<saved_file>` vào trong block code (```) hay bảng markdown.
+* Dựa vào kết quả ở Bước 3, AI tiến hành cập nhật kết quả vào file CSV tương ứng với **JD đang được sử dụng**.
+* **VỊ TRÍ LƯU FILE CSV:** `6a2fd032670a67e0f437dc08/hr-miniapp/outputs-cv/` (Tên file chỉ định trong Prompt).
+* **LƯU Ý CỐT LÕI (CHỐNG HALLUCINATION):**
+  * Bạn BẮT BUỘC phải **GHI NỐI (APPEND)** dữ liệu của ứng viên mới vào cuối file CSV này. TUYỆT ĐỐI KHÔNG ĐƯỢC xóa trắng dữ liệu cũ.
+  * **TUYỆT ĐỐI KHÔNG TỰ BỊA THÊM CỘT.** Cấu trúc CSV bắt buộc CHỈ CÓ ĐÚNG 4 CỘT phân cách bằng dấu phẩy (,):
+    `Vị trí trong CV, Tổng điểm, Kết quả, Đường dẫn file MD`
+  * **MẪU DỮ LIỆU ĐÚNG CHUẨN:**`Thực tập sinh IT, 85/100, ✅ ĐẠT, 6a2fd032670a67e0f437dc08/hr-miniapp/outputs-cv/pass/2026-07-06_CV_NguyenVanA_ThucTapSinhIT.md`
+  * Nếu file CHƯA tồn tại: Dùng lệnh **Write File** tạo mới file, DÒNG ĐẦU TIÊN BẮT BUỘC LÀ:
+    `Vị trí trong CV, Tổng điểm, Kết quả, Đường dẫn file MD`Sau đó xuống dòng ghi kết quả CV.
+  * Nếu file ĐÃ tồn tại: Dùng lệnh **Edit File / Replace** để thêm đúng 1 dòng dữ liệu 4 cột xuống dưới cùng. KHÔNG SỬA CẤU TRÚC HEADER HIỆN TẠI.
+
+***
+
+***
+
+**YÊU CẦU ĐẦU RA CUỐI CÙNG (STRICT OUTPUT FORMAT):**&#x4B;hi hoàn tất toàn bộ 5 bước trên, bạn BẮT BUỘC phải trả về kết quả theo chuẩn sau để hệ thống tự động nhận diện:
+
+* Phải trả về thẻ `<saved_file>` chứa ĐÚNG tên file MD đã lưu thành công ở BƯỚC 4.
+* VD chuẩn xác: `<saved_file>2026-07-03_CV_NguyenVanA_LapTrinhVien_1.md</saved_file>`
+* TUYỆT ĐỐI KHÔNG bọc thẻ `<saved_file>` vào trong block code (\`\`\`) hay bảng markdown.
