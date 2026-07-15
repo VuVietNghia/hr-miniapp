@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { PrivosAppProvider, usePrivosContext } from '@privos/app-react';
+import { useState, useEffect } from 'react';
+import { PrivosAppProvider, usePrivosContext, usePrivosApp } from '@privos/app-react';
 import { ThemeProvider, ThemeToggle } from './theme-provider';
 import HRManagementDashboard from './contact-collector-form';
 import FileUploadPanel from './file-upload-panel';
@@ -9,6 +9,7 @@ import SkillsPanel from './skills-panel';
 import SandboxConnectPanel from './sandbox-connect-panel';
 
 import PipelineDashboard from './pipeline-dashboard';
+import { ensureTemplatesExistGlobal } from './pipeline-service';
 import TestAi from './test-ai';
 
 type Tab = 'records' | 'pipeline' | 'files' | 'chat' | 'history' | 'skills' | 'sandbox' | 'testAi';
@@ -25,8 +26,15 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 function ThemedApp() {
-  const { theme } = usePrivosContext();
+  const app = usePrivosApp();
+  const { theme, roomId } = usePrivosContext();
   const [tab, setTab] = useState<Tab>('records');
+
+  useEffect(() => {
+    if (app && roomId) {
+      ensureTemplatesExistGlobal(app, roomId, false).catch(console.error);
+    }
+  }, [app, roomId]);
 
   return (
     <ThemeProvider hostTheme={theme}>

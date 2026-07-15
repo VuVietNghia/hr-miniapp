@@ -175,7 +175,6 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
       ? serviceFactory(app, roomId)
       : new PipelineService(app, roomId, new MarkdownScreeningStrategy(chuanHoaData, sangLocCv), new MarkdownPathContextBuilder());
     
-    serviceRef.current.ensureTemplatesExist?.(false).catch(console.error);
     loadFiles();
   }, [app, roomId]);
 
@@ -200,18 +199,42 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   };
 
   const handleUploadCV = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !serviceRef.current) return;
+    const uploadedFiles = e.target.files;
+    if (!uploadedFiles || uploadedFiles.length === 0 || !serviceRef.current) return;
+    
     setLoading(true);
     try {
-      await serviceRef.current.uploadCV(file);
+      const uploadPromises = Array.from(uploadedFiles).map(async (file) => {
+        try {
+          await serviceRef.current!.uploadCV(file);
+          addLog(`Đã tải lên: ${file.name}`);
+          return file.name;
+        } catch {
+          addLog(`Lỗi tải lên: ${file.name}`);
+          return null;
+        }
+      });
+      
+      const uploadedNames = (await Promise.all(uploadPromises)).filter(Boolean);
+
       const list = await serviceRef.current.fetchAvailableFiles();
       setFiles(list);
-      const added = list.find(f => f.name === file.name);
-      if (added) setSelectedIds(prev => new Set(prev).add(added._id));
-      addLog(`Đã tải lên: ${file.name}`);
-    } catch { addLog(`Lỗi tải lên: ${file.name}`); }
-    finally { setLoading(false); e.target.value = ''; }
+      
+      const newIds = list
+        .filter(f => uploadedNames.includes(f.name))
+        .map(f => f._id);
+        
+      if (newIds.length > 0) {
+        setSelectedIds(prev => {
+          const s = new Set(prev);
+          newIds.forEach(id => s.add(id));
+          return s;
+        });
+      }
+    } finally { 
+      setLoading(false); 
+      e.target.value = ''; 
+    }
   };
 
   const handleUploadJD = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -537,7 +560,7 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
                   Làm mới
                 </button>
               </div>
-              <input type="file" id="cv-upload" style={{ display: 'none' }} onChange={handleUploadCV} accept=".pdf,.doc,.docx,.jpg,.png" />
+              <input type="file" id="cv-upload" style={{ display: 'none' }} multiple onChange={handleUploadCV} accept=".pdf,.doc,.docx,.jpg,.png" />
               <button className="pl-btn" style={{ marginBottom: '12px' }} onClick={() => document.getElementById('cv-upload')?.click()} disabled={loading || processing}>
                 + Thêm CV
               </button>

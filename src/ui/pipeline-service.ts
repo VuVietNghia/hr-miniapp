@@ -24,6 +24,46 @@ export interface ProcessingStatus {
   errorMsg?: string;
 }
 
+export async function ensureTemplatesExistGlobal(app: McpApp, roomId: string, forceReset = false): Promise<void> {
+  const guidelinePath = `${roomId}/hr-miniapp/cv_processing_guidelines.md`;
+  const templatePath = `${roomId}/hr-miniapp/cv_md_template.md`;
+
+  const checkAndUpload = async (path: string, rawContent: string, isGuideline: boolean) => {
+    if (!forceReset) {
+      const existing = await getFileContent(app, path);
+      if (existing && existing.trim().length > 0) return; // File already exists
+    }
+
+    // Replace hardcoded room ID in guidelines with current room ID
+    let finalContent = rawContent;
+    if (isGuideline) {
+      finalContent = finalContent.replace(/6a2fd032670a67e0f437dc08/g, roomId);
+    }
+    
+    // LOG CHO DEBUG
+    console.log(`[DEBUG] Đang upload file: ${path}`);
+    
+    try {
+      await createOrUpdateFile(app, path, finalContent);
+      console.log(`[DEBUG] Upload thành công: ${path}`);
+    } catch (err: any) {
+      console.error(`[DEBUG] Lỗi khi upload ${path}:`, err);
+      alert(`Lỗi upload file hướng dẫn: ${err.message}`);
+    }
+  };
+
+  try {
+    await Promise.all([
+      checkAndUpload(guidelinePath, cvProcessingGuidelinesRaw, true),
+      checkAndUpload(templatePath, cvMdTemplateRaw, false)
+    ]);
+    console.log(`[DEBUG] Hoàn tất ensureTemplatesExist`);
+    if (forceReset) alert('Đã khôi phục/tạo mới file hướng dẫn thành công!');
+  } catch (err: any) {
+    alert(`Lỗi tổng khi ensureTemplatesExist: ${err.message}`);
+  }
+}
+
 export class PipelineService {
   private app: McpApp;
   private roomId: string;
@@ -38,28 +78,7 @@ export class PipelineService {
   }
 
   async ensureTemplatesExist(forceReset = false): Promise<void> {
-    const guidelinePath = `${this.roomId}/hr-miniapp/cv_processing_guidelines.md`;
-    const templatePath = `${this.roomId}/hr-miniapp/cv_md_template.md`;
-
-    const checkAndUpload = async (path: string, rawContent: string, isGuideline: boolean) => {
-      if (!forceReset) {
-        const existing = await getFileContent(this.app, path);
-        if (existing && existing.trim().length > 0) return; // File already exists
-      }
-
-      // Replace hardcoded room ID in guidelines with current room ID
-      let finalContent = rawContent;
-      if (isGuideline) {
-        finalContent = finalContent.replace(/6a2fd032670a67e0f437dc08/g, this.roomId);
-      }
-
-      await createOrUpdateFile(this.app, path, finalContent);
-    };
-
-    await Promise.all([
-      checkAndUpload(guidelinePath, cvProcessingGuidelinesRaw, true),
-      checkAndUpload(templatePath, cvMdTemplateRaw, false)
-    ]);
+    return ensureTemplatesExistGlobal(this.app, this.roomId, forceReset);
   }
 
   async fetchAvailableFiles(): Promise<CVFile[]> {
