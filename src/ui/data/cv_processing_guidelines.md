@@ -50,7 +50,7 @@ Sử dụng nội dung từ "Nguồn Dữ Liệu Gốc", định dạng lại CV
 
 > **CẢNH BÁO CỐT LÕI:** BẠN BẮT BUỘC PHẢI TRÌNH BÀY FILE MARKDOWN ĐÚNG Y HỆT THEO CẤU TRÚC ĐƯỢC QUY ĐỊNH TẠI FILE TEMPLATE DƯỚI ĐÂY. BẠN PHẢI LẬP BẢNG CHẤM ĐIỂM CHI TIẾT THEO YÊU CẦU TRONG TEMPLATE.
 >
-> 👉 Đọc cấu trúc template tại: `@Files:[ROOM_ID]/hr-miniapp/cv_md_template.md`
+> 💡 Đọc cấu trúc template tại: `@Files:[ROOM_ID]/hr-miniapp/skills/cv_md_template.md`
 
 ## BƯỚC 4: LƯU FILE VÀO OUTPUTS CV (CHỐNG TRÙNG LẶP)
 

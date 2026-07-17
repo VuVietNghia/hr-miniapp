@@ -1,5 +1,5 @@
 import { McpApp } from '@privos/app-react';
-import { restCall, getFileContent, createOrUpdateFile } from './privos-rest';
+import { restCall, getFileContent, createOrUpdateFile, ensureFolderPath } from './privos-rest';
 import { ICvContextBuilder } from './cv-context-builder';
 import cvProcessingGuidelinesRaw from './data/cv_processing_guidelines.md?raw';
 import cvMdTemplateRaw from './data/cv_md_template.md?raw';
@@ -33,21 +33,28 @@ export interface ProcessingStatus {
 }
 
 export async function ensureTemplatesExistGlobal(app: McpApp, roomId: string, forceReset = false): Promise<void> {
-  const guidelinePath = `${roomId}/hr-miniapp/cv_processing_guidelines.md`;
-  const templatePath = `${roomId}/hr-miniapp/cv_md_template.md`;
-  const sangLocPath = `${roomId}/hr-miniapp/sang_loc_cv.md`;
+  const baseFolder = `${roomId}/hr-miniapp/skills`;
+  const guidelinePath = `${baseFolder}/cv_processing_guidelines.md`;
+  const templatePath = `${baseFolder}/cv_md_template.md`;
+  const sangLocPath = `${baseFolder}/sang_loc_cv.md`;
 
   const checkAndUpload = async (path: string, rawContent: string, isGuideline: boolean) => {
     if (!forceReset) {
-      const existing = await getFileContent(app, path);
-      if (existing && existing.trim().length > 0) return; // File already exists
-      console.warn(`[CẢNH BÁO] File ${path} đang thiếu trên room. Sẽ tiến hành upload tự động. Nếu hệ thống không tự upload được, vui lòng click nút [Khôi phục mặc định] trên giao diện CV Pipeline.`);
+      try {
+        const existing = await getFileContent(app, path);
+        if (existing && existing.trim().length > 10) return; // File exists and has valid content
+        console.warn(`[CẢNH BÁO] File ${path} bị lỗi hoặc trống. Tự động khôi phục...`);
+      } catch (err) {
+        console.warn(`[CẢNH BÁO] Thiếu file ${path}. Tự động khôi phục...`);
+      }
     }
 
     // Replace hardcoded room ID in guidelines with current room ID
     let finalContent = rawContent;
     if (isGuideline) {
       finalContent = finalContent.replace(/\[ROOM_ID\]/g, roomId);
+      // Ensure the guideline points to the new template path
+      finalContent = finalContent.replace(/hr-miniapp\/cv_md_template\.md/g, 'hr-miniapp/skills/cv_md_template.md');
     }
     
     // LOG CHO DEBUG
@@ -63,11 +70,21 @@ export async function ensureTemplatesExistGlobal(app: McpApp, roomId: string, fo
   };
 
   try {
-    await Promise.all([
-      checkAndUpload(guidelinePath, cvProcessingGuidelinesRaw, true),
-      checkAndUpload(templatePath, cvMdTemplateRaw, false),
-      checkAndUpload(sangLocPath, sangLocCvRaw, false)
-    ]);
+    // Chạy tuần tự thay vì Promise.all để tránh race condition khi tạo folder
+    await checkAndUpload(guidelinePath, cvProcessingGuidelinesRaw, true);
+    await checkAndUpload(templatePath, cvMdTemplateRaw, false);
+    await checkAndUpload(sangLocPath, sangLocCvRaw, false);
+    
+    // Tự động tạo sẵn thư mục raws-cv và outputs-cv
+    try {
+      await ensureFolderPath(app, roomId, ['hr-miniapp', 'raws-cv']);
+      console.log(`[DEBUG] Đã đảm bảo tồn tại thư mục raws-cv`);
+      await ensureFolderPath(app, roomId, ['hr-miniapp', 'outputs-cv']);
+      console.log(`[DEBUG] Đã đảm bảo tồn tại thư mục outputs-cv`);
+    } catch (e) {
+      console.error(`[CẢNH BÁO] Không thể tạo thư mục gốc cho CV:`, e);
+    }
+    
     console.log(`[DEBUG] Hoàn tất ensureTemplatesExist`);
     if (forceReset) alert('Đã khôi phục/tạo mới file hướng dẫn thành công!');
   } catch (err: any) {
@@ -93,15 +110,19 @@ export class PipelineService {
   async fetchAvailableFiles(): Promise<CVFile[]> {
     const body = await restCall<any>(this.app, 'GET', `file-management.files.channel/${this.roomId}`, {
       query: { count: 50 },
-      timeoutMs: 15000 // Thêm timeout 15s để tránh treo app khi file list quá lớn hoặc rớt mạng
+      timeoutMs: 15000
     });
     const list = body?.files ?? body?.data ?? (Array.isArray(body) ? body : []);
-    return list.map((f: any) => ({
-      _id: f._id,
-      name: f.name,
-      size: f.size ?? f.file_size,
-      downloadUrl: f.downloadUrl,
-    }));
+    
+    // Hide guideline files completely from the UI
+    return list
+      .filter((f: any) => !(f.name || '').includes('/skills/'))
+      .map((f: any) => ({
+        _id: f._id,
+        name: f.name,
+        size: f.size ?? f.file_size,
+        downloadUrl: f.downloadUrl,
+      }));
   }
 
   async uploadCV(file: File): Promise<CVFile> {

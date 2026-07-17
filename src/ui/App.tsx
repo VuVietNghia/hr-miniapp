@@ -34,7 +34,7 @@ function ThemedApp() {
 
   useEffect(() => {
     if (app && roomId) {
-      ensureTemplatesExistGlobal(app, roomId, false).catch(console.error);
+      ensureTemplatesExistGlobal(app, roomId, true).catch(console.error);
     }
   }, [app, roomId]);
 
