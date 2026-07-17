@@ -10,11 +10,13 @@
 
 ## BƯỚC 1: COPY FILE RAW VÀO THƯ MỤC RAWS-CV (BẮT BUỘC)
 
+> ⚠️ **SYSTEM DIRECTIVE:** YOU MUST COPY ALL RAW FILES TO `hr-miniapp/raws-cv/` BEFORE PROCEEDING. NẾU BẠN BỎ QUA BƯỚC NÀY, TOÀN BỘ QUY TRÌNH SẼ BỊ LỖI.
+
 Ngay khi nhận được yêu cầu xử lý một file CV raw (ví dụ: `NguyenVanA.pdf`), bạn phải thực hiện quy trình sau để lưu trữ bản gốc:
 
-* **Cách làm:** Thay vì phải gọi tool kiểm tra danh sách file, bạn hãy ĐỔI TÊN file gốc theo chuẩn `[YYYY-MM-DD]_CV_[TenKhongDau]_[ViTriKhongDau]_[Timestamp_YYYYMMDD_HHMMSS].pdf`.
+* **Cách làm:** Thay vì phải gọi tool kiểm tra danh sách file, bạn hãy ĐỔI TÊN file gốc theo chuẩn `[YYYY-MM-DD]_CV_[TenKhongDau]_[ViTriKhongDau]_[Timestamp_YYYYMMDD_HHMMSS].[extension]`.
 * **Ví dụ:** File gốc là `NguyenVanA.pdf` ứng tuyển Data Analyst, ở thời điểm hiện tại (ví dụ 16:05:30 ngày 09/07/2026), bạn sẽ đặt tên là `2026-07-09_CV_NguyenVanA_DataAnalyst_20260709_160530.pdf`.
-* **Thực thi:** Dùng công cụ Copy (hoặc lệnh tương đương) để copy file này vào `raws-cv/[YYYY-MM]/` với tên vừa tạo. Bằng cách này 100% không bao giờ bị trùng tên! KHÔNG CẦN LOOP HAY KIỂM TRA LẠI, CV có thể có nhiều đuôi khác nhau (ví dụ: .pdf, .doc, .docx, vv) cần phải copy hết.
+* **Thực thi:** Dùng công cụ Copy (hoặc lệnh tương đương) để copy file này vào `hr-miniapp/raws-cv/[YYYY-MM]/` với tên vừa tạo. Bằng cách này 100% không bao giờ bị trùng tên! KHÔNG CẦN LOOP HAY KIỂM TRA LẠI, CV có thể có nhiều đuôi khác nhau (ví dụ: .pdf, .doc, .docx, vv) cần phải copy hết.
 
 **(TUYỆT ĐỐI KHÔNG ĐƯỢC GHI ĐÈ FILE CŨ VÀ KHÔNG BỎ QUA BƯỚC NÀY)**
 
@@ -65,8 +67,10 @@ Sử dụng nội dung từ "Nguồn Dữ Liệu Gốc", định dạng lại CV
 
 ## BƯỚC 5: TỔNG HỢP VÀO FILE CSV CHUNG TRONG NGÀY
 
+> ⚠️ **SYSTEM DIRECTIVE:** BẠN BẮT BUỘC PHẢI THÊM KẾT QUẢ VÀO FILE CSV SAU KHI CHẤM ĐIỂM. NẾU KHÔNG CÓ DÒNG NÀY TRONG CSV, TOÀN BỘ CÔNG SỨC PHÂN TÍCH SẼ BỊ HỦY BỎ.
+
 * Dựa vào kết quả ở Bước 3, AI tiến hành cập nhật kết quả vào file CSV tương ứng với **JD đang được sử dụng**.
-* **VỊ TRÍ LƯU FILE CSV:** `[ROOM_ID]/hr-miniapp/outputs-cv/[YYYY-MM]/reports/` (Tên file chỉ định trong Prompt).
+* **VỊ TRÍ LƯU FILE CSV:** `hr-miniapp/outputs-cv/[YYYY-MM]/reports/` (Tên file chỉ định trong Prompt).
 * **LƯU Ý CỐT LÕI (CHỐNG HALLUCINATION):**
   * Bạn BẮT BUỘC phải **GHI NỐI (APPEND)** dữ liệu của ứng viên mới vào cuối file CSV này. TUYỆT ĐỐI KHÔNG ĐƯỢC xóa trắng dữ liệu cũ.
   * **TUYỆT ĐỐI KHÔNG TỰ BỊA THÊM CỘT.** Cấu trúc CSV bắt buộc CHỈ CÓ ĐÚNG 4 CỘT phân cách bằng dấu phẩy (,):

@@ -211,15 +211,28 @@ export class PipelineService {
     try {
       if (onLog) onLog(`[Bước 1-5] Gửi Prompt xử lý & chấm điểm CV (Nhúng logic HR CV Processor)...`);
       const currentMonth = new Date().toISOString().slice(0, 7);
+      const currentDate = new Date().toISOString().split('T')[0];
+      const jdNameClean = jdName.replace(/[^a-zA-Z0-9]/g, '');
       const processorPrompt = `
         Hãy dùng skill cv-evaluator để chấm CV sau đây: @Files:${this.roomId}/hr-miniapp/cv-lon-xon/${cv.name}
 
+        THÔNG TIN HỆ THỐNG HIỆN TẠI:
+        - Tháng hiện tại: ${currentMonth}
+        - Ngày hiện tại: ${currentDate}
+        - Tên báo cáo CSV BẮT BUỘC phải append: hr-miniapp/outputs-cv/${currentMonth}/reports/KetQua_${jdNameClean}.csv
+        
+        NHIỆM VỤ CỐT LÕI (BẮT BUỘC BẰNG MỌI GIÁ):
+        1. Đổi tên chuẩn và COPY file gốc vào thư mục hr-miniapp/raws-cv/${currentMonth}/.
+        2. Chấm điểm dựa trên JD bên dưới.
+        3. Sinh và lưu file kết quả Markdown vào đúng thư mục trong outputs-cv.
+        4. BẮT BUỘC phải append thêm 1 dòng tóm tắt vào đúng file CSV báo cáo đã chỉ định ở trên.
+        
         JD đối chiếu:
         <jd_content>
         ${jdContent}
         </jd_content>
 
-        KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ KẾT QUẢ VỚI ĐỊNH DẠNG JSON SAU ĐÂY CHO HỆ THỐNG ĐỌC:
+        KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ KẾT QUẢ VỚI ĐỊNH DẠNG JSON SAU ĐÂY CHO HỆ THỐNG UI CẬP NHẬT:
         \`\`\`json
         {
           "saved_file": "Tên-File-Da-Luu.md",
