@@ -10,13 +10,15 @@ import SandboxConnectPanel from './sandbox-connect-panel';
 
 import PipelineDashboard from './pipeline-dashboard';
 import { ensureTemplatesExistGlobal } from './pipeline-service';
+import { MockPipelineService } from './mock-pipeline-service';
 import TestAi from './test-ai';
 
-type Tab = 'records' | 'pipeline' | 'files' | 'chat' | 'history' | 'skills' | 'sandbox' | 'testAi';
+type Tab = 'records' | 'pipeline' | 'mockPipeline' | 'files' | 'chat' | 'history' | 'skills' | 'sandbox' | 'testAi';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'records', label: 'Records' },
   { id: 'pipeline', label: 'CV Pipeline' },
+  { id: 'mockPipeline', label: 'Mock Pipeline' },
   { id: 'files', label: 'Files' },
   { id: 'chat', label: 'AI Chat' },
   { id: 'history', label: 'AI History' },
@@ -56,6 +58,11 @@ function ThemedApp() {
 
       {tab === 'records' && <HRManagementDashboard />}
       {tab === 'pipeline' && <PipelineDashboard />}
+      {tab === 'mockPipeline' && (
+        <PipelineDashboard 
+          serviceFactory={() => new MockPipelineService()} 
+        />
+      )}
       {tab === 'files' && <FileUploadPanel />}
       {tab === 'chat' && <AiChatPanel />}
       {tab === 'history' && <AiHistoryPanel />}

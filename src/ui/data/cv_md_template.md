@@ -2,7 +2,7 @@
 
 - **Vị trí ứng tuyển:** [Tên vị trí GHI TRONG CV, TUYỆT ĐỐI KHÔNG ghi tên JD vào đây. Nếu không ghi, điền "KhongXacDinh"]
 - **Số điện thoại:** [SĐT]
-- **Email:** [Email]
+- **Email:** [Chỉ điền duy nhất địa chỉ Email trần dạng văn bản thuần, VÍ DỤ: abc@gmail.com. TUYỆT ĐỐI KHÔNG được bọc trong thẻ markdown link hay dấu < >]
 
 ## 🎓 Học Vấn
 - [Trường/Chứng chỉ 1] - [Năm]
