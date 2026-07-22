@@ -1,86 +1,213 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { usePrivosApp, usePrivosContext } from '@privos/app-react';
 import { PipelineService, CVFile, ProcessingStatus } from './pipeline-service';
-import { MarkdownScreeningStrategy } from './screening-strategy';
+import { MarkdownPathContextBuilder } from './cv-context-builder';
 
-// Using Vite's ?raw import to inject the markdown files directly as strings
-import chuanHoaData from '../../../Format CV và Template chấm điểm CV/chuan_hoa_data.md?raw';
-import sangLocCv from '../../../Format CV và Template chấm điểm CV/sang_loc_cv.md?raw';
+// ─── Dependency Injection Interface ─────────────────────────────────────────────
+// Swap implementation easily in the future (e.g. mock for testing)
+export interface IPipelineService {
+  fetchAvailableFiles(): Promise<CVFile[]>;
+  uploadCV(file: File): Promise<CVFile>;
+  processCV(
+    cv: CVFile,
+    updateStatus: (s: Partial<ProcessingStatus>) => void,
+    jdContent: string,
+    jdName: string,
+    onLog?: (msg: string) => void
+  ): Promise<void>;
+  getMarkdownContent(normalizedName: string): Promise<string>;
+  ensureTemplatesExist?(forceReset?: boolean): Promise<void>;
+}
 
-export default function PipelineDashboard() {
+interface PipelineDashboardProps {
+  serviceFactory?: (app: ReturnType<typeof usePrivosApp>, roomId: string) => IPipelineService;
+}
+
+
+// ─── Sub-components ─────────────────────────────────────────────────────────────
+
+function StatusBadge({ category }: { category: string }) {
+  const isPass = category === 'DAT' || category === 'ĐẠT';
+  const isWarn = category === 'CAN NHAC' || category === 'CÂN NHẮC';
+  const style: React.CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', gap: '5px',
+    padding: '3px 10px', borderRadius: 'var(--radius-sm)',
+    fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase',
+    backgroundColor: isPass ? 'var(--success-bg)' : isWarn ? 'var(--status-warn-bg)' : 'var(--status-fail-bg)',
+    color: isPass ? 'var(--status-pass)' : isWarn ? 'var(--status-warn)' : 'var(--status-fail)',
+  };
+  return <span style={style}>{isPass ? '✓' : isWarn ? '◐' : '✗'} {category}</span>;
+}
+
+function ProcessingBadge({ status }: { status: ProcessingStatus['status'] }) {
+  const map: Record<string, { label: string; color: string }> = {
+    pending: { label: 'Chờ xử lý', color: 'var(--text-faint)' },
+    renaming: { label: 'Đang xử lý…', color: 'var(--accent)' },
+    scoring: { label: 'Chấm điểm…', color: 'var(--accent-warm)' },
+    completed: { label: 'Hoàn thành', color: 'var(--status-pass)' },
+    error: { label: 'Lỗi', color: 'var(--status-fail)' },
+  };
+  const { label, color } = map[status] ?? { label: status, color: 'var(--text-muted)' };
+  return <span style={{ fontSize: '12px', color, fontWeight: 500 }}>{label}</span>;
+}
+
+function CVResultCard({ s }: { s: ProcessingStatus }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const hasDetails = !!(s.reason || s.errorMsg);
+
+  return (
+    <div style={{
+      backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)',
+      borderRadius: 'var(--radius-md)', padding: '14px 16px',
+      display: 'flex', flexDirection: 'column', gap: '8px', boxShadow: 'var(--shadow-card)',
+      transition: 'box-shadow 0.2s',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+        <div
+          style={{ flex: 1, minWidth: 0, cursor: hasDetails ? 'pointer' : 'default' }}
+          onClick={() => hasDetails && setIsOpen(!isOpen)}
+          title={hasDetails ? "Nhấn để xem chi tiết" : ""}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {s.normalizedName || s.originalName}
+            </p>
+            {hasDetails && (
+              <span style={{
+                fontSize: '9px', color: 'var(--text-faint)',
+                transform: isOpen ? 'rotate(180deg)' : 'none',
+                transition: 'transform 0.2s', display: 'inline-block'
+              }}>▼</span>
+            )}
+          </div>
+          {s.normalizedName && (
+            <p style={{ margin: '2px 0 0', fontSize: '11px', color: 'var(--text-faint)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {s.originalName}
+            </p>
+          )}
+        </div>
+        <ProcessingBadge status={s.status} />
+      </div>
+
+      {s.category && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <StatusBadge category={s.category} />
+          {s.score !== undefined && (
+            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{s.score}/100</span>
+          )}
+        </div>
+      )}
+
+      {isOpen && hasDetails && (
+        <div style={{ marginTop: '4px', paddingTop: '10px', borderTop: '1px solid var(--border-light)', animation: 'pl-in 0.2s ease' }}>
+          {s.reason && (
+            <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+              {s.reason}
+            </p>
+          )}
+          {s.errorMsg && (
+            <p style={{ margin: s.reason ? '8px 0 0' : 0, fontSize: '12px', color: 'var(--status-fail)', lineHeight: 1.5 }}>
+              ⚠ {s.errorMsg}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main Component ─────────────────────────────────────────────────────────────
+
+export default function PipelineDashboard({ serviceFactory }: PipelineDashboardProps = {}) {
   const app = usePrivosApp();
   const { roomId } = usePrivosContext();
-  
+
   const [files, setFiles] = useState<CVFile[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [statuses, setStatuses] = useState<Record<string, ProcessingStatus>>({});
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
-  
-  // Custom JD state & Logs
-  const [jdContent, setJdContent] = useState<string>('');
+  const [jdContent, setJdContent] = useState('');
+  const [jdName, setJdName] = useState('');
   const [logs, setLogs] = useState<string[]>([]);
+  const [logOpen, setLogOpen] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
-  
-  const serviceRef = useRef<PipelineService | null>(null);
+  const serviceRef = useRef<IPipelineService | null>(null);
+
+
+  // Note: localStorage is forbidden in Privos sandboxed iframe without allow-same-origin.
+  // So we only keep it in memory for the current session.
+  useEffect(() => {
+    // Cannot use localStorage here
+  }, []);
+
+
 
   useEffect(() => {
-    if (app && roomId) {
-      const strategy = new MarkdownScreeningStrategy(chuanHoaData, sangLocCv);
-      serviceRef.current = new PipelineService(app, roomId, strategy);
-      loadFiles();
-    }
+    if (!app || !roomId) return;
+    serviceRef.current = serviceFactory
+      ? serviceFactory(app, roomId)
+      : new PipelineService(app, roomId, new MarkdownPathContextBuilder());
+
+    loadFiles();
   }, [app, roomId]);
 
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logs]);
+    if (logOpen) logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs, logOpen]);
 
-  const addLog = (msg: string) => {
+  const addLog = useCallback((msg: string) => {
     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
-  };
+  }, []);
 
   const loadFiles = async () => {
     if (!serviceRef.current) return;
     setLoading(true);
-    try {
-      const list = await serviceRef.current.fetchAvailableFiles();
-      setFiles(list);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+    try { setFiles(await serviceRef.current.fetchAvailableFiles()); }
+    catch (err) { console.error(err); }
+    finally { setLoading(false); }
   };
 
   const handleToggleSelect = (id: string) => {
-    const newSet = new Set(selectedIds);
-    if (newSet.has(id)) newSet.delete(id);
-    else newSet.add(id);
-    setSelectedIds(newSet);
+    setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   };
 
   const handleUploadCV = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !serviceRef.current) return;
-    
+    const uploadedFiles = e.target.files;
+    if (!uploadedFiles || uploadedFiles.length === 0 || !serviceRef.current) return;
+
     setLoading(true);
     try {
-      await serviceRef.current.uploadCV(file);
+      const uploadPromises = Array.from(uploadedFiles).map(async (file) => {
+        try {
+          await serviceRef.current!.uploadCV(file);
+          addLog(`Đã tải lên: ${file.name}`);
+          return file.name;
+        } catch {
+          addLog(`Lỗi tải lên: ${file.name}`);
+          return null;
+        }
+      });
+
+      const uploadedNames = (await Promise.all(uploadPromises)).filter(Boolean);
+
       const list = await serviceRef.current.fetchAvailableFiles();
       setFiles(list);
-      // Auto-select the newly uploaded file
-      const newFile = list.find(f => f.name === file.name);
-      if (newFile) {
-        setSelectedIds(prev => new Set(prev).add(newFile._id));
+
+      const newIds = list
+        .filter(f => uploadedNames.includes(f.name))
+        .map(f => f._id);
+
+      if (newIds.length > 0) {
+        setSelectedIds(prev => {
+          const s = new Set(prev);
+          newIds.forEach(id => s.add(id));
+          return s;
+        });
       }
-      addLog(`Tải lên thành công: ${file.name}`);
-    } catch (err) {
-      console.error(err);
-      addLog(`Lỗi tải lên: ${file.name}`);
     } finally {
       setLoading(false);
-      e.target.value = ''; 
+      e.target.value = '';
     }
   };
 
@@ -88,332 +215,219 @@ export default function PipelineDashboard() {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      setJdContent(String(reader.result));
-      addLog(`Đã tải lên Job Description: ${file.name}`);
-    };
+    reader.onload = () => { setJdContent(String(reader.result)); setJdName(file.name); addLog(`Đã nạp JD: ${file.name}`); };
     reader.readAsText(file);
     e.target.value = '';
   };
 
   const startPipeline = async () => {
     if (!serviceRef.current || selectedIds.size === 0) return;
-    if (!jdContent) {
-      alert('Vui lòng tải lên file JD (Job Description) trước khi bắt đầu.');
-      return;
-    }
-
-    setProcessing(true);
-    setLogs([]); // clear old logs
-    addLog('--- KHỞI ĐỘNG PIPELINE ---');
-    
+    if (!jdContent) { alert('Vui lòng tải lên file JD trước khi bắt đầu.'); return; }
+    setProcessing(true); setLogs([]); setLogOpen(true);
+    addLog('— Pipeline bắt đầu —');
     const filesToProcess = files.filter(f => selectedIds.has(f._id));
-    
-    const newStatuses = { ...statuses };
-    filesToProcess.forEach(f => {
-      newStatuses[f._id] = { fileId: f._id, originalName: f.name, status: 'pending' };
-    });
-    setStatuses(newStatuses);
-
+    setStatuses(prev => ({
+      ...prev,
+      ...Object.fromEntries(filesToProcess.map(f => [f._id, { fileId: f._id, originalName: f.name, status: 'pending' as const }]))
+    }));
     for (const cv of filesToProcess) {
-      addLog(`==> ĐANG CHẠY: ${cv.name}`);
-      await serviceRef.current.processSingleCV(
-        cv, 
-        (update) => {
-          setStatuses(prev => ({ ...prev, [cv._id]: { ...prev[cv._id], ...update } }));
-        }, 
-        jdContent,
-        (msg) => addLog(msg)
+      addLog(`Đang xử lý: ${cv.name}`);
+      await serviceRef.current.processCV(
+        cv,
+        update => setStatuses(prev => ({ ...prev, [cv._id]: { ...prev[cv._id], ...update } })),
+        jdContent, jdName, addLog
       );
-      
-      setSelectedIds(prev => {
-        const next = new Set(prev);
-        next.delete(cv._id);
-        return next;
-      });
-      addLog(`==> HOÀN THÀNH: ${cv.name}`);
+      setSelectedIds(prev => { const n = new Set(prev); n.delete(cv._id); return n; });
+      addLog(`Xong: ${cv.name}`);
     }
-    
     setProcessing(false);
-    addLog('--- PIPELINE KẾT THÚC ---');
+    addLog('— Pipeline kết thúc —');
     await loadFiles();
   };
 
+
+  const resultList = Object.values(statuses);
+
   return (
-    <div style={{
-      backgroundColor: '#0A0A0A',
-      color: '#F4F4F4',
-      minHeight: '100vh',
-      fontFamily: '"Inter", "Work Sans", sans-serif',
-      padding: '40px',
-      boxSizing: 'border-box'
-    }}>
-      {/* Dynamic Font Injection */}
+    <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Work+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap');
-        
-        .industrial-btn {
-          background-color: transparent;
-          color: #CCFF00;
-          border: 1px solid #CCFF00;
-          padding: 12px 24px;
-          font-family: 'Space Grotesk', sans-serif;
-          font-weight: 700;
-          font-size: 14px;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-          cursor: pointer;
-          transition: all 0.2s ease;
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
+
+        .pl-root * { box-sizing: border-box; }
+        .pl-root { font-family: 'DM Sans', system-ui, sans-serif; }
+
+        .pl-card {
+          background: var(--bg-card);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-md);
+          padding: 20px;
+          box-shadow: var(--shadow-card);
+          animation: pl-in 0.2s ease;
         }
-        .industrial-btn:hover:not(:disabled) {
-          background-color: #CCFF00;
-          color: #0A0A0A;
+        .pl-label {
+          font-size: 11px; font-weight: 600; letter-spacing: 0.07em;
+          text-transform: uppercase; color: var(--text-muted); margin: 0 0 12px;
         }
-        .industrial-btn:disabled {
-          border-color: #333;
-          color: #555;
-          cursor: not-allowed;
+        .pl-btn {
+          display: inline-flex; align-items: center; gap: 6px;
+          padding: 8px 14px; border: 1px solid var(--border);
+          border-radius: var(--radius-sm); background: var(--bg-card);
+          color: var(--text); font-family: 'DM Sans', system-ui, sans-serif;
+          font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap;
+          transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
         }
-        .industrial-btn-primary {
-          background-color: #CCFF00;
-          color: #0A0A0A;
+        .pl-btn:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--text-muted); }
+        .pl-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+        .pl-btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+        .pl-btn-primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); box-shadow: 0 0 0 3px rgba(21,111,245,.2); }
+
+        .pl-file-item {
+          display: flex; align-items: center; gap: 10px;
+          padding: 9px 10px; border-radius: var(--radius-sm);
+          border: 1px solid var(--border); cursor: pointer;
+          font-size: 13px; color: var(--text); margin-bottom: 6px;
+          transition: background 0.15s, border-color 0.15s; user-select: none;
         }
-        .industrial-btn-primary:hover:not(:disabled) {
-          background-color: #E4FF00;
-          box-shadow: 0 0 15px rgba(204, 255, 0, 0.4);
-        }
-        .panel {
-          border: 1px solid #333;
-          background-color: #111;
-          padding: 24px;
-        }
-        .log-terminal {
-          font-family: 'JetBrains Mono', monospace;
-          background-color: #000;
-          color: #00FF41;
-          border: 1px solid #333;
-          padding: 16px;
-          height: 300px;
-          overflow-y: auto;
-          font-size: 13px;
-          line-height: 1.5;
-        }
-        .status-badge {
-          padding: 4px 8px;
-          font-size: 11px;
-          font-weight: 700;
-          text-transform: uppercase;
-          font-family: 'Space Grotesk', sans-serif;
-          border: 1px solid currentColor;
-        }
-        
-        /* Custom Scrollbar for Terminal */
-        .log-terminal::-webkit-scrollbar { width: 8px; }
-        .log-terminal::-webkit-scrollbar-track { background: #000; }
-        .log-terminal::-webkit-scrollbar-thumb { background: #333; }
-        .log-terminal::-webkit-scrollbar-thumb:hover { background: #555; }
-        
-        .dashboard-layout {
-          display: flex;
-          flex-direction: column;
-          gap: 30px;
-        }
-        @media (min-width: 1024px) {
-          .dashboard-layout {
-            display: grid;
-            grid-template-columns: 1fr 2fr;
-            align-items: start;
-          }
-        }
+        .pl-file-item:hover { background: var(--bg-hover); }
+        .pl-file-item.sel { background: rgba(21,111,245,.06); border-color: var(--accent); color: var(--accent); }
+        .pl-check { width: 14px; height: 14px; flex-shrink: 0; border: 1.5px solid var(--border); border-radius: 3px; transition: background 0.15s, border-color 0.15s; }
+        .pl-file-item.sel .pl-check { background: var(--accent); border-color: var(--accent); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 6l3 3 5-5' stroke='white' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-size: 10px; background-position: center; background-repeat: no-repeat; }
+
+        .pl-log { font-family: 'DM Mono', monospace; font-size: 12px; line-height: 1.65; color: var(--text-secondary); background: var(--surface-2); border-radius: var(--radius-sm); padding: 12px 14px; max-height: 220px; overflow-y: auto; margin-top: 8px; }
+        .pl-log-line { padding: 1px 0; }
+        .pl-log-line:last-child { color: var(--accent); }
+        .pl-log::-webkit-scrollbar { width: 6px; }
+        .pl-log::-webkit-scrollbar-track { background: transparent; }
+        .pl-log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+        @keyframes pl-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        @media (prefers-reduced-motion: reduce) { .pl-card { animation: none; } }
       `}</style>
 
-      <header style={{ borderBottom: '2px solid #333', paddingBottom: '20px', marginBottom: '40px' }}>
-        <h1 style={{ 
-          fontFamily: '"Space Grotesk", sans-serif', 
-          fontSize: '32px', 
-          margin: 0, 
-          letterSpacing: '-1px',
-          textTransform: 'uppercase'
-        }}>
-          CV Processing Pipeline <span style={{ color: '#CCFF00' }}>[v2.0]</span>
-        </h1>
-        <p style={{ color: '#888', margin: '8px 0 0 0', fontFamily: '"JetBrains Mono", monospace', fontSize: '12px' }}>
-          INDUSTRIAL UTILITARIAN AESTHETIC // STRICT EXECUTION MODE
-        </p>
-      </header>
-      
-      <div className="dashboard-layout">
-        
-        {/* Left Column: Controls & Queue */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          
-          {/* Module 1: Job Description */}
-          <div className="panel">
-            <h2 style={{ fontFamily: '"Space Grotesk", sans-serif', fontSize: '16px', textTransform: 'uppercase', color: '#888', marginTop: 0 }}>
-              01 // System Directive (JD)
-            </h2>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-              <input type="file" id="jd-upload" style={{ display: 'none' }} onChange={handleUploadJD} accept=".md,.txt" />
-              <button className="industrial-btn" onClick={() => document.getElementById('jd-upload')?.click()} disabled={processing}>
-                Upload JD (.md)
-              </button>
-              {jdContent ? (
-                <span style={{ color: '#CCFF00', fontFamily: '"JetBrains Mono", monospace', fontSize: '12px' }}>[ ACTIVE ]</span>
-              ) : (
-                <span style={{ color: '#FF3366', fontFamily: '"JetBrains Mono", monospace', fontSize: '12px' }}>[ REQUIRED ]</span>
-              )}
-            </div>
-          </div>
+      <div className="pl-root" style={{ backgroundColor: 'var(--bg)', color: 'var(--text)', minHeight: '100vh', padding: '28px 24px' }}>
 
-          {/* Module 2: File Ingestion */}
-          <div className="panel" style={{ opacity: jdContent ? 1 : 0.5, pointerEvents: jdContent ? 'auto' : 'none', transition: 'opacity 0.3s' }}>
-            <h2 style={{ fontFamily: '"Space Grotesk", sans-serif', fontSize: '16px', textTransform: 'uppercase', color: '#888', marginTop: 0 }}>
-              02 // File Ingestion
-            </h2>
-            <input type="file" id="cv-upload" style={{ display: 'none' }} onChange={handleUploadCV} accept=".pdf,.doc,.docx,.jpg,.png" />
-            <button className="industrial-btn" onClick={() => document.getElementById('cv-upload')?.click()} disabled={loading || processing}>
-              + Ingest New CV
+        {/* Header */}
+        <header style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.2px' }}>
+              CV Pipeline
+            </h1>
+            <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
+              Xử lý & chấm điểm CV tự động
+              {jdName && <span style={{ marginLeft: '8px', color: 'var(--accent)', fontWeight: 500 }}>· {jdName}</span>}
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button className="pl-btn" style={{ borderColor: 'var(--text-muted)', color: 'var(--text-muted)' }} onClick={() => {
+              if (window.confirm('Hành động này sẽ ghi đè các file hướng dẫn AI (Template & Guidelines) về trạng thái mặc định. Bạn có chắc chắn không?')) {
+                serviceRef.current?.ensureTemplatesExist?.(true).then(() => alert('Đã khôi phục mặc định thành công!')).catch((e: any) => alert('Lỗi: ' + e));
+              }
+            }}>
+              ↺ Reset Templates
             </button>
-            
-            <div style={{ marginTop: '20px', borderTop: '1px solid #333', paddingTop: '15px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: '12px', color: '#888' }}>
-                  PENDING QUEUE ({files.length})
-                </span>
-                <button 
-                  onClick={loadFiles} 
-                  disabled={loading || processing}
-                  style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', textDecoration: 'underline', fontSize: '12px' }}
-                >
-                  Refresh
+          </div>
+        </header>
+
+        {/* Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,5fr) minmax(0,7fr)', gap: '18px', alignItems: 'start' }}>
+
+          {/* Left col */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+            {/* JD Card */}
+            <div className="pl-card">
+              <p className="pl-label">01 · Job Description</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <input type="file" id="jd-upload" style={{ display: 'none' }} onChange={handleUploadJD} accept=".md,.txt" />
+                <button className="pl-btn" onClick={() => document.getElementById('jd-upload')?.click()} disabled={processing}>
+                  ↑ Tải lên JD
+                </button>
+                {jdContent
+                  ? <span style={{ fontSize: '12px', color: 'var(--status-pass)', fontWeight: 500 }}>✓ Đã nạp</span>
+                  : <span style={{ fontSize: '12px', color: 'var(--text-faint)' }}>Chưa có JD</span>}
+              </div>
+            </div>
+
+            {/* CV Queue Card */}
+            <div className="pl-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <p className="pl-label" style={{ margin: 0 }}>02 · Hàng chờ CV</p>
+                <button onClick={loadFiles} disabled={loading || processing}
+                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '12px', color: 'var(--text-muted)', textDecoration: 'underline' }}>
+                  Làm mới
                 </button>
               </div>
-
-              {loading ? (
-                <div style={{ color: '#CCFF00', fontFamily: '"JetBrains Mono", monospace', fontSize: '12px' }}>SCANNING...</div>
-              ) : (
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0, maxHeight: '200px', overflowY: 'auto' }}>
-                  {files.map(f => (
-                    <li key={f._id} style={{ 
-                      padding: '10px', 
-                      backgroundColor: selectedIds.has(f._id) ? '#1A1A1A' : 'transparent',
-                      border: selectedIds.has(f._id) ? '1px solid #CCFF00' : '1px solid #333',
-                      marginBottom: '8px',
-                      fontFamily: '"JetBrains Mono", monospace',
-                      fontSize: '13px',
-                      cursor: processing ? 'not-allowed' : 'pointer',
-                      transition: 'all 0.2s'
-                    }} onClick={() => !processing && handleToggleSelect(f._id)}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ 
-                          width: '12px', height: '12px', 
-                          backgroundColor: selectedIds.has(f._id) ? '#CCFF00' : 'transparent',
-                          border: '1px solid #CCFF00'
-                        }} />
-                        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name}</span>
-                      </div>
-                    </li>
-                  ))}
-                  {files.length === 0 && <li style={{ color: '#555', fontSize: '13px' }}>NO FILES DETECTED</li>}
-                </ul>
-              )}
-            </div>
-            
-            <div style={{ marginTop: '20px' }}>
-              <button 
-                className="industrial-btn industrial-btn-primary" 
-                style={{ width: '100%' }}
-                onClick={startPipeline} 
-                disabled={selectedIds.size === 0 || processing || !jdContent}
-              >
-                {processing ? 'PROCESSING...' : `EXECUTE PIPELINE (${selectedIds.size})`}
+              <input type="file" id="cv-upload" style={{ display: 'none' }} multiple onChange={handleUploadCV} accept=".pdf,.doc,.docx,.jpg,.png" />
+              <button className="pl-btn" style={{ marginBottom: '12px' }} onClick={() => document.getElementById('cv-upload')?.click()} disabled={loading || processing}>
+                + Thêm CV
               </button>
+              <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                {loading
+                  ? <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)' }}>Đang tải…</p>
+                  : files.length === 0
+                    ? <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-faint)' }}>Không có file nào</p>
+                    : files.map(f => (
+                      <div key={f._id} className={`pl-file-item${selectedIds.has(f._id) ? ' sel' : ''}`}
+                        onClick={() => !processing && handleToggleSelect(f._id)} title={f.name}>
+                        <span className="pl-check" />
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{f.name}</span>
+                      </div>
+                    ))
+                }
+              </div>
+              <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid var(--border-light)', display: 'flex', gap: '8px' }}>
+                <button className="pl-btn pl-btn-primary" style={{ flex: 1, justifyContent: 'center' }}
+                  onClick={startPipeline} disabled={selectedIds.size === 0 || processing || !jdContent}>
+                  {processing ? '⟳ Đang xử lý…' : `Chấm điểm (${selectedIds.size})`}
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
 
-        {/* Right Column: Execution & Logs */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          
-          {/* Terminal Logs */}
-          <div className="panel" style={{ padding: 0 }}>
-            <div style={{ padding: '10px 15px', borderBottom: '1px solid #333', backgroundColor: '#1A1A1A', display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ fontFamily: '"Space Grotesk", sans-serif', fontSize: '14px', color: '#888' }}>SYSTEM_LOGS.EXE</span>
-              <span style={{ display: processing ? 'block' : 'none', color: '#CCFF00', animation: 'blink 1s infinite', fontFamily: '"JetBrains Mono", monospace', fontSize: '12px' }}>● ACTIVE</span>
-            </div>
-            <div className="log-terminal">
-              {logs.map((log, i) => (
-                <div key={i} style={{ marginBottom: '4px' }}>{log}</div>
-              ))}
-              {logs.length === 0 && <div style={{ color: '#555' }}>Awaiting execution sequence...</div>}
-              <div ref={logEndRef} />
-            </div>
+            {/* Log Toggle */}
+            <button className="pl-btn" style={{ justifyContent: 'space-between', width: '100%' }} onClick={() => setLogOpen(o => !o)}>
+              <span>📋 Nhật ký hệ thống</span>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                {logs.length > 0 ? `${logs.length} dòng` : 'Trống'} {logOpen ? '▲' : '▼'}
+              </span>
+            </button>
+            {logOpen && (
+              <div className="pl-log">
+                {logs.length === 0
+                  ? <span style={{ color: 'var(--text-faint)' }}>Chưa có log…</span>
+                  : logs.map((l, i) => <div key={i} className="pl-log-line">{l}</div>)}
+                <div ref={logEndRef} />
+              </div>
+            )}
           </div>
 
-          {/* Results Table */}
-          <div className="panel" style={{ overflowX: 'auto' }}>
-            <h2 style={{ fontFamily: '"Space Grotesk", sans-serif', fontSize: '16px', textTransform: 'uppercase', color: '#888', marginTop: 0, marginBottom: '20px' }}>
-              Execution Matrix
-            </h2>
-            <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid #555' }}>
-                  <th style={{ width: '20%', padding: '12px 8px', color: '#888', fontWeight: 500, fontSize: '12px', fontFamily: '"JetBrains Mono", monospace' }}>SOURCE_ID</th>
-                  <th style={{ width: '20%', padding: '12px 8px', color: '#888', fontWeight: 500, fontSize: '12px', fontFamily: '"JetBrains Mono", monospace' }}>NORMALIZED_ID</th>
-                  <th style={{ width: '15%', padding: '12px 8px', color: '#888', fontWeight: 500, fontSize: '12px', fontFamily: '"JetBrains Mono", monospace' }}>STATUS</th>
-                  <th style={{ width: '45%', padding: '12px 8px', color: '#888', fontWeight: 500, fontSize: '12px', fontFamily: '"JetBrains Mono", monospace' }}>OUTPUT_EVAL</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.values(statuses).map(s => (
-                  <tr key={s.fileId} style={{ borderBottom: '1px solid #333', transition: 'background-color 0.2s' }}>
-                    <td style={{ padding: '12px 8px', wordWrap: 'break-word', overflowWrap: 'break-word', fontFamily: '"JetBrains Mono", monospace', fontSize: '12px' }}>
-                      {s.originalName}
-                    </td>
-                    <td style={{ padding: '12px 8px', wordWrap: 'break-word', overflowWrap: 'break-word', fontFamily: '"JetBrains Mono", monospace', fontSize: '12px', color: '#CCFF00' }}>
-                      {s.normalizedName || '---'}
-                    </td>
-                    <td style={{ padding: '12px 8px' }}>
-                      {s.status === 'pending' && <span className="status-badge" style={{ color: '#888' }}>PENDING</span>}
-                      {s.status === 'renaming' && <span className="status-badge" style={{ color: '#00D1FF' }}>RENAMING</span>}
-                      {s.status === 'scoring' && <span className="status-badge" style={{ color: '#FFA500' }}>SCORING</span>}
-                      {s.status === 'completed' && <span className="status-badge" style={{ color: '#CCFF00' }}>COMPLETED</span>}
-                      {s.status === 'error' && <span className="status-badge" style={{ color: '#FF3366' }}>ERROR</span>}
-                    </td>
-                    <td style={{ padding: '12px 8px', wordWrap: 'break-word', overflowWrap: 'break-word' }}>
-                      {s.category && (
-                        <div style={{ 
-                          display: 'inline-block', padding: '4px 8px', fontWeight: 'bold', fontSize: '12px',
-                          backgroundColor: s.category === 'ĐẠT' ? 'rgba(204,255,0,0.1)' : s.category === 'CÂN NHẮC' ? 'rgba(255,165,0,0.1)' : 'rgba(255,51,102,0.1)',
-                          color: s.category === 'ĐẠT' ? '#CCFF00' : s.category === 'CÂN NHẮC' ? '#FFA500' : '#FF3366',
-                          border: `1px solid currentColor`
-                        }}>
-                          [{s.category}] SCORE: {s.score}
-                        </div>
-                      )}
-                      {s.reason && <div style={{ color: '#AAA', marginTop: '8px', fontSize: '13px', lineHeight: 1.4 }}>{s.reason}</div>}
-                      {s.errorMsg && <div style={{ color: '#FF3366', marginTop: '8px', fontFamily: '"JetBrains Mono", monospace', fontSize: '12px' }}>{s.errorMsg}</div>}
-                    </td>
-                  </tr>
-                ))}
-                {Object.keys(statuses).length === 0 && (
-                  <tr>
-                    <td colSpan={4} style={{ padding: '20px 8px', textAlign: 'center', color: '#555', fontFamily: '"JetBrains Mono", monospace', fontSize: '12px' }}>
-                      NO EXECUTION DATA
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+          {/* Right col — Results */}
+          <div className="pl-card" style={{ padding: '16px 20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <p className="pl-label" style={{ margin: 0 }}>03 · Kết quả chấm</p>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {resultList.length > 0 && <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{resultList.length} CV</span>}
+              </div>
+            </div>
+            {resultList.length === 0
+              ? (
+                <div style={{ padding: '36px 0', textAlign: 'center' }}>
+                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-faint)' }}>
+                    Chưa có kết quả — chọn CV và chạy chấm điểm
+                  </p>
+                </div>
+              )
+              : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {resultList.map(s => <CVResultCard key={s.fileId} s={s} />)}
+                </div>
+              )
+            }
           </div>
 
         </div>
+
+
       </div>
-      
-      {/* Blinking Animation Keyframes */}
-      <style>{`
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; } }
-      `}</style>
-    </div>
+    </>
   );
 }

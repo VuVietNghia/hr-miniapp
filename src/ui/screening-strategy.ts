@@ -1,6 +1,6 @@
 export interface IScreeningStrategy {
-  getRenamePrompt(): string;
-  getScoringPrompt(jdContent: string): string;
+  getRenamePrompt(cvContext: string): string;
+  getScoringPrompt(cvContext: string, jdContent: string): string;
 }
 
 export class MarkdownScreeningStrategy implements IScreeningStrategy {
@@ -12,26 +12,30 @@ export class MarkdownScreeningStrategy implements IScreeningStrategy {
     this.sangLocRules = sangLocRules;
   }
 
-  getRenamePrompt(): string {
+  getRenamePrompt(cvContext: string): string {
     return `<task>
-  <objective>Trích xuất họ tên và ngày nộp từ DỮ LIỆU TEXT BÊN DƯỚI để tạo tên file mới.</objective>
+  <objective>Đọc nội dung CV và trích xuất họ tên, ngày nộp để tạo tên file mới.</objective>
   <strict_constraints>
-    - Nguồn dữ liệu DUY NHẤT: Nội dung text được bọc trong thẻ <raw_cv_text>.
     - CẤM MỌI HÀNH VI TỰ CHẾ HOẶC DỰ ĐOÁN. Nếu không tìm thấy, dùng giá trị "KhongXacDinh".
   </strict_constraints>
   <data_standardization>
 ${this.chuanHoaRules}
   </data_standardization>
+  
+${cvContext}
+
   <output_format>
-    Chỉ trả về 1 dòng duy nhất chứa tên file mới. KHÔNG JSON. KHÔNG GIẢI THÍCH.
+    Bạn BẮT BUỘC phải bọc tên file mới bên trong thẻ XML <filename>.
+    Ví dụ: <filename>2026-07-01_CV_NguyenVanA</filename>
+    Nghiêm cấm viết bất kỳ lời giải thích nào bên ngoài thẻ <filename>.
   </output_format>
 </task>`;
   }
 
-  getScoringPrompt(jdContent: string): string {
+  getScoringPrompt(cvContext: string, jdContent: string): string {
     return `<task>
   <objective>
-    Chấm điểm CV dựa trên Job Description và Bộ Tiêu Chuẩn.
+    Đọc CV ứng viên, chấm điểm dựa trên Job Description và Bộ Tiêu Chuẩn.
   </objective>
   <context>
     <job_description>
@@ -42,15 +46,16 @@ ${this.sangLocRules}
     </evaluation_criteria>
   </context>
   
+${cvContext}
+
   <execution_steps>
-    1. Đọc nội dung text bên trong thẻ <raw_cv_text>. 
+    1. Đọc nội dung CV dựa trên hướng dẫn bên trên.
     2. Trích xuất CÁC TRÍCH DẪN NGUYÊN VĂN (exact quotes) từ văn bản cho các kỹ năng, kinh nghiệm, học vấn.
     3. Đối chiếu các trích dẫn đó với <evaluation_criteria> để ra quyết định ĐẠT/CÂN NHẮC/KHÔNG ĐẠT/KHÔNG TUYỂN.
   </execution_steps>
 
   <strict_constraints>
-    - KHÔNG SỬ DỤNG DỮ LIỆU TỪ NGUỒN KHÁC NGOÀI TEXT ĐƯỢC CẤP.
-    - Mọi đánh giá phải có BẰNG CHỨNG LÀ TRÍCH DẪN TỪ TEXT.
+    - KHÔNG TỰ BỊA DỮ LIỆU. Mọi đánh giá phải có BẰNG CHỨNG LÀ TRÍCH DẪN TỪ TEXT TRONG CV.
     - Nếu CV không ghi thông tin, mặc định là ứng viên KHÔNG CÓ thông tin đó. Không tự suy diễn.
   </strict_constraints>
 
@@ -58,13 +63,12 @@ ${this.sangLocRules}
     Bạn PHẢI trả về ĐÚNG CẤU TRÚC JSON sau. Đặt nó bên trong khối \`\`\`json ... \`\`\`.
     {
       "verification": {
-        "text_analyzed": "Yes/No (Bạn có lấy dữ liệu từ thẻ raw_cv_text không?)"
+        "text_analyzed": "Yes/No (Bạn đã đọc được nội dung CV chưa?)"
       },
       "extracted_evidence": [
         "Quote 1 nguyên văn từ CV...",
         "Quote 2 nguyên văn từ CV..."
       ],
-      "markdown": "Nội dung CV chuẩn hóa (Markdown)",
       "category": "ĐẠT | CÂN NHẮC | KHÔNG ĐẠT | KHÔNG TUYỂN",
       "score": 85,
       "reason": "Lý do (Phải viện dẫn các quote ở trên)"
