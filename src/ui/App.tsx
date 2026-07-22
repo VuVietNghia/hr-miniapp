@@ -1,14 +1,18 @@
 import { useState, useEffect } from 'react';
 import { PrivosAppProvider, usePrivosContext, usePrivosApp } from '@privos/app-react';
 import { ThemeProvider, ThemeToggle } from './theme-provider';
+import BArmyHome from './barmy-home';
+import RecruitmentPanel from './recruitment-panel';
 
 import PipelineDashboard from './pipeline-dashboard';
 import { ensureTemplatesExistGlobal } from './pipeline-service';
 import { MockPipelineService } from './mock-pipeline-service';
 
-type Tab = 'pipeline' | 'mockPipeline';
+type Tab = 'home' | 'recruitment' | 'pipeline' | 'mockPipeline';
 
 const TABS: { id: Tab; label: string }[] = [
+  { id: 'home', label: 'Home' },
+  { id: 'recruitment', label: 'Tuyển dụng' },
   { id: 'pipeline', label: 'CV Pipeline' },
   { id: 'mockPipeline', label: 'Mock Pipeline' },
 ];
@@ -16,7 +20,7 @@ const TABS: { id: Tab; label: string }[] = [
 function ThemedApp() {
   const app = usePrivosApp();
   const { theme, roomId } = usePrivosContext();
-  const [tab, setTab] = useState<Tab>('pipeline');
+  const [tab, setTab] = useState<Tab>('home');
 
   useEffect(() => {
     if (app && roomId) {
@@ -42,6 +46,8 @@ function ThemedApp() {
         <ThemeToggle />
       </div>
 
+      {tab === 'home' && <BArmyHome />}
+      {tab === 'recruitment' && <RecruitmentPanel />}
       {tab === 'pipeline' && <PipelineDashboard />}
       {tab === 'mockPipeline' && (
         <PipelineDashboard 
