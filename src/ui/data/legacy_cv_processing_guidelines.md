@@ -65,28 +65,20 @@ Sử dụng nội dung từ "Nguồn Dữ Liệu Gốc", định dạng lại CV
   * NẾU ĐANG LÀM NHIỆM VỤ ĐÁNH GIÁ CHUYÊN SÂU (Deep Review): `[ROOM_ID]/hr-miniapp/outputs-cv/[YYYY-MM]/03-deep_reviewed/[Tên_file_chuẩn]`
 * **QUAN TRỌNG (CHỐNG TRÙNG LẶP):** Trước khi lưu, nếu phát hiện file đã tồn tại, bạn **BẮT BUỘC** phải tạo ra tên file mới bằng cách thêm số thứ tự (ví dụ: `..._LapTrinhVien_1.md`).
 
-## BƯỚC 5: TẠO THẺ ỨNG VIÊN TRÊN BẢNG KANBAN (PRIVOS LISTS)
+## BƯỚC 5: TỔNG HỢP VÀO FILE CSV CHUNG TRONG NGÀY
 
-> ⚠️ **SYSTEM DIRECTIVE:** BẠN BẮT BUỘC PHẢI THÊM ỨNG VIÊN LÊN BẢNG KANBAN TƯƠNG ỨNG. ĐÂY LÀ YÊU CẦU TỐI QUAN TRỌNG ĐỂ HR THEO DÕI.
+> ⚠️ **SYSTEM DIRECTIVE:** BẠN BẮT BUỘC PHẢI THÊM KẾT QUẢ VÀO FILE CSV SAU KHI CHẤM ĐIỂM. NẾU KHÔNG CÓ DÒNG NÀY TRONG CSV, TOÀN BỘ CÔNG SỨC PHÂN TÍCH SẼ BỊ HỦY BỎ.
 
-* AI tiến hành giao tiếp với PrivOS Lists (Kanban) thông qua công cụ nội bộ của mình.
-* **Tên bảng Kanban (List Name):** `[YYYY_MM]_[Tên_Vị_Trí]` (Ví dụ: `2026_07_LapTrinhVien`).
-* **Khởi tạo Bảng (NẾU CHƯA CÓ):** Nếu bảng này chưa tồn tại, bạn BẮT BUỘC phải tạo bảng với ĐÚNG 5 Cột (Stages) theo thứ tự sau:
-  1. `1_Dau_Vao`
-  2. `2_Tiem_Nang`
-  3. `3_Moi_Phong_Van`
-  4. `4_Dau`
-  5. `5_Loai`
-* **Thông tin Thẻ (Item):**
-  * Tên thẻ: Họ tên ứng viên.
-  * **Stage (Cột):** Gán thẻ vào đúng Cột:
-    * `1_Dau_Vao`: Chờ xử lý.
-    * `2_Tiem_Nang`: Nếu kết quả là ✅ ĐẠT hoặc 🟡 CÂN NHẮC.
-    * `5_Loai`: Nếu kết quả là ❌ KHÔNG ĐẠT hoặc ⛔ KHÔNG TUYỂN.
-  * **Description:** Copy toàn bộ nội dung Markdown (được tạo ở BƯỚC 3) dán vào phần mô tả của thẻ.
-  * **Custom Fields:** 
-    * `Tổng điểm`: Điền số điểm đạt được.
-    * `CV Gốc`: Đính kèm đường dẫn/file PDF gốc (từ BƯỚC 1).
+* Dựa vào kết quả ở Bước 3, AI tiến hành cập nhật kết quả vào file CSV tương ứng với **JD đang được sử dụng**.
+* **VỊ TRÍ LƯU FILE CSV:** `hr-miniapp/outputs-cv/[YYYY-MM]/reports/` (Tên file chỉ định trong Prompt).
+* **LƯU Ý CỐT LÕI (CHỐNG HALLUCINATION):**
+  * Bạn BẮT BUỘC phải **GHI NỐI (APPEND)** dữ liệu của ứng viên mới vào cuối file CSV này. TUYỆT ĐỐI KHÔNG ĐƯỢC xóa trắng dữ liệu cũ.
+  * **TUYỆT ĐỐI KHÔNG TỰ BỊA THÊM CỘT.** Cấu trúc CSV bắt buộc CHỈ CÓ ĐÚNG 4 CỘT phân cách bằng dấu phẩy (,):
+    `Vị trí trong CV, Tổng điểm, Kết quả, Đường dẫn file MD`
+  * **MẪU DỮ LIỆU ĐÚNG CHUẨN:**`Thực tập sinh IT, 80/100, ✅ ĐẠT, [ROOM_ID]/hr-miniapp/outputs-cv/2026-07/02-passed_screening/2026-07-06_CV_NguyenVanA_ThucTapSinhIT.md`
+  * Nếu file CHƯA tồn tại: Dùng lệnh **Write File** tạo mới file, DÒNG ĐẦU TIÊN BẮT BUỘC LÀ:
+    `Vị trí trong CV, Tổng điểm, Kết quả, Đường dẫn file MD`Sau đó xuống dòng ghi kết quả CV.
+  * Nếu file ĐÃ tồn tại: Dùng lệnh **Edit File / Replace** để thêm đúng 1 dòng dữ liệu 4 cột xuống dưới cùng. KHÔNG SỬA CẤU TRÚC HEADER HIỆN TẠI.
 
 ***
 
