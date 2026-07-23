@@ -18,6 +18,7 @@ export interface IPipelineService {
   ): Promise<void>;
   getMarkdownContent(normalizedName: string): Promise<string>;
   ensureTemplatesExist?(forceReset?: boolean): Promise<void>;
+  ensureDefaultLists?(onLog?: (msg: string) => void): Promise<void>;
   fetchAvailableJDs?(onLog?: (msg: string) => void): Promise<CVFile[]>;
   sendMessageToRoom?(text: string): Promise<any>;
   waitForBotReply?(sinceTs: string, onLog?: (msg: string) => void): Promise<boolean>;
@@ -156,6 +157,9 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
     serviceRef.current = serviceFactory
       ? serviceFactory(app, roomId)
       : new PipelineService(app, roomId, new MarkdownPathContextBuilder());
+
+    // Tự động đảm bảo 3 list cố định tồn tại mỗi khi app khởi động
+    serviceRef.current.ensureDefaultLists?.(addLog).catch(console.error);
 
     loadFiles();
     loadJDs();

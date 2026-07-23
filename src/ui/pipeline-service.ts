@@ -7,6 +7,37 @@ import sangLocCvRaw from './data/sang_loc_cv.md?raw';
 import cvEvaluatorSkillRaw from './data/cv-evaluator-skill.md?raw';
 import jdTemplateRaw from './data/jd_template.md?raw';
 
+// ─── Cấu hình 3 List cố định ──────────────────────────────────────────────────
+export const DEFAULT_CV_LISTS = [
+  {
+    name: 'CV_DEV',
+    sentinelTitle: 'cv dev',
+    description: 'IT/Lập trình/Phát triển phần mềm/Backend/Frontend/DevOps/Data',
+  },
+  {
+    name: 'CV_HR',
+    sentinelTitle: 'cv hr',
+    description: 'Nhân sự/HR/Tuyển dụng/Đào tạo/C&B',
+  },
+  {
+    name: 'CV_Marketing',
+    sentinelTitle: 'cv marketing',
+    description: 'Marketing/Truyền thông/Quảng cáo/Branding/SEO/Content',
+  },
+] as const;
+
+const DEFAULT_STAGES = [
+  { name: '01_Dau_Vao',        color: '#6b7280' },
+  { name: '02_Loai_CV',        color: '#ef4444' },
+  { name: '03_Tiem_Nang',      color: '#22c55e' },
+  { name: '04_Phone_Screening',color: '#3b82f6' },
+  { name: '05_Moi_Phong_Van',  color: '#f59e0b' },
+  { name: '06_Cho_Ket_Qua',    color: '#8b5cf6' },
+  { name: '07_Gui_Offer',      color: '#06b6d4' },
+  { name: '08_Dau_Nhan_Viec',  color: '#10b981' },
+  { name: '09_Loai_Sau_PV',    color: '#6b7280' },
+];
+
 export interface CVFile {
   _id: string;
   name: string;
@@ -122,6 +153,157 @@ export class PipelineService {
 
   async ensureTemplatesExist(forceReset = false): Promise<void> {
     return ensureTemplatesExistGlobal(this.app, this.roomId, forceReset);
+  }
+
+  /**
+   * Đảm bảo 3 list cố định CV_DEV / CV_HR / CV_Marketing tồn tại trong room.
+   * App chạy với quyền user nên có thể gọi privos.lists.getAll/create bình thường.
+   * Bot AI không có quyền getAll → app lưu listId+stageMap vào file JSON để AI đọc trực tiếp.
+   */
+  async ensureDefaultLists(onLog?: (msg: string) => void): Promise<void> {
+    try {
+      if (onLog) onLog('[Lists] Đang kiểm tra 3 list cố định...');
+
+      // 1. Lấy danh sách list hiện có (app chạy với quyền user, có thể getAll)
+      const getAllRes: any = await this.app.callServerTool({
+        name: 'privos.lists.getAll',
+        arguments: { roomId: this.roomId },
+      });
+      let existingLists: any[] = [];
+      const getAllText = getAllRes?.content?.[0]?.text;
+      if (getAllText) {
+        const parsed = JSON.parse(getAllText);
+        existingLists = Array.isArray(parsed) ? parsed : (parsed?.lists ?? []);
+      }
+      const existingMap = new Map(existingLists.map((l: any) => [String(l.name), l]));
+
+      // Config sẽ được lưu ra file để AI đọc
+      const listConfig: Record<string, { listId: string; stageMap: Record<string, string> }> = {};
+
+      // 2. Xử lý từng list
+      for (const listDef of DEFAULT_CV_LISTS) {
+        const existing = existingMap.get(listDef.name);
+
+        if (existing) {
+          if (onLog) onLog(`[Lists] ✓ List "${listDef.name}" đã tồn tại (ID: ${existing._id}).`);
+
+          // Đọc description của list đã có để lấy STAGE_MAP
+          let stageMap: Record<string, string> = {};
+          try {
+            const getRes: any = await this.app.callServerTool({
+              name: 'privos.lists.get',
+              arguments: { listId: existing._id },
+            });
+            const getText = getRes?.content?.[0]?.text;
+            if (getText) {
+              const listData = JSON.parse(getText);
+              const desc: string = listData?.description ?? '';
+              const mapMatch = desc.match(/STAGE_MAP:(\{[^}]+(?:\}[^}]*)*\})/);
+              if (mapMatch) {
+                try { stageMap = JSON.parse(mapMatch[1]); } catch { /* ignore */ }
+              }
+            }
+          } catch (e) {
+            console.warn(`[Lists] Không đọc được description của ${listDef.name}:`, e);
+          }
+
+          // Nếu STAGE_MAP bị rỗng (list cũ chưa có), tạo lại từ các stages mặc định
+          if (Object.keys(stageMap).length === 0) {
+            if (onLog) onLog(`[Lists] ⚠ List "${listDef.name}" chưa có STAGE_MAP. Đang ghi lại...`);
+            // Lấy stages bằng cách đầu tiên lấy 1 item trong list rồi đối chiếu
+            // Hoặc tạo lại stages mặc định theo thứ tự đã biết
+            const rebuildRes: any = await this.app.callServerTool({
+              name: 'privos.lists.getItems',
+              arguments: { listId: existing._id, count: 100 },
+            });
+            const rebuildText = rebuildRes?.content?.[0]?.text;
+            if (rebuildText) {
+              const rebuildData = JSON.parse(rebuildText);
+              const items: any[] = rebuildData?.items ?? [];
+              // Thu thập unique stageIds từ items
+              const seenStageIds = [...new Set(items.map((it: any) => it.stageId).filter(Boolean))];
+              // Ánh xạ thủ công: không biết tên → chỉ lấy first stage (01_Dau_Vao)
+              if (seenStageIds.length > 0) {
+                stageMap['01_Dau_Vao'] = seenStageIds[0];
+              }
+            }
+          }
+
+          listConfig[listDef.name] = { listId: existing._id, stageMap };
+          continue;
+        }
+
+        // List chưa có → tạo mới
+        if (onLog) onLog(`[Lists] Đang tạo list "${listDef.name}"...`);
+
+        const createRes: any = await this.app.callServerTool({
+          name: 'privos.lists.create',
+          arguments: {
+            roomId: this.roomId,
+            name: listDef.name,
+            description: listDef.description,
+            stages: DEFAULT_STAGES,
+          },
+        });
+        const createText = createRes?.content?.[0]?.text;
+        if (!createText) {
+          if (onLog) onLog(`[Lists] ⚠ Không đọc được response khi tạo "${listDef.name}".`);
+          continue;
+        }
+        const created = JSON.parse(createText);
+        const listId: string = created?.list?._id;
+        const stages: any[] = created?.stages ?? [];
+
+        if (!listId || stages.length === 0) {
+          if (onLog) onLog(`[Lists] ⚠ Tạo "${listDef.name}" thành công nhưng thiếu listId/stages.`);
+          continue;
+        }
+
+        // Xây dựng STAGE_MAP từ stages response
+        const stageMap: Record<string, string> = {};
+        for (const s of stages) {
+          stageMap[s.name] = s._id;
+        }
+
+        // Ghi STAGE_MAP vào description của list
+        const descriptionWithMap = `${listDef.description}\nSTAGE_MAP:${JSON.stringify(stageMap)}`;
+        await this.app.callServerTool({
+          name: 'privos.lists.updateList',
+          arguments: { listId, description: descriptionWithMap },
+        });
+
+        // Tạo sentinel item ở stage 01_Dau_Vao để AI nhận dạng
+        const firstStageId = stageMap['01_Dau_Vao'] ?? stages[0]?._id;
+        if (firstStageId) {
+          await this.app.callServerTool({
+            name: 'privos.lists.createItem',
+            arguments: {
+              listId,
+              title: listDef.sentinelTitle,
+              stageId: firstStageId,
+              description: `[SENTINEL] Đây là item nhận dạng list ${listDef.name}. Không xóa.`,
+            },
+          });
+        }
+
+        listConfig[listDef.name] = { listId, stageMap };
+        if (onLog) onLog(`[Lists] ✓ Đã tạo list "${listDef.name}" với ${stages.length} stages.`);
+      }
+
+      // 3. Lưu config (listId + stageMap) ra file JSON để AI đọc trực tiếp
+      //    Bot không có quyền getAll → AI sẽ đọc file này thay vì gọi API
+      if (Object.keys(listConfig).length > 0) {
+        const configPath = `${this.roomId}/hr-miniapp/skills/cv_list_config.json`;
+        const configContent = JSON.stringify(listConfig, null, 2);
+        await createOrUpdateFile(this.app, configPath, configContent);
+        if (onLog) onLog(`[Lists] ✓ Đã lưu config list IDs vào: hr-miniapp/skills/cv_list_config.json`);
+      }
+
+      if (onLog) onLog('[Lists] Hoàn tất kiểm tra 3 list cố định.');
+    } catch (err: any) {
+      console.error('[Lists] Lỗi khi ensureDefaultLists:', err);
+      if (onLog) onLog(`[Lists] ⚠ Lỗi: ${err.message}`);
+    }
   }
 
   async fetchAvailableFiles(): Promise<CVFile[]> {
@@ -582,8 +764,8 @@ ${content}
       await restCall(this.app, 'POST', 'ai-messages.startGeneration', { body: { messageId: aiMessageId } });
     }
 
-    // Tăng số lần lặp và thời gian chờ để đảm bảo AI có đủ thời gian đọc và xuất MD
-    for (let i = 0; i < 150; i++) {
+    // Poll tối đa 10 phút (300 * 2s) để AI có đủ thời gian xử lý file lớn
+    for (let i = 0; i < 300; i++) {
       await new Promise(r => setTimeout(r, 2000));
 
       let res;
