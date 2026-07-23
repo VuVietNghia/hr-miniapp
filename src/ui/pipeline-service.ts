@@ -4,6 +4,7 @@ import { ICvContextBuilder } from './cv-context-builder';
 import cvProcessingGuidelinesRaw from './data/cv_processing_guidelines.md?raw';
 import cvMdTemplateRaw from './data/cv_md_template.md?raw';
 import sangLocCvRaw from './data/sang_loc_cv.md?raw';
+import cvEvaluatorSkillRaw from './data/cv-evaluator-skill.md?raw';
 
 export interface CVFile {
   _id: string;
@@ -37,6 +38,7 @@ export async function ensureTemplatesExistGlobal(app: McpApp, roomId: string, fo
   const guidelinePath = `${baseFolder}/cv_processing_guidelines.md`;
   const templatePath = `${baseFolder}/cv_md_template.md`;
   const sangLocPath = `${baseFolder}/sang_loc_cv.md`;
+  const evaluatorSkillPath = `${baseFolder}/cv-evaluator-skill.md`;
 
   const checkAndUpload = async (path: string, rawContent: string, isGuideline: boolean) => {
     if (!forceReset) {
@@ -74,15 +76,23 @@ export async function ensureTemplatesExistGlobal(app: McpApp, roomId: string, fo
     await checkAndUpload(guidelinePath, cvProcessingGuidelinesRaw, true);
     await checkAndUpload(templatePath, cvMdTemplateRaw, false);
     await checkAndUpload(sangLocPath, sangLocCvRaw, false);
+    await checkAndUpload(evaluatorSkillPath, cvEvaluatorSkillRaw, true);
 
-    // Tự động tạo sẵn thư mục raws-cv và outputs-cv
+    // Tự động tạo sẵn thư mục raws-cv, outputs-cv, skills, jds
     try {
       await ensureFolderPath(app, roomId, ['hr-miniapp', 'raws-cv']);
       console.log(`[DEBUG] Đã đảm bảo tồn tại thư mục raws-cv`);
+      
       await ensureFolderPath(app, roomId, ['hr-miniapp', 'outputs-cv']);
       console.log(`[DEBUG] Đã đảm bảo tồn tại thư mục outputs-cv`);
+      
+      await ensureFolderPath(app, roomId, ['hr-miniapp', 'skills']);
+      console.log(`[DEBUG] Đã đảm bảo tồn tại thư mục skills`);
+      
+      await ensureFolderPath(app, roomId, ['hr-miniapp', 'jds']);
+      console.log(`[DEBUG] Đã đảm bảo tồn tại thư mục jds`);
     } catch (e) {
-      console.error(`[CẢNH BÁO] Không thể tạo thư mục gốc cho CV:`, e);
+      console.error(`[CẢNH BÁO] Không thể tạo thư mục gốc cho ứng dụng:`, e);
     }
 
     console.log(`[DEBUG] Hoàn tất ensureTemplatesExist`);
@@ -248,6 +258,51 @@ export class PipelineService {
       }
     }
     return false;
+  }
+
+  async uploadJD(file: File): Promise<any> {
+    const dataUri = await this.readAsDataUri(file);
+
+    if (this.cachedJdsFolderId === undefined) {
+      await this.fetchAvailableJDs();
+    }
+
+    if (!this.cachedJdsFolderId) {
+      throw new Error("Không tìm thấy thư mục 'jds' trong room. Hãy chắc chắn app đã tạo thư mục này.");
+    }
+
+    const existingJDs = await this.fetchAvailableJDs();
+    const existingNames = new Set(existingJDs.map(f => f.name));
+
+    let finalName = file.name;
+    let counter = 1;
+    const dotIndex = finalName.lastIndexOf('.');
+    const baseName = dotIndex !== -1 ? finalName.substring(0, dotIndex) : finalName;
+    const extension = dotIndex !== -1 ? finalName.substring(dotIndex) : '';
+
+    while (existingNames.has(finalName)) {
+      finalName = `${baseName}(${counter})${extension}`;
+      counter++;
+    }
+
+    const uploadPromise = this.app.uploadFile({
+      channelId: this.roomId,
+      fileName: finalName,
+      folderId: this.cachedJdsFolderId,
+      base64Data: dataUri,
+      mimeType: file.type || 'text/markdown',
+    });
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Upload JD timeout sau 20s')), 20000)
+    );
+
+    const res: any = await Promise.race([uploadPromise, timeoutPromise]);
+    
+    return {
+      _id: res?.file?._id || res?.file?.id || res?._id || res?.id,
+      name: finalName
+    };
   }
 
   async uploadCV(file: File): Promise<CVFile> {

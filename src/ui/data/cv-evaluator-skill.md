@@ -28,7 +28,7 @@ Dựa trên yêu cầu của người dùng (Sơ loại hay Deep Review), hãy �
 - Nếu yêu cầu là đánh giá chuyên sâu (Deep Review): Mục tiêu là phân tích chi tiết kỹ năng, tính cách, kinh nghiệm (dựa trên các câu hỏi phỏng vấn, bài test...). File kết quả BẮT BUỘC lưu vào thư mục `03-deep_reviewed/`.
 
 ### Phase 2: Lưu trữ File Gốc (BẮT BUỘC)
-- ⚠️ **SYSTEM DIRECTIVE:** BẠN BẮT BUỘC PHẢI THỰC HIỆN "BƯỚC 1" TRONG FILE GUIDELINES TRƯỚC TIÊN.
+- :warning: **SYSTEM DIRECTIVE:** BẠN BẮT BUỘC PHẢI THỰC HIỆN "BƯỚC 1" TRONG FILE GUIDELINES TRƯỚC TIÊN.
 - Đổi tên tất cả các CV gốc theo chuẩn và copy toàn bộ vào thư mục `hr-miniapp/raws-cv/[YYYY-MM]/`. 
 - Tuyệt đối không được bỏ sót bất kỳ file CV nào do người dùng tải lên.
 
@@ -39,14 +39,19 @@ Dựa trên yêu cầu của người dùng (Sơ loại hay Deep Review), hãy �
 - Lập bảng phân tích ưu/nhược điểm khách quan, không bịa đặt (No Hallucination).
 
 ### Phase 4: Lưu trữ Kết Quả và Cập nhật Kanban (BẮT BUỘC)
-- ⚠️ **SYSTEM DIRECTIVE:** LƯU FILE KẾT QUẢ VÀ TẠO THẺ KANBAN THEO ĐÚNG "BƯỚC 4" VÀ "BƯỚC 5" CỦA GUIDELINES. BẠN SẼ BỊ ĐÁNH GIÁ LÀ THẤT BẠI NẾU KHÔNG CẬP NHẬT KANBAN.
+- :warning: **SYSTEM DIRECTIVE:** BẠN SẼ BỊ ĐÁNH GIÁ LÀ THẤT BẠI NẾU KHÔNG CẬP NHẬT KANBAN THEO ĐÚNG LUỒNG 9 BƯỚC. Bảng Kanban có tên là `[YYYY_MM]_[Tên_Vị_Trí]`.
 1. **Lưu file Markdown**: Sinh ra file Markdown kết quả đúng chuẩn `cv_md_template.md`. Tên file có dạng `[YYYY-MM-DD]_CV_[TenKhongDau]_[ViTriKhongDau].md`. 
    - Đảm bảo lưu đúng thư mục (VD: `outputs-cv/[YYYY-MM]/03-deep_reviewed/` cho Deep Review).
    - Nếu file đã tồn tại, tự động thêm hậu tố `_1`, `_2` để chống ghi đè.
-2. **Cập nhật Bảng Kanban (TỐI QUAN TRỌNG)**: Bắt buộc sử dụng công cụ quản lý List/Kanban của bạn (như `create_item`) để tạo thẻ ứng viên trên bảng Kanban (tên bảng `[YYYY_MM]_[Tên_Vị_Trí]`). Điền Tổng điểm, đính kèm file CV Gốc và gán vào Stage tương ứng theo hướng dẫn.
+2. **Cập nhật Bảng Kanban (TỐI QUAN TRỌNG)**: Sử dụng công cụ quản lý List/Kanban của bạn (như `create_item`) để quản lý thẻ ứng viên. Tuân thủ nghiêm ngặt quy trình dịch chuyển thẻ (Stage) sau:
+   - **Tiếp nhận:** Khi vừa nhận CV, thẻ ứng viên phải được tạo ở cột `01_Dau_Vao`.
+   - **Phân loại (Sau khi chấm xong):** Dựa vào kết quả đánh giá AI:
+     - Kéo thẻ sang cột `03_Tiem_Nang` nếu kết quả là ✅ ĐẠT hoặc 🟡 CÂN NHẮC.
+     - Kéo thẻ sang cột `02_Loai_CV` nếu kết quả là ❌ KHÔNG ĐẠT hoặc ⛔ KHÔNG TUYỂN.
+   - **Custom Fields:** Đừng quên điền `Tổng điểm` và đính kèm link `CV Gốc` vào mô tả/trường tuỳ chỉnh của thẻ.
 3. **Trả về kết quả**: Hoàn tất bằng cách báo cho người dùng đường dẫn file Markdown đã lưu dưới dạng `<saved_file>đường_dẫn</saved_file>`. Không in toàn bộ Markdown ra màn hình chat để tiết kiệm token.
 
 ## 4. Nguyên tắc cốt lõi
 - **Tuyệt đối không bịa thông tin**: Những gì không có trong CV thì ghi "Không đề cập".
 - **Tuân thủ DI (Dependency Injection)**: Mọi tiêu chí chấm điểm phải được nạp từ file JD và Guidelines, không hardcode tiêu chí chấm điểm trong logic của bạn.
-- **Hành động thầm lặng**: Ưu tiên việc tạo/sửa file trực tiếp trên workspace thay vì giải thích dông dài.
+- **Hành động thầm lặng**: Ưu tiên việc tạo/sửa file trực tiếp trên workspace thay vì giải thích dông dài. 

@@ -71,20 +71,25 @@ Sử dụng nội dung từ "Nguồn Dữ Liệu Gốc", định dạng lại CV
 
 * AI tiến hành giao tiếp với PrivOS Lists (Kanban) thông qua công cụ nội bộ của mình.
 * **Tên bảng Kanban (List Name):** `[YYYY_MM]_[Tên_Vị_Trí]` (Ví dụ: `2026_07_LapTrinhVien`).
-* **Khởi tạo Bảng (NẾU CHƯA CÓ):** Nếu bảng này chưa tồn tại, bạn BẮT BUỘC phải tạo bảng với ĐÚNG 5 Cột (Stages) theo thứ tự sau:
-  1. `1_Dau_Vao`
-  2. `2_Tiem_Nang`
-  3. `3_Moi_Phong_Van`
-  4. `4_Dau`
-  5. `5_Loai`
+* **Khởi tạo Bảng (NẾU CHƯA CÓ):** Nếu bảng này chưa tồn tại, bạn BẮT BUỘC phải tạo bảng với ĐÚNG 9 Cột (Stages) theo thứ tự sau:
+  1. `01_Dau_Vao` (Hồ sơ mới)
+  2. `02_Loai_CV` (Loại từ vòng CV)
+  3. `03_Tiem_Nang` (Pass AI Review)
+  4. `04_Phone_Screening` (Sơ vấn qua điện thoại)
+  5. `05_Moi_Phong_Van` (Phỏng vấn & Deal Lương)
+  6. `06_Cho_Ket_Qua` (Đang đánh giá sau PV)
+  7. `07_Gui_Offer` (Gửi thư mời nhận việc)
+  8. `08_Dau_Nhan_Viec` (Hired - Chốt Onboard)
+  9. `09_Loai_Sau_PV` (Rớt PV hoặc Từ chối Offer)
 * **Thông tin Thẻ (Item):**
   * Tên thẻ: Họ tên ứng viên.
-  * **Stage (Cột):** Gán thẻ vào đúng Cột:
-    * `1_Dau_Vao`: Chờ xử lý.
-    * `2_Tiem_Nang`: Nếu kết quả là ✅ ĐẠT hoặc 🟡 CÂN NHẮC.
-    * `5_Loai`: Nếu kết quả là ❌ KHÔNG ĐẠT hoặc ⛔ KHÔNG TUYỂN.
+  * **Stage (Cột):** Gán thẻ vào đúng Cột dựa trên quá trình của bạn:
+    * Khi vừa nhận CV, thẻ mặc định thuộc về `01_Dau_Vao`.
+    * Sau khi đánh giá xong (kết quả cuối cùng của AI):
+      * Chuyển vào cột `03_Tiem_Nang` nếu kết quả là ✅ ĐẠT hoặc 🟡 CÂN NHẮC.
+      * Chuyển vào cột `02_Loai_CV` nếu kết quả là ❌ KHÔNG ĐẠT hoặc ⛔ KHÔNG TUYỂN.
   * **Description:** Copy toàn bộ nội dung Markdown (được tạo ở BƯỚC 3) dán vào phần mô tả của thẻ.
-  * **Custom Fields:** 
+  * **Custom Fields:**
     * `Tổng điểm`: Điền số điểm đạt được.
     * `CV Gốc`: Đính kèm đường dẫn/file PDF gốc (từ BƯỚC 1).
 

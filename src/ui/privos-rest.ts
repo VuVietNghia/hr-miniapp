@@ -126,7 +126,8 @@ export async function createOrUpdateFile(app: McpApp, path: string, content: str
       channelId: roomId,
       fileName: fileName,
       base64Data: 'data:text/markdown;base64,' + base64Content,
-      mimeType: 'text/markdown'
+      mimeType: 'text/markdown',
+      duplicateAction: 'replace'
     };
     
     if (targetFolderId) {

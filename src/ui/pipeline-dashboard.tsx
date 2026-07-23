@@ -229,17 +229,25 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
     }
   };
 
-  const handleUploadJD = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUploadJD = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => { setJdContent(String(reader.result)); setJdName(file.name); addLog(`Đã nạp JD: ${file.name}`); };
+    if (!file || !serviceRef.current?.uploadJD) return;
+
+    setLoading(true);
     try {
-      reader.readAsText(file);
+      const res = await serviceRef.current.uploadJD(file);
+      addLog(`Đã tải lên JD: ${res.name}`);
+      await loadJDs(); // Refresh dropdown
+      if (res._id) {
+        await handleSelectJD(res._id); // Auto select new JD
+      }
     } catch (err: any) {
-      alert('Lỗi nạp JD: ' + err.message);
+      alert('Lỗi tải lên JD: ' + err.message);
+      addLog(`Lỗi tải lên JD: ${err.message}`);
+    } finally {
+      setLoading(false);
+      e.target.value = '';
     }
-    e.target.value = '';
   };
 
   const handleSelectJD = async (fileId: string) => {
