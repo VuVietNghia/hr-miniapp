@@ -408,7 +408,6 @@ export class PipelineService {
         1. Đổi tên chuẩn và COPY file gốc vào thư mục hr-miniapp/raws-cv/${currentMonth}/.
         2. Chấm điểm dựa trên JD bên dưới.
         3. Sinh và lưu file kết quả Markdown vào đúng thư mục trong outputs-cv.
-        4. BẮT BUỘC phải TẠO THẺ ỨNG VIÊN TRÊN BẢNG KANBAN (PrivOS Lists) theo đúng hướng dẫn trong skill.
         
         JD đối chiếu:
         <jd_content>
@@ -677,5 +676,89 @@ ${content}
   private getExt(filename: string): string {
     const i = filename.lastIndexOf('.');
     return i >= 0 ? filename.slice(i) : '';
+  }
+
+  /**
+   * Tạo một List Kanban và lưu toàn bộ kết quả CV vào các stage phù hợp sau khi chấm điểm xong đợt.
+   * Được gọi từ UI sau khi toàn bộ CV đã được chấm xong.
+   */
+  async createKanbanBatchViaAI(
+    results: Array<{ originalName: string; normalizedName?: string; score?: number; category?: string; reason?: string }>,
+    jdName: string,
+    onLog?: (msg: string) => void
+  ): Promise<void> {
+    if (results.length === 0) return;
+
+    const currentDateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '_');
+    const listName = `${currentDateStr}_SCREENING`;
+
+    // Xây dựng bảng tóm tắt kết quả các CV để đưa vào prompt
+    const cvSummaryLines = results.map((r, idx) => {
+      const name = r.normalizedName || r.originalName;
+      const category = r.category || 'KHÔNG XÁC ĐỊNH';
+      const score = r.score ?? 0;
+      const reason = (r.reason || '').split('\n')[0].substring(0, 120);
+      return `${idx + 1}. Tên: "${name}" | Kết quả: ${category} | Điểm: ${score}/100 | Lý do: ${reason}`;
+    }).join('\n');
+
+    const kanbanPrompt = `
+[HỆ THỐNG] TẠO KANBAN SAU KHI CHẤM ĐIỂM XONG ĐỢT CV.
+
+Nhiệm vụ: Tạo 1 List Kanban trên privos.lists và lưu toàn bộ ${results.length} CV sau đây vào các stage phù hợp.
+
+## Thông tin List cần tạo
+- Tên List: "${listName}"
+- Room ID: ${this.roomId}
+- Stages (cột) - BẮT BUỘC TẠO ĐỦ 9 STAGE SAU:
+  1. "01_Dau_Vao" (màu: #6b7280) — Hồ sơ mới
+  2. "02_Loai_CV" (màu: #ef4444) — Loại từ vòng CV
+  3. "03_Tiem_Nang" (màu: #22c55e) — Pass AI Review
+  4. "04_Phone_Screening" (màu: #3b82f6) — Sơ vấn qua điện thoại
+  5. "05_Moi_Phong_Van" (màu: #8b5cf6) — Phỏng vấn & Deal Lương
+  6. "06_Cho_Ket_Qua" (màu: #f59e0b) — Đang đánh giá sau PV
+  7. "07_Gui_Offer" (màu: #10b981) — Gửi thư mời nhận việc
+  8. "08_Dau_Nhan_Viec" (màu: #059669) — Hired - Chốt Onboard
+  9. "09_Loai_Sau_PV" (màu: #dc2626) — Rớt PV hoặc Từ chối Offer
+- Fields (tự động tạo khi create list):
+  - "Tổng điểm" (type: NUMBER)
+  - "Phân loại" (type: TEXT)
+  - "Lý do" (type: TEXTAREA)
+
+## Danh sách kết quả chấm điểm
+${cvSummaryLines}
+
+## Hướng dẫn thực hiện (BẮT BUỘC theo thứ tự)
+1. Gọi privos.lists.create với roomId="${this.roomId}", name="${listName}", fieldDefinitions và stages đã liệt kê ở trên.
+2. Lấy listId và stageId từ kết quả trả về.
+3. Với mỗi CV trong danh sách trên:
+   a. Gọi privos.lists.createItem với listId, title=Tên_CV, các customFields phù hợp.
+   b. Xác định stage dựa trên kết quả:
+      - Kết quả "ĐẠT" hoặc "CÂN NHẮC" → moveItemToStage vào stage "03_Tiem_Nang".
+      - Kết quả "KHÔNG ĐẠT" hoặc "KHÔNG TUYỂN VỊ TRÍ NÀY" → moveItemToStage vào stage "02_Loai_CV".
+      - Nếu không rõ → để lại ở stage "01_Dau_Vao".
+4. Sau khi hoàn tất, trả về kết quả dạng JSON:
+\`\`\`json
+{
+  "created": true,
+  "listId": "<id_cua_list_vua_tao>",
+  "listName": "${listName}",
+  "itemsCreated": <so_luong_item_da_tao>
+}
+\`\`\`
+    `;
+
+    if (onLog) onLog(`[Kanban] Đang yêu cầu AI tạo List Kanban "${listName}" với ${results.length} CV...`);
+    try {
+      const aiRes = await this.askAI(kanbanPrompt, undefined, undefined, onLog);
+      const parsed = this.parseAIResponse(aiRes.text);
+      if (parsed?.created) {
+        if (onLog) onLog(`[Kanban] ✅ Đã tạo List "${parsed.listName}" với ${parsed.itemsCreated} thẻ ứng viên.`);
+      } else {
+        if (onLog) onLog(`[Kanban] ⚠️ AI đã xử lý nhưng không parse được kết quả JSON. Kiểm tra response thủ công.`);
+      }
+    } catch (err: any) {
+      if (onLog) onLog(`[Kanban] Lỗi khi tạo Kanban: ${err.message}`);
+      throw err;
+    }
   }
 }

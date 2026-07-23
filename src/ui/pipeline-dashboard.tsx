@@ -22,6 +22,11 @@ export interface IPipelineService {
   sendMessageToRoom?(text: string): Promise<any>;
   waitForBotReply?(sinceTs: string, onLog?: (msg: string) => void): Promise<boolean>;
   askAI?(prompt: string, fileName?: string, fileId?: string, onLog?: (msg: string) => void): Promise<{ text: string }>;
+  createKanbanBatchViaAI?(
+    results: Array<{ originalName: string; normalizedName?: string; score?: number; category?: string; reason?: string }>,
+    jdName: string,
+    onLog?: (msg: string) => void
+  ): Promise<void>;
 }
 
 interface PipelineDashboardProps {
@@ -323,16 +328,35 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
       ...prev,
       ...Object.fromEntries(filesToProcess.map(f => [f._id, { fileId: f._id, originalName: f.name, status: 'pending' as const }]))
     }));
+
+    const resultsForKanban: Array<{ originalName: string; normalizedName?: string; score?: number; category?: string; reason?: string }> = [];
+
     for (const cv of filesToProcess) {
       addLog(`Đang xử lý: ${cv.name}`);
+      let currentStatus: any = { originalName: cv.name };
+      
       await serviceRef.current.processCV(
         cv,
-        update => setStatuses(prev => ({ ...prev, [cv._id]: { ...prev[cv._id], ...update } })),
+        update => {
+          setStatuses(prev => ({ ...prev, [cv._id]: { ...prev[cv._id], ...update } }));
+          currentStatus = { ...currentStatus, ...update };
+        },
         jdContent, jdName, addLog
       );
+      resultsForKanban.push(currentStatus);
       setSelectedIds(prev => { const n = new Set(prev); n.delete(cv._id); return n; });
       addLog(`Xong: ${cv.name}`);
     }
+
+    if (serviceRef.current.createKanbanBatchViaAI && resultsForKanban.length > 0) {
+      addLog(`Bắt đầu tạo List Kanban và lưu kết quả ${resultsForKanban.length} CV...`);
+      try {
+        await serviceRef.current.createKanbanBatchViaAI(resultsForKanban, jdName, addLog);
+      } catch (err: any) {
+        addLog(`Lỗi tạo Kanban: ${err.message}`);
+      }
+    }
+
     setProcessing(false);
     addLog('— Pipeline kết thúc —');
     await loadFiles();
