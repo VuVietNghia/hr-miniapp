@@ -56,10 +56,10 @@ export async function ensureTemplatesExistGlobal(app: McpApp, roomId: string, fo
       // Ensure the guideline points to the new template path
       finalContent = finalContent.replace(/hr-miniapp\/cv_md_template\.md/g, 'hr-miniapp/skills/cv_md_template.md');
     }
-    
+
     // LOG CHO DEBUG
     console.log(`[DEBUG] Đang upload file: ${path}`);
-    
+
     try {
       await createOrUpdateFile(app, path, finalContent);
       console.log(`[DEBUG] Upload thành công: ${path}`);
@@ -74,7 +74,7 @@ export async function ensureTemplatesExistGlobal(app: McpApp, roomId: string, fo
     await checkAndUpload(guidelinePath, cvProcessingGuidelinesRaw, true);
     await checkAndUpload(templatePath, cvMdTemplateRaw, false);
     await checkAndUpload(sangLocPath, sangLocCvRaw, false);
-    
+
     // Tự động tạo sẵn thư mục raws-cv và outputs-cv
     try {
       await ensureFolderPath(app, roomId, ['hr-miniapp', 'raws-cv']);
@@ -84,7 +84,7 @@ export async function ensureTemplatesExistGlobal(app: McpApp, roomId: string, fo
     } catch (e) {
       console.error(`[CẢNH BÁO] Không thể tạo thư mục gốc cho CV:`, e);
     }
-    
+
     console.log(`[DEBUG] Hoàn tất ensureTemplatesExist`);
     if (forceReset) alert('Đã khôi phục/tạo mới file hướng dẫn thành công!');
   } catch (err: any) {
@@ -96,6 +96,10 @@ export class PipelineService {
   private app: McpApp;
   private roomId: string;
   private contextBuilder: ICvContextBuilder;
+  
+  // Cache the folder ID to avoid repeated tool calls
+  private cachedSkillsFolderId: string | null | undefined = undefined;
+  private cachedJdsFolderId: string | null | undefined = undefined;
 
   constructor(app: McpApp, roomId: string, contextBuilder: ICvContextBuilder) {
     this.app = app;
@@ -113,7 +117,7 @@ export class PipelineService {
       timeoutMs: 15000
     });
     const list = body?.files ?? body?.data ?? (Array.isArray(body) ? body : []);
-    
+
     // Hide guideline files completely from the UI
     return list
       .filter((f: any) => !(f.name || '').includes('/skills/'))
@@ -123,6 +127,127 @@ export class PipelineService {
         size: f.size ?? f.file_size,
         downloadUrl: f.downloadUrl,
       }));
+  }
+
+  async fetchAvailableJDs(onLog?: (msg: string) => void): Promise<CVFile[]> {
+    try {
+      // 1. Resolve and cache jds folderId
+      if (this.cachedJdsFolderId === undefined) {
+        if (onLog) onLog(`[DEBUG] Đang tra cứu ID của thư mục jds...`);
+        const foldersResponse: any = await this.app.callServerTool({
+          name: 'privos.folders.search',
+          arguments: { channelId: this.roomId, query: 'jds' }
+        });
+
+        let list: any[] = [];
+        const text = foldersResponse?.content?.[0]?.text;
+        if (text) {
+          const parsed = JSON.parse(text);
+          list = Array.isArray(parsed) ? parsed : (parsed?.folders || []);
+        }
+
+        const jdsFolder = list.find((f: any) => f.name?.toLowerCase() === 'jds');
+        this.cachedJdsFolderId = jdsFolder?._id || null;
+        if (onLog) onLog(`[DEBUG] Đã tìm thấy ID thư mục jds: ${this.cachedJdsFolderId}`);
+      }
+
+      if (!this.cachedJdsFolderId) {
+        if (onLog) onLog(`[CẢNH BÁO] Không tìm thấy thư mục jds trong phòng. Vui lòng tạo thư mục hr-miniapp/jds.`);
+        console.warn('Không tìm thấy thư mục jds.');
+        return [];
+      }
+
+      // 2. Fetch files directly from jds folder
+      if (onLog) onLog(`[DEBUG] Đang fetch files từ thư mục jds...`);
+      const filesResponse: any = await this.app.callServerTool({
+        name: 'privos.files.getByChannel',
+        arguments: { channelId: this.roomId, folderId: this.cachedJdsFolderId }
+      });
+
+      let files: any[] = [];
+      const filesText = filesResponse?.content?.[0]?.text;
+      if (filesText) {
+        const parsed = JSON.parse(filesText);
+        files = Array.isArray(parsed) ? parsed : (parsed?.files || []);
+      }
+      
+      if (onLog) onLog(`[DEBUG] Tìm thấy ${files.length} files trong thư mục jds.`);
+
+      // 3. Map kết quả cho UI
+      return files
+        .filter((f: any) => f.name?.endsWith('.md'))
+        .map((f: any) => ({
+          _id: f._id,
+          name: f.name,
+          size: f.size ?? f.file_size,
+          downloadUrl: f.downloadUrl,
+        }));
+
+    } catch (err) {
+      console.error('Lỗi khi tải danh sách JD:', err);
+      if (onLog) onLog(`[LỖI] Lỗi khi tải danh sách JD: ${err}`);
+      return [];
+    }
+  }
+
+  async sendMessageToRoom(text: string): Promise<any> {
+    return await this.app.callServerTool({
+      name: 'privos.messages.send',
+      arguments: {
+        roomId: this.roomId,
+        text: text
+      }
+    });
+  }
+
+  async waitForBotReply(sinceTs: string, onLog?: (msg: string) => void): Promise<boolean> {
+    const startTimeMs = Date.now();
+    // Timeout polling AI tính động theo p95 (ước tính 30s)
+    const MAX_TIMEOUT = 30000;
+    const POLL_INTERVAL = 3000;
+    const sinceTimeMs = new Date(sinceTs).getTime();
+    
+    let retries = 1; // single-retry theo chuẩn rule
+    let currentStartTime = startTimeMs;
+
+    while (retries >= 0) {
+      while (Date.now() - currentStartTime < MAX_TIMEOUT) {
+        await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+        try {
+          const msgsResponse: any = await this.app.callServerTool({
+            name: 'privos.messages.getRecent',
+            arguments: { roomId: this.roomId, limit: 10 }
+          });
+          
+          let messages: any[] = [];
+          const text = msgsResponse?.content?.[0]?.text;
+          if (text) {
+             const parsed = JSON.parse(text);
+             messages = Array.isArray(parsed) ? parsed : [];
+          }
+          
+          // Kiểm tra xem có bot trả lời không (tên có 'bot' hoặc 'privos')
+          const botMsg = messages.find(m => {
+            const msgTime = new Date(m.ts).getTime();
+            const isBot = m.u?.username?.toLowerCase().includes('bot') || m.u?.username?.toLowerCase().includes('privos');
+            return isBot && msgTime > sinceTimeMs;
+          });
+          
+          if (botMsg) {
+            return true; // Có phản hồi
+          }
+        } catch (err) {
+          console.warn('Lỗi khi poll tin nhắn:', err);
+        }
+      }
+      
+      retries--;
+      if (retries >= 0) {
+        if (onLog) onLog(`[CẢNH BÁO] AI chưa phản hồi sau 30s. Đang thử chờ thêm lần cuối...`);
+        currentStartTime = Date.now(); // Reset bộ đếm cho lần retry
+      }
+    }
+    return false;
   }
 
   async uploadCV(file: File): Promise<CVFile> {
@@ -248,7 +373,7 @@ export class PipelineService {
 
       // Parse JSON from the response
       if (onLog) onLog(`[Đọc Kết Quả] Đang parse JSON để cập nhật UI...`);
-      
+
       let result: any = { category: 'KHÔNG XÁC ĐỊNH', score: 0, reason: '' };
       const parsedScore = this.parseAIResponse(aiProcessRes.text);
       if (parsedScore) {
@@ -277,7 +402,7 @@ export class PipelineService {
       }
 
       if (onLog) onLog(`[Giữ nguyên File Gốc] AI đã tạo file MD: ${newMdName}`);
-      
+
       // Lấy nội dung markdown trực tiếp từ AI response (In-memory approach)
       let extractedMarkdown = '';
       const mdMatch = aiProcessRes.text.match(/<markdown_content>\s*([\s\S]*?)\s*<\/markdown_content>/i);
@@ -288,10 +413,10 @@ export class PipelineService {
         if (onLog) onLog(`[Email Debug] ⚠ AI không trả về tag <markdown_content>! Sẽ phải fallback đọc từ đĩa.`);
       }
 
-      updateStatus({ 
-        normalizedName: newMdName, 
+      updateStatus({
+        normalizedName: newMdName,
         markdownContent: extractedMarkdown,
-        status: 'scoring' 
+        status: 'scoring'
       }); // Vẫn giữ status scoring để UI hiện mượt
 
       let finalReason = result.reason || 'Processed successfully';
@@ -358,7 +483,7 @@ export class PipelineService {
     return null;
   }
 
-  private async askAI(content: string, fileName: string, fileId?: string, onLog?: (msg: string) => void): Promise<{ text: string }> {
+  async askAI(content: string, fileName: string, fileId?: string, onLog?: (msg: string) => void): Promise<{ text: string }> {
 
     let finalPrompt = content;
 
@@ -430,19 +555,19 @@ ${content}
 
   async getMarkdownContent(normalizedName: string): Promise<string> {
     const baseName = normalizedName.split('/').pop()?.split('\\').pop() || normalizedName;
-    
+
     // Tạo thêm một bản sanitize để đề phòng AI tự đổi tên file khi lưu
     const sanitizedBaseName = baseName
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/Đ/g, "D").replace(/đ/g, "d")
-        .replace(/\s+/g, '_');
-        
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/Đ/g, "D").replace(/đ/g, "d")
+      .replace(/\s+/g, '_');
+
     console.log(`[Email Debug] Bắt đầu tìm file MD cho: ${normalizedName} (BaseName: ${baseName}, Sanitize: ${sanitizedBaseName})`);
-    
+
     const fileMonthMatch = baseName.match(/^(\d{4}-\d{2})/);
     const fileMonth = fileMonthMatch ? fileMonthMatch[1] : new Date().toISOString().slice(0, 7);
-    
+
     const processPaths = [
       `${this.roomId}/hr-miniapp/outputs-cv/${fileMonth}/03-deep_reviewed/${baseName}`,
       `${this.roomId}/hr-miniapp/outputs-cv/${fileMonth}/02-passed_screening/${baseName}`,
@@ -450,7 +575,7 @@ ${content}
       `hr-miniapp/outputs-cv/${fileMonth}/03-deep_reviewed/${baseName}`,
       `hr-miniapp/outputs-cv/${fileMonth}/02-passed_screening/${baseName}`,
       `hr-miniapp/outputs-cv/${fileMonth}/01-failed/${baseName}`,
-      
+
       // Fallback: AI có thể đã tự đổi tên file
       `${this.roomId}/hr-miniapp/outputs-cv/${fileMonth}/03-deep_reviewed/${sanitizedBaseName}`,
       `${this.roomId}/hr-miniapp/outputs-cv/${fileMonth}/02-passed_screening/${sanitizedBaseName}`,
@@ -468,7 +593,7 @@ ${content}
       }
     }
     console.warn(`[Email Debug] ⚠ KHÔNG TÌM THẤY file MD nào cho: ${normalizedName}.`);
-    
+
     // Thử list các file trong thư mục để xem AI đã thực sự tạo ra những file gì
     try {
       const listPass: any = await this.app.rest({ method: 'GET', path: 'api/files/list', query: { path: `${this.roomId}/hr-miniapp/outputs-cv/${fileMonth}/02-passed_screening` } });

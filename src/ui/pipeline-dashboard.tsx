@@ -17,6 +17,10 @@ export interface IPipelineService {
   ): Promise<void>;
   getMarkdownContent(normalizedName: string): Promise<string>;
   ensureTemplatesExist?(forceReset?: boolean): Promise<void>;
+  fetchAvailableJDs?(onLog?: (msg: string) => void): Promise<CVFile[]>;
+  sendMessageToRoom?(text: string): Promise<any>;
+  waitForBotReply?(sinceTs: string, onLog?: (msg: string) => void): Promise<boolean>;
+  askAI?(prompt: string, fileName?: string, fileId?: string, onLog?: (msg: string) => void): Promise<{ text: string }>;
 }
 
 interface PipelineDashboardProps {
@@ -129,6 +133,9 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   const [processing, setProcessing] = useState(false);
   const [jdContent, setJdContent] = useState('');
   const [jdName, setJdName] = useState('');
+  const [availableJDs, setAvailableJDs] = useState<CVFile[]>([]);
+  const [jdPrompt, setJdPrompt] = useState('');
+  const [isGeneratingJD, setIsGeneratingJD] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const [logOpen, setLogOpen] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
@@ -150,7 +157,18 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
       : new PipelineService(app, roomId, new MarkdownPathContextBuilder());
 
     loadFiles();
+    loadJDs();
   }, [app, roomId]);
+
+  const loadJDs = async () => {
+    if (!serviceRef.current?.fetchAvailableJDs) return;
+    try {
+      const jds = await serviceRef.current.fetchAvailableJDs(addLog);
+      setAvailableJDs(jds);
+    } catch (err) {
+      console.error('Lỗi tải danh sách JD:', err);
+    }
+  };
 
   useEffect(() => {
     if (logOpen) logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -216,8 +234,72 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => { setJdContent(String(reader.result)); setJdName(file.name); addLog(`Đã nạp JD: ${file.name}`); };
-    reader.readAsText(file);
+    try {
+      reader.readAsText(file);
+    } catch (err: any) {
+      alert('Lỗi nạp JD: ' + err.message);
+    }
     e.target.value = '';
+  };
+
+  const handleSelectJD = async (fileId: string) => {
+    if (!fileId) {
+      setJdContent('');
+      setJdName('');
+      return;
+    }
+    const jdFile = availableJDs.find(f => f._id === fileId);
+    if (!jdFile) return;
+    try {
+      setJdName(jdFile.name);
+      if (serviceRef.current) {
+        const path = `hr-miniapp/jds/${jdFile.name}`;
+        const content = await app.callServerTool({
+          name: 'privos.files.getContent',
+          arguments: { path }
+        }).catch(async () => {
+          return await serviceRef.current!.getMarkdownContent(jdFile.name);
+        });
+
+        if (typeof content === 'string' && content.trim()) {
+          setJdContent(content);
+        } else if (content?.data) {
+          setJdContent(content.data);
+        } else {
+          setJdContent(`Selected JD: ${jdFile.name}`);
+        }
+      }
+    } catch (err: any) {
+      alert('Lỗi khi tải nội dung JD: ' + err.message);
+    }
+  };
+
+  const handleGenerateJD = async () => {
+    if (!jdPrompt.trim() || !serviceRef.current?.askAI) return;
+    setIsGeneratingJD(true);
+    addLog(`Đang gửi yêu cầu tạo JD cho AI...`);
+    try {
+      // Use askAI directly to interact with Privos AI engine, ensuring the AI creates and saves the file
+      const fullPrompt = `Hãy viết một bản Job Description chuyên nghiệp và chi tiết nhất dựa vào yêu cầu ngắn gọn sau: ${jdPrompt}. Cuối cùng, BẮT BUỘC phải lưu JD này thành một file Markdown (.md) vào đúng thư mục hr-miniapp/jds/ để tôi sử dụng.`;
+
+      addLog(`Đã gửi yêu cầu. Đang chờ AI phân tích và tạo JD (có thể mất 30-60s)...`);
+
+      const res = await serviceRef.current.askAI(fullPrompt, undefined, undefined, addLog);
+
+      if (res && res.text) {
+        addLog(`✨ AI đã tạo xong JD! Đang tải lại danh sách...`);
+        setJdPrompt('');
+        await loadJDs();
+        alert('AI đã tạo xong JD mới. Danh sách đã được cập nhật.');
+      } else {
+        addLog(`⚠️ AI đã xử lý nhưng không nhận được kết quả text.`);
+        alert('AI phản hồi chậm hoặc có lỗi. Vui lòng kiểm tra lại.');
+      }
+    } catch (err: any) {
+      alert('Lỗi gửi yêu cầu: ' + err.message);
+    } finally {
+      setIsGeneratingJD(false);
+    }
   };
 
   const startPipeline = async () => {
@@ -336,15 +418,63 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
 
             {/* JD Card */}
             <div className="pl-card">
-              <p className="pl-label">01 · Job Description</p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <input type="file" id="jd-upload" style={{ display: 'none' }} onChange={handleUploadJD} accept=".md,.txt" />
-                <button className="pl-btn" onClick={() => document.getElementById('jd-upload')?.click()} disabled={processing}>
-                  ↑ Tải lên JD
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <p className="pl-label" style={{ margin: 0 }}>01 · Job Description</p>
+                {jdContent && <span style={{ fontSize: '12px', color: 'var(--status-pass)', fontWeight: 500 }}>✓ Đã nạp</span>}
+              </div>
+
+              {/* JD Selection */}
+              <div style={{ marginBottom: '16px' }}>
+                <p style={{ fontSize: '13px', fontWeight: 500, margin: '0 0 6px 0' }}>Chọn JD có sẵn</p>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <select
+                    className="pl-btn"
+                    style={{ flex: 1, backgroundColor: 'var(--bg)', textAlign: 'left' }}
+                    value={availableJDs.find(j => j.name === jdName)?._id || ''}
+                    onChange={(e) => handleSelectJD(e.target.value)}
+                  >
+                    <option value="">-- Vui lòng chọn JD --</option>
+                    {availableJDs.map(jd => (
+                      <option key={jd._id} value={jd._id}>{jd.name}</option>
+                    ))}
+                  </select>
+                  <button className="pl-btn" onClick={loadJDs} title="Làm mới danh sách JD">↻</button>
+                </div>
+              </div>
+
+              {/* JD AI Generator */}
+              <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: 'var(--bg)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)' }}>
+                <p style={{ fontSize: '13px', fontWeight: 500, margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>✨</span> Tạo JD bằng AI
+                </p>
+                <textarea
+                  value={jdPrompt}
+                  onChange={(e) => setJdPrompt(e.target.value)}
+                  placeholder="Nhập yêu cầu (VD: Tuyển Dev Backend, 3 năm kinh nghiệm Nodejs, lương up to 30 củ...)"
+                  style={{
+                    width: '100%', minHeight: '60px', padding: '8px',
+                    borderRadius: '4px', border: '1px solid var(--border)',
+                    backgroundColor: 'var(--bg-card)', color: 'var(--text)',
+                    fontSize: '13px', marginBottom: '8px', resize: 'vertical'
+                  }}
+                />
+                <button
+                  className="pl-btn pl-btn-primary"
+                  style={{ width: '100%', justifyContent: 'center' }}
+                  onClick={handleGenerateJD}
+                  disabled={isGeneratingJD || !jdPrompt.trim()}
+                >
+                  {isGeneratingJD ? 'Đang gửi yêu cầu...' : 'Nhờ AI viết JD'}
                 </button>
-                {jdContent
-                  ? <span style={{ fontSize: '12px', color: 'var(--status-pass)', fontWeight: 500 }}>✓ Đã nạp</span>
-                  : <span style={{ fontSize: '12px', color: 'var(--text-faint)' }}>Chưa có JD</span>}
+              </div>
+
+              {/* JD Upload Fallback */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingTop: '12px', borderTop: '1px dashed var(--border-light)' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Hoặc tải file từ máy tính:</span>
+                <input type="file" id="jd-upload" style={{ display: 'none' }} onChange={handleUploadJD} accept=".md,.txt" />
+                <button className="pl-btn" style={{ fontSize: '12px', padding: '4px 8px' }} onClick={() => document.getElementById('jd-upload')?.click()} disabled={processing}>
+                  ↑ Upload
+                </button>
               </div>
             </div>
 
