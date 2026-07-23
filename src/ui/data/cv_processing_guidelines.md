@@ -65,54 +65,33 @@ Sử dụng nội dung từ "Nguồn Dữ Liệu Gốc", định dạng lại CV
   * NẾU ĐANG LÀM NHIỆM VỤ ĐÁNH GIÁ CHUYÊN SÂU (Deep Review): `[ROOM_ID]/hr-miniapp/outputs-cv/[YYYY-MM]/03-deep_reviewed/[Tên_file_chuẩn]`
 * **QUAN TRỌNG (CHỐNG TRÙNG LẶP):** Trước khi lưu, nếu phát hiện file đã tồn tại, bạn **BẮT BUỘC** phải tạo ra tên file mới bằng cách thêm số thứ tự (ví dụ: `..._LapTrinhVien_1.md`).
 
-## BƯỚC 5: GHI THẺ ỨNG VIÊN VÀO BẢNG KANBAN CỐ ĐỊNH (PRIVOS LISTS)
+## BƯỚC 5: TẠO THẺ ỨNG VIÊN TRÊN BẢNG KANBAN (PRIVOS LISTS)
 
-> ⚠️ **SYSTEM DIRECTIVE:** BẠN BẮT BUỘC PHẢI GHI ỨNG VIÊN VÀO ĐÚNG BẢNG KANBAN TƯƠNG ỨNG. ĐÂY LÀ YÊU CẦU TỐI QUAN TRỌNG ĐỂ HR THEO DÕI.
+> ⚠️ **SYSTEM DIRECTIVE:** BẠN BẮT BUỘC PHẢI THÊM ỨNG VIÊN LÊN BẢNG KANBAN TƯƠNG ỨNG. ĐÂY LÀ YÊU CẦU TỐI QUAN TRỌNG ĐỂ HR THEO DÕI.
 
-* **TUYỆT ĐỐI KHÔNG tạo list mới.** App đã tạo sẵn 3 bảng Kanban cố định, bạn chỉ được phép dùng 3 bảng này:
-  * `CV_DEV` — IT/Lập trình/Phát triển phần mềm/Backend/Frontend/DevOps/Data
-  * `CV_HR` — Nhân sự/HR/Tuyển dụng/Đào tạo/C&B
-  * `CV_Marketing` — Marketing/Truyền thông/Quảng cáo/Branding/SEO/Content
-
-### Bước 5.1 — Xác định list phù hợp
-
-Dựa trên **vị trí ứng tuyển** trong CV (không phải tên file JD):
-* Vị trí liên quan đến IT/lập trình/phần mềm/công nghệ/dữ liệu → dùng list `CV_DEV`
-* Vị trí liên quan đến nhân sự/HR/tuyển dụng/đào tạo/lương thưởng → dùng list `CV_HR`
-* Vị trí liên quan đến marketing/truyền thông/quảng cáo/thương hiệu → dùng list `CV_Marketing`
-
-### Bước 5.2 — Lấy listId và stageId từ file config
-
-> ⚠️ **QUAN TRỌNG:** Bot **KHÔNG có quyền** gọi `privos.lists.getAll` (trả về `lists: []`). Thay vào đó, App TypeScript đã lưu sẵn toàn bộ thông tin vào file config — bạn chỉ cần đọc file đó.
-
-1. Đọc file config tại đường dẫn: `@Files:[ROOM_ID]/hr-miniapp/skills/cv_list_config.json`
-2. File có cấu trúc JSON như sau:
-   ```json
-   {
-     "CV_DEV":       { "listId": "list_abc", "stageMap": { "01_Dau_Vao": "stage_111", "02_Loai_CV": "stage_222", "03_Tiem_Nang": "stage_333", ... } },
-     "CV_HR":        { "listId": "list_def", "stageMap": { "01_Dau_Vao": "stage_444", ... } },
-     "CV_Marketing": { "listId": "list_ghi", "stageMap": { "01_Dau_Vao": "stage_777", ... } }
-   }
-   ```
-3. Lấy object tương ứng với tên list đã chọn ở Bước 5.1 → ghi nhớ `listId` và `stageMap`.
-4. Từ `stageMap`, lấy stageId của `01_Dau_Vao`, `02_Loai_CV`, `03_Tiem_Nang`.
-
-### Bước 5.3 — Tạo thẻ ứng viên và chuyển stage
-
-1. Gọi `privos.lists.createItem` với:
-   * `listId`: ID lấy từ file config ở Bước 5.2
-   * `title`: Họ tên ứng viên (lấy từ CV)
-   * `stageId`: stageId của `01_Dau_Vao` từ stageMap
-   * `description`: toàn bộ nội dung Markdown đã tạo ở BƯỚC 3
-2. Sau khi tạo xong, gọi `privos.lists.moveItemToStage` để chuyển thẻ sang đúng cột:
-   * Sang `03_Tiem_Nang` nếu kết quả là ✅ ĐẠT hoặc 🟡 CÂN NHẮC
-   * Sang `02_Loai_CV` nếu kết quả là ❌ KHÔNG ĐẠT hoặc ⛔ KHÔNG TUYỂN
-3. Cập nhật custom fields nếu list có định nghĩa sẵn:
-   * `Tổng điểm`: điền số điểm đạt được
-   * `CV Gốc`: đường dẫn/file PDF gốc từ BƯỚC 1
-
-
-
+* AI tiến hành giao tiếp với PrivOS Lists (Kanban) thông qua công cụ nội bộ của mình.
+* **Tên bảng Kanban (List Name):** `[YYYY_MM]_[Tên_Vị_Trí]` (Ví dụ: `2026_07_LapTrinhVien`).
+* **Khởi tạo Bảng (NẾU CHƯA CÓ):** TRƯỚC TIÊN, BẠN PHẢI TÌM KIẾM xem bảng Kanban có tên này đã tồn tại chưa. CHỈ tạo mới bảng nếu tìm kiếm không thấy. Nếu đã có bảng trùng tên, TUYỆT ĐỐI KHÔNG TẠO THÊM mà phải sử dụng ngay bảng đó. Khi bắt buộc phải tạo mới, bạn BẮT BUỘC phải tạo bảng với ĐÚNG 9 Cột (Stages) theo thứ tự sau:
+  1. `01_Dau_Vao` (Hồ sơ mới)
+  2. `02_Loai_CV` (Loại từ vòng CV)
+  3. `03_Tiem_Nang` (Pass AI Review)
+  4. `04_Phone_Screening` (Sơ vấn qua điện thoại)
+  5. `05_Moi_Phong_Van` (Phỏng vấn & Deal Lương)
+  6. `06_Cho_Ket_Qua` (Đang đánh giá sau PV)
+  7. `07_Gui_Offer` (Gửi thư mời nhận việc)
+  8. `08_Dau_Nhan_Viec` (Hired - Chốt Onboard)
+  9. `09_Loai_Sau_PV` (Rớt PV hoặc Từ chối Offer)
+* **Thông tin Thẻ (Item):**
+  * Tên thẻ: Họ tên ứng viên.
+  * **Stage (Cột):** Gán thẻ vào đúng Cột dựa trên quá trình của bạn:
+    * Khi vừa nhận CV, thẻ mặc định thuộc về `01_Dau_Vao`.
+    * Sau khi đánh giá xong (kết quả cuối cùng của AI):
+      * Chuyển vào cột `03_Tiem_Nang` nếu kết quả là ✅ ĐẠT hoặc 🟡 CÂN NHẮC.
+      * Chuyển vào cột `02_Loai_CV` nếu kết quả là ❌ KHÔNG ĐẠT hoặc ⛔ KHÔNG TUYỂN.
+  * **Description:** Copy toàn bộ nội dung Markdown (được tạo ở BƯỚC 3) dán vào phần mô tả của thẻ.
+  * **Custom Fields:**
+    * `Tổng điểm`: Điền số điểm đạt được.
+    * `CV Gốc`: Đính kèm đường dẫn/file PDF gốc (từ BƯỚC 1).
 
 ***
 

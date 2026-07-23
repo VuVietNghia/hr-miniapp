@@ -43,7 +43,7 @@ Dựa trên yêu cầu của người dùng (Sơ loại hay Deep Review), hãy �
 1. **Lưu file Markdown**: Sinh ra file Markdown kết quả đúng chuẩn `cv_md_template.md`. Tên file có dạng `[YYYY-MM-DD]_CV_[TenKhongDau]_[ViTriKhongDau].md`. 
    - Đảm bảo lưu đúng thư mục (VD: `outputs-cv/[YYYY-MM]/03-deep_reviewed/` cho Deep Review).
    - Nếu file đã tồn tại, tự động thêm hậu tố `_1`, `_2` để chống ghi đè.
-2. **Cập nhật Bảng Kanban (TỐI QUAN TRỌNG)**: Sử dụng công cụ quản lý List/Kanban của bạn (như `privos.lists.createItem`) để quản lý thẻ ứng viên. **TRƯỚC KHI TẠO BẢNG MỚI**, bạn BẮT BUỘC phải gọi `privos.lists.getAll` với `roomId` hiện tại, duyệt qua danh sách kết quả và kiểm tra xem đã có list nào có `name` khớp với tên bảng cần dùng chưa. Nếu đã có list trùng tên → lấy `_id` của list đó và dùng ngay, **không được gọi** `privos.lists.create`. Tuân thủ nghiêm ngặt quy trình dịch chuyển thẻ (Stage) sau:
+2. **Cập nhật Bảng Kanban (TỐI QUAN TRỌNG)**: Sử dụng công cụ quản lý List/Kanban của bạn (như `create_item`) để quản lý thẻ ứng viên. Tuân thủ nghiêm ngặt quy trình dịch chuyển thẻ (Stage) sau:
    - **Tiếp nhận:** Khi vừa nhận CV, thẻ ứng viên phải được tạo ở cột `01_Dau_Vao`.
    - **Phân loại (Sau khi chấm xong):** Dựa vào kết quả đánh giá AI:
      - Kéo thẻ sang cột `03_Tiem_Nang` nếu kết quả là ✅ ĐẠT hoặc 🟡 CÂN NHẮC.
