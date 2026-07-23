@@ -71,7 +71,7 @@ Sử dụng nội dung từ "Nguồn Dữ Liệu Gốc", định dạng lại CV
 
 * AI tiến hành giao tiếp với PrivOS Lists (Kanban) thông qua công cụ nội bộ của mình.
 * **Tên bảng Kanban (List Name):** `[YYYY_MM]_[Tên_Vị_Trí]` (Ví dụ: `2026_07_LapTrinhVien`).
-* **Khởi tạo Bảng (NẾU CHƯA CÓ):** Nếu bảng này chưa tồn tại, bạn BẮT BUỘC phải tạo bảng với ĐÚNG 9 Cột (Stages) theo thứ tự sau:
+* **Khởi tạo Bảng (NẾU CHƯA CÓ):** TRƯỚC TIÊN, BẠN PHẢI TÌM KIẾM xem bảng Kanban có tên này đã tồn tại chưa. CHỈ tạo mới bảng nếu tìm kiếm không thấy. Nếu đã có bảng trùng tên, TUYỆT ĐỐI KHÔNG TẠO THÊM mà phải sử dụng ngay bảng đó. Khi bắt buộc phải tạo mới, bạn BẮT BUỘC phải tạo bảng với ĐÚNG 9 Cột (Stages) theo thứ tự sau:
   1. `01_Dau_Vao` (Hồ sơ mới)
   2. `02_Loai_CV` (Loại từ vòng CV)
   3. `03_Tiem_Nang` (Pass AI Review)

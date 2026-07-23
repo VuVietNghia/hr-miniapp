@@ -8,6 +8,7 @@ import { MarkdownPathContextBuilder } from './cv-context-builder';
 export interface IPipelineService {
   fetchAvailableFiles(): Promise<CVFile[]>;
   uploadCV(file: File): Promise<CVFile>;
+  uploadJD?(file: File): Promise<CVFile>;
   processCV(
     cv: CVFile,
     updateStatus: (s: Partial<ProcessingStatus>) => void,
@@ -288,7 +289,9 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
     addLog(`Đang gửi yêu cầu tạo JD cho AI...`);
     try {
       // Use askAI directly to interact with Privos AI engine, ensuring the AI creates and saves the file
-      const fullPrompt = `Hãy viết một bản Job Description chuyên nghiệp và chi tiết nhất dựa vào yêu cầu ngắn gọn sau: ${jdPrompt}. Cuối cùng, BẮT BUỘC phải lưu JD này thành một file Markdown (.md) vào đúng thư mục hr-miniapp/jds/ để tôi sử dụng.`;
+      const fullPrompt = `[SYSTEM AUTOMATION] THỰC THI NGAY LẬP TỨC, KHÔNG HỎI LẠI!
+Hãy đọc file @Files:${roomId}/hr-miniapp/skills/jd-generator.md và thực thi ngay lập tức toàn bộ 4 bước workflow trong đó để tạo JD cho yêu cầu sau: "${jdPrompt}".
+BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả lời khi đã lưu xong!`;
 
       addLog(`Đã gửi yêu cầu. Đang chờ AI phân tích và tạo JD (có thể mất 30-60s)...`);
 

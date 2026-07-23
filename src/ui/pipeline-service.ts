@@ -5,6 +5,7 @@ import cvProcessingGuidelinesRaw from './data/cv_processing_guidelines.md?raw';
 import cvMdTemplateRaw from './data/cv_md_template.md?raw';
 import sangLocCvRaw from './data/sang_loc_cv.md?raw';
 import cvEvaluatorSkillRaw from './data/cv-evaluator-skill.md?raw';
+import jdTemplateRaw from './data/jd_template.md?raw';
 
 export interface CVFile {
   _id: string;
@@ -39,6 +40,7 @@ export async function ensureTemplatesExistGlobal(app: McpApp, roomId: string, fo
   const templatePath = `${baseFolder}/cv_md_template.md`;
   const sangLocPath = `${baseFolder}/sang_loc_cv.md`;
   const evaluatorSkillPath = `${baseFolder}/cv-evaluator-skill.md`;
+  const jdTemplatePath = `${baseFolder}/jd_template.md`;
 
   const checkAndUpload = async (path: string, rawContent: string, isGuideline: boolean) => {
     if (!forceReset) {
@@ -77,6 +79,7 @@ export async function ensureTemplatesExistGlobal(app: McpApp, roomId: string, fo
     await checkAndUpload(templatePath, cvMdTemplateRaw, false);
     await checkAndUpload(sangLocPath, sangLocCvRaw, false);
     await checkAndUpload(evaluatorSkillPath, cvEvaluatorSkillRaw, true);
+    await checkAndUpload(jdTemplatePath, jdTemplateRaw, false);
 
     // Tự động tạo sẵn thư mục raws-cv, outputs-cv, skills, jds
     try {
@@ -399,13 +402,13 @@ export class PipelineService {
         THÔNG TIN HỆ THỐNG HIỆN TẠI:
         - Tháng hiện tại: ${currentMonth}
         - Ngày hiện tại: ${currentDate}
-        - Tên báo cáo CSV BẮT BUỘC phải append: hr-miniapp/outputs-cv/${currentMonth}/reports/KetQua_${jdNameClean}.csv
+        - Tên báo cáo CSV cũ (đã bỏ, không dùng nữa).
         
         NHIỆM VỤ CỐT LÕI (BẮT BUỘC BẰNG MỌI GIÁ):
         1. Đổi tên chuẩn và COPY file gốc vào thư mục hr-miniapp/raws-cv/${currentMonth}/.
         2. Chấm điểm dựa trên JD bên dưới.
         3. Sinh và lưu file kết quả Markdown vào đúng thư mục trong outputs-cv.
-        4. BẮT BUỘC phải append thêm 1 dòng tóm tắt vào đúng file CSV báo cáo đã chỉ định ở trên.
+        4. BẮT BUỘC phải TẠO THẺ ỨNG VIÊN TRÊN BẢNG KANBAN (PrivOS Lists) theo đúng hướng dẫn trong skill.
         
         JD đối chiếu:
         <jd_content>
