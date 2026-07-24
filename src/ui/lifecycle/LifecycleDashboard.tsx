@@ -58,12 +58,25 @@ function LifecycleContent() {
             Quản lý thông tin, hợp đồng và lộ trình phát triển của từng nhân sự.
           </p>
         </div>
-        <button 
-          className={`primary-btn create-action-btn ${isCreating ? 'active' : ''}`} 
-          onClick={() => setIsCreating(!isCreating)}
-        >
-          {isCreating ? 'Đóng form' : '+ Tạo Hồ Sơ Mới'}
-        </button>
+        <div className="header-actions" style={{ display: 'flex', gap: '10px' }}>
+          <button 
+            className="secondary-btn" 
+            onClick={refreshProfiles}
+            disabled={isLoading}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+            </svg>
+            Làm mới
+          </button>
+          <button 
+            className={`primary-btn create-action-btn ${isCreating ? 'active' : ''}`} 
+            onClick={() => setIsCreating(!isCreating)}
+          >
+            {isCreating ? 'Đóng form' : '+ Tạo Hồ Sơ Mới'}
+          </button>
+        </div>
       </header>
 
       {isCreating && (
