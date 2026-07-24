@@ -540,7 +540,7 @@ export class PipelineService {
     return null;
   }
 
-  async askAI(content: string, fileName: string, fileId?: string, onLog?: (msg: string) => void): Promise<{ text: string }> {
+  async askAI(content: string, fileName?: string, fileId?: string, onLog?: (msg: string) => void): Promise<{ text: string }> {
 
     let finalPrompt = content;
 
@@ -691,71 +691,91 @@ ${content}
 
     const currentDateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '_');
     const listName = `${currentDateStr}_SCREENING`;
+    const fieldDefinitions = [
+      { _id: 'tong_diem', name: 'Tổng điểm', type: 'NUMBER' },
+      { _id: 'phan_loai', name: 'Phân loại', type: 'TEXT' },
+      { _id: 'ly_do', name: 'Lý do', type: 'TEXTAREA' },
+    ];
+    const stages = [
+      { name: '01_Dau_Vao', color: '#6b7280' },
+      { name: '02_Loai_CV', color: '#ef4444' },
+      { name: '03_Tiem_Nang', color: '#22c55e' },
+      { name: '04_Phone_Screening', color: '#3b82f6' },
+      { name: '05_Moi_Phong_Van', color: '#8b5cf6' },
+      { name: '06_Cho_Ket_Qua', color: '#f59e0b' },
+      { name: '07_Gui_Offer', color: '#10b981' },
+      { name: '08_Dau_Nhan_Viec', color: '#059669' },
+      { name: '09_Loai_Sau_PV', color: '#dc2626' },
+    ];
 
-    // Xây dựng bảng tóm tắt kết quả các CV để đưa vào prompt
-    const cvSummaryLines = results.map((r, idx) => {
-      const name = r.normalizedName || r.originalName;
-      const category = r.category || 'KHÔNG XÁC ĐỊNH';
-      const score = r.score ?? 0;
-      const reason = (r.reason || '').split('\n')[0].substring(0, 120);
-      return `${idx + 1}. Tên: "${name}" | Kết quả: ${category} | Điểm: ${score}/100 | Lý do: ${reason}`;
-    }).join('\n');
-
-    const kanbanPrompt = `
-[HỆ THỐNG] TẠO KANBAN SAU KHI CHẤM ĐIỂM XONG ĐỢT CV.
-
-Nhiệm vụ: Tạo 1 List Kanban trên privos.lists và lưu toàn bộ ${results.length} CV sau đây vào các stage phù hợp.
-
-## Thông tin List cần tạo
-- Tên List: "${listName}"
-- Room ID: ${this.roomId}
-- Stages (cột) - BẮT BUỘC TẠO ĐỦ 9 STAGE SAU:
-  1. "01_Dau_Vao" (màu: #6b7280) — Hồ sơ mới
-  2. "02_Loai_CV" (màu: #ef4444) — Loại từ vòng CV
-  3. "03_Tiem_Nang" (màu: #22c55e) — Pass AI Review
-  4. "04_Phone_Screening" (màu: #3b82f6) — Sơ vấn qua điện thoại
-  5. "05_Moi_Phong_Van" (màu: #8b5cf6) — Phỏng vấn & Deal Lương
-  6. "06_Cho_Ket_Qua" (màu: #f59e0b) — Đang đánh giá sau PV
-  7. "07_Gui_Offer" (màu: #10b981) — Gửi thư mời nhận việc
-  8. "08_Dau_Nhan_Viec" (màu: #059669) — Hired - Chốt Onboard
-  9. "09_Loai_Sau_PV" (màu: #dc2626) — Rớt PV hoặc Từ chối Offer
-- Fields (tự động tạo khi create list):
-  - "Tổng điểm" (type: NUMBER)
-  - "Phân loại" (type: TEXT)
-  - "Lý do" (type: TEXTAREA)
-
-## Danh sách kết quả chấm điểm
-${cvSummaryLines}
-
-## Hướng dẫn thực hiện (BẮT BUỘC theo thứ tự)
-1. Gọi privos.lists.create với roomId="${this.roomId}", name="${listName}", fieldDefinitions và stages đã liệt kê ở trên.
-2. Lấy listId và stageId từ kết quả trả về.
-3. Với mỗi CV trong danh sách trên:
-   a. Gọi privos.lists.createItem với listId, title=Tên_CV, các customFields phù hợp.
-   b. Xác định stage dựa trên kết quả:
-      - Kết quả "ĐẠT" hoặc "CÂN NHẮC" → moveItemToStage vào stage "03_Tiem_Nang".
-      - Kết quả "KHÔNG ĐẠT" hoặc "KHÔNG TUYỂN VỊ TRÍ NÀY" → moveItemToStage vào stage "02_Loai_CV".
-      - Nếu không rõ → để lại ở stage "01_Dau_Vao".
-4. Sau khi hoàn tất, trả về kết quả dạng JSON:
-\`\`\`json
-{
-  "created": true,
-  "listId": "<id_cua_list_vua_tao>",
-  "listName": "${listName}",
-  "itemsCreated": <so_luong_item_da_tao>
-}
-\`\`\`
-    `;
-
-    if (onLog) onLog(`[Kanban] Đang yêu cầu AI tạo List Kanban "${listName}" với ${results.length} CV...`);
-    try {
-      const aiRes = await this.askAI(kanbanPrompt, undefined, undefined, onLog);
-      const parsed = this.parseAIResponse(aiRes.text);
-      if (parsed?.created) {
-        if (onLog) onLog(`[Kanban] ✅ Đã tạo List "${parsed.listName}" với ${parsed.itemsCreated} thẻ ứng viên.`);
-      } else {
-        if (onLog) onLog(`[Kanban] ⚠️ AI đã xử lý nhưng không parse được kết quả JSON. Kiểm tra response thủ công.`);
+    const parseToolResponse = (res: any) => {
+      const text = res?.content?.[0]?.text;
+      if (typeof text === 'string') {
+        try { return JSON.parse(text); }
+        catch { return res; }
       }
+      return res;
+    };
+
+    const normalizeCategory = (category?: string) =>
+      (category || '')
+        .toUpperCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/Đ/g, 'D')
+        .trim();
+
+    const getTargetStageName = (category?: string) => {
+      const normalized = normalizeCategory(category);
+      if (normalized.includes('KHONG DAT') || normalized.includes('KHONG TUYEN')) return '02_Loai_CV';
+      if (normalized === 'DAT' || normalized.includes('CAN NHAC')) return '03_Tiem_Nang';
+      return '01_Dau_Vao';
+    };
+
+    if (onLog) onLog(`[Kanban] Đang tạo List Kanban "${listName}" với ${results.length} CV...`);
+    try {
+      const createRes = parseToolResponse(await this.app.callServerTool({
+        name: 'privos.lists.create',
+        arguments: {
+          roomId: this.roomId,
+          name: listName,
+          description: `Kết quả chấm CV theo JD: ${jdName || 'Không xác định'}`,
+          fieldDefinitions,
+          stages,
+        }
+      }));
+
+      const listId = createRes?.list?._id || createRes?.listId || createRes?._id;
+      const createdStages = createRes?.stages || createRes?.list?.stages || [];
+      if (!listId) throw new Error('Không lấy được listId sau khi tạo Kanban.');
+      if (!Array.isArray(createdStages) || createdStages.length === 0) {
+        throw new Error('Không lấy được danh sách stage sau khi tạo Kanban.');
+      }
+
+      const stageIdByName = Object.fromEntries(createdStages.map((stage: any) => [stage.name, stage._id]));
+      const items = results.map((r) => {
+        const stageName = getTargetStageName(r.category);
+        const stageId = stageIdByName[stageName] || stageIdByName['01_Dau_Vao'];
+        if (!stageId) throw new Error(`Không tìm thấy stageId cho stage ${stageName}.`);
+        return {
+          title: r.normalizedName || r.originalName,
+          description: r.reason || '',
+          stageId,
+          customFields: [
+            { fieldId: 'tong_diem', value: r.score ?? 0 },
+            { fieldId: 'phan_loai', value: r.category || 'KHÔNG XÁC ĐỊNH' },
+            { fieldId: 'ly_do', value: r.reason || '' },
+          ],
+        };
+      });
+
+      const batchRes = parseToolResponse(await this.app.callServerTool({
+        name: 'privos.lists.batchCreateItems',
+        arguments: { listId, items }
+      }));
+
+      const createdCount = batchRes?.created ?? batchRes?.items?.length ?? items.length;
+      if (onLog) onLog(`[Kanban] ✅ Đã tạo List "${listName}" và lưu ${createdCount} thẻ ứng viên vào đúng stage.`);
     } catch (err: any) {
       if (onLog) onLog(`[Kanban] Lỗi khi tạo Kanban: ${err.message}`);
       throw err;

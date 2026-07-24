@@ -33,6 +33,71 @@ interface PipelineDashboardProps {
   serviceFactory?: (app: ReturnType<typeof usePrivosApp>, roomId: string) => IPipelineService;
 }
 
+type JDFormState = {
+  position: string;
+  department: string;
+  location: string;
+  workTime: string;
+  jobDescription: string;
+  experience: string;
+  technicalSkills: string;
+  softSkills: string;
+  education: string;
+  salary: string;
+  benefits: string;
+  workEnvironment: string;
+  applyEmail: string;
+  emailSubject: string;
+};
+
+const emptyJDForm: JDFormState = {
+  position: '',
+  department: '',
+  location: '',
+  workTime: '',
+  jobDescription: '',
+  experience: '',
+  technicalSkills: '',
+  softSkills: '',
+  education: '',
+  salary: '',
+  benefits: '',
+  workEnvironment: '',
+  applyEmail: '',
+  emailSubject: '',
+};
+
+const hasJDFormValue = (form: JDFormState) =>
+  Object.values(form).some(value => value.trim().length > 0);
+
+const buildJDPromptFromForm = (form: JDFormState) => `
+Thông tin tuyển dụng:
+
+1. Thông tin chung
+- Vị trí: ${form.position || 'Không xác định'}
+- Phòng ban: ${form.department || 'Không xác định'}
+- Địa điểm làm việc: ${form.location || 'Không xác định'}
+- Thời gian làm việc: ${form.workTime || 'Không xác định'}
+
+2. Mô tả công việc
+${form.jobDescription || 'Không xác định'}
+
+3. Yêu cầu ứng viên
+- Kinh nghiệm: ${form.experience || 'Không xác định'}
+- Kỹ năng chuyên môn: ${form.technicalSkills || 'Không xác định'}
+- Kỹ năng mềm: ${form.softSkills || 'Không xác định'}
+- Học vấn: ${form.education || 'Không xác định'}
+
+4. Quyền lợi
+- Mức lương: ${form.salary || 'Không xác định'}
+- Phúc lợi: ${form.benefits || 'Không xác định'}
+- Môi trường làm việc: ${form.workEnvironment || 'Không xác định'}
+
+5. Cách thức ứng tuyển
+- Email nhận CV: ${form.applyEmail || 'Không xác định'}
+- Tiêu đề email: ${form.emailSubject || 'Không xác định'}
+`.trim();
+
 
 // ─── Sub-components ─────────────────────────────────────────────────────────────
 
@@ -141,10 +206,14 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   const [jdName, setJdName] = useState('');
   const [availableJDs, setAvailableJDs] = useState<CVFile[]>([]);
   const [jdPrompt, setJdPrompt] = useState('');
+  const [jdFormOpen, setJdFormOpen] = useState(false);
+  const [jdForm, setJdForm] = useState<JDFormState>(emptyJDForm);
   const [isGeneratingJD, setIsGeneratingJD] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const [logOpen, setLogOpen] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
+  const toastTimerRef = useRef<number | null>(null);
   const serviceRef = useRef<IPipelineService | null>(null);
 
 
@@ -180,8 +249,29 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
     if (logOpen) logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs, logOpen]);
 
+  useEffect(() => {
+    if (!jdFormOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [jdFormOpen]);
+
   const addLog = useCallback((msg: string) => {
     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
+  }, []);
+
+  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    setToast({ message, type });
+    toastTimerRef.current = window.setTimeout(() => setToast(null), 5000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    };
   }, []);
 
   const loadFiles = async () => {
@@ -291,6 +381,7 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   const handleGenerateJD = async () => {
     if (!jdPrompt.trim() || !serviceRef.current?.askAI) return;
     setIsGeneratingJD(true);
+    setJdFormOpen(false);
     addLog(`Đang gửi yêu cầu tạo JD cho AI...`);
     try {
       // Use askAI directly to interact with Privos AI engine, ensuring the AI creates and saves the file
@@ -305,14 +396,16 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
       if (res && res.text) {
         addLog(`✨ AI đã tạo xong JD! Đang tải lại danh sách...`);
         setJdPrompt('');
+        setJdForm(emptyJDForm);
+        setJdFormOpen(false);
         await loadJDs();
-        alert('AI đã tạo xong JD mới. Danh sách đã được cập nhật.');
+        showToast('AI đã tạo xong JD mới. Danh sách đã được cập nhật.');
       } else {
         addLog(`⚠️ AI đã xử lý nhưng không nhận được kết quả text.`);
-        alert('AI phản hồi chậm hoặc có lỗi. Vui lòng kiểm tra lại.');
+        showToast('AI phản hồi chậm hoặc có lỗi. Vui lòng kiểm tra lại.', 'error');
       }
     } catch (err: any) {
-      alert('Lỗi gửi yêu cầu: ' + err.message);
+      showToast('Lỗi gửi yêu cầu: ' + err.message, 'error');
     } finally {
       setIsGeneratingJD(false);
     }
@@ -360,10 +453,46 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
     setProcessing(false);
     addLog('— Pipeline kết thúc —');
     await loadFiles();
+    showToast('Đã chấm điểm xong và lưu kết quả vào list.');
   };
 
 
   const resultList = Object.values(statuses);
+  const isJDFormReady = hasJDFormValue(jdForm);
+
+  const updateJDFormField = (field: keyof JDFormState, value: string) => {
+    const nextForm = { ...jdForm, [field]: value };
+    setJdForm(nextForm);
+    setJdPrompt(buildJDPromptFromForm(nextForm));
+  };
+
+  const renderJDFormField = (
+    field: keyof JDFormState,
+    label: string,
+    placeholder: string,
+    multiline = false,
+    wide = false
+  ) => (
+    <label className={`pl-form-field${wide ? ' pl-span-2' : ''}`}>
+      <span>{label}</span>
+      {multiline ? (
+        <textarea
+          className="pl-textarea"
+          value={jdForm[field]}
+          onChange={(e) => updateJDFormField(field, e.target.value)}
+          placeholder={placeholder}
+          rows={3}
+        />
+      ) : (
+        <input
+          className="pl-input"
+          value={jdForm[field]}
+          onChange={(e) => updateJDFormField(field, e.target.value)}
+          placeholder={placeholder}
+        />
+      )}
+    </label>
+  );
 
   return (
     <>
@@ -398,6 +527,45 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
         .pl-btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
         .pl-btn-primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); box-shadow: 0 0 0 3px rgba(21,111,245,.2); }
 
+        .pl-toast {
+          position: fixed; top: 20px; right: 24px; z-index: 1300;
+          display: flex; align-items: center; gap: 10px; max-width: min(420px, calc(100vw - 48px));
+          padding: 12px 14px; border-radius: var(--radius-md); border: 1px solid var(--border);
+          background: var(--bg-card); color: var(--text); box-shadow: 0 16px 48px rgba(0,0,0,.22);
+          font-size: 13px; font-weight: 500; line-height: 1.45; animation: pl-toast-in 0.2s ease;
+        }
+        .pl-toast.success { border-color: rgba(22, 163, 74, .28); }
+        .pl-toast.error { border-color: rgba(220, 38, 38, .32); }
+        .pl-toast-dot { width: 9px; height: 9px; border-radius: 999px; flex-shrink: 0; background: var(--status-pass); }
+        .pl-toast.error .pl-toast-dot { background: var(--status-fail); }
+
+        .pl-page-grid { display: flex; flex-direction: column; gap: 18px; }
+        .pl-top-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: stretch; }
+        .pl-top-grid > .pl-card { height: 100%; }
+        .pl-modal-backdrop {
+          position: fixed; inset: 0; z-index: 1000; padding: 32px 20px;
+          display: flex; align-items: center; justify-content: center;
+          background: rgba(15, 23, 42, 0.58); backdrop-filter: blur(2px);
+        }
+        .pl-modal {
+          width: min(920px, 100%); max-height: calc(100vh - 64px); overflow-y: auto; overscroll-behavior: contain;
+          background: var(--bg-card); border: 1px solid var(--border);
+          border-radius: var(--radius-md); padding: 20px; box-shadow: 0 24px 80px rgba(0,0,0,.28);
+          animation: pl-modal-in 0.18s ease;
+        }
+        .pl-modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+        .pl-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border-light); }
+        .pl-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+        .pl-form-field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+        .pl-span-2 { grid-column: 1 / -1; }
+        .pl-input, .pl-textarea {
+          width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm);
+          background: var(--bg-card); color: var(--text); font: inherit; font-size: 13px;
+          padding: 9px 10px; outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .pl-textarea { min-height: 82px; resize: vertical; line-height: 1.5; }
+        .pl-input:focus, .pl-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(21,111,245,.12); }
+        .pl-results-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 10px; }
         .pl-file-item {
           display: flex; align-items: center; gap: 10px;
           padding: 9px 10px; border-radius: var(--radius-sm);
@@ -418,6 +586,16 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
         .pl-log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
         @keyframes pl-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pl-modal-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes pl-toast-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+        @media (max-width: 920px) {
+          .pl-top-grid, .pl-form-grid { grid-template-columns: 1fr; }
+          .pl-modal-backdrop { padding: 16px 12px; align-items: flex-start; }
+          .pl-modal { max-height: calc(100vh - 32px); padding: 16px; }
+          .pl-modal-header, .pl-modal-actions { flex-direction: column; align-items: stretch; }
+          .pl-toast { top: 12px; right: 12px; left: 12px; max-width: none; }
+          .pl-span-2 { grid-column: auto; }
+        }
         @media (prefers-reduced-motion: reduce) { .pl-card { animation: none; } }
       `}</style>
 
@@ -445,12 +623,11 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
           </div>
         </header>
 
-        {/* Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,5fr) minmax(0,7fr)', gap: '18px', alignItems: 'start' }}>
+        {/* Pipeline Layout */}
+        <div className="pl-page-grid">
 
-          {/* Left col */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-
+          {/* Top row: JD + CV Queue */}
+          <div className="pl-top-grid">
             {/* JD Card */}
             <div className="pl-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
@@ -464,7 +641,7 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <select
                     className="pl-btn"
-                    style={{ flex: 1, backgroundColor: 'var(--bg)', textAlign: 'left' }}
+                    style={{ flex: 1, backgroundColor: 'var(--bg)', textAlign: 'left', minWidth: 0 }}
                     value={availableJDs.find(j => j.name === jdName)?._id || ''}
                     onChange={(e) => handleSelectJD(e.target.value)}
                   >
@@ -478,33 +655,18 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
               </div>
 
               {/* JD AI Generator */}
-              <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: 'var(--bg)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)' }}>
-                <p style={{ fontSize: '13px', fontWeight: 500, margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span>✨</span> Tạo JD bằng AI
-                </p>
-                <textarea
-                  value={jdPrompt}
-                  onChange={(e) => setJdPrompt(e.target.value)}
-                  placeholder="Nhập yêu cầu (VD: Tuyển Dev Backend, 3 năm kinh nghiệm Nodejs, lương up to 30 củ...)"
-                  style={{
-                    width: '100%', minHeight: '60px', padding: '8px',
-                    borderRadius: '4px', border: '1px solid var(--border)',
-                    backgroundColor: 'var(--bg-card)', color: 'var(--text)',
-                    fontSize: '13px', marginBottom: '8px', resize: 'vertical'
-                  }}
-                />
+              <div style={{ marginBottom: '16px' }}>
                 <button
                   className="pl-btn pl-btn-primary"
                   style={{ width: '100%', justifyContent: 'center' }}
-                  onClick={handleGenerateJD}
-                  disabled={isGeneratingJD || !jdPrompt.trim()}
+                  onClick={() => setJdFormOpen(true)}
+                  disabled={isGeneratingJD}
                 >
-                  {isGeneratingJD ? 'Đang gửi yêu cầu...' : 'Nhờ AI viết JD'}
+                  {isGeneratingJD ? 'Đang tạo JD' : <><span>✨</span> Tạo JD bằng AI</>}
                 </button>
               </div>
-
               {/* JD Upload Fallback */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingTop: '12px', borderTop: '1px dashed var(--border-light)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingTop: '12px', borderTop: '1px dashed var(--border-light)', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Hoặc tải file từ máy tính:</span>
                 <input type="file" id="jd-upload" style={{ display: 'none' }} onChange={handleUploadJD} accept=".md,.txt" />
                 <button className="pl-btn" style={{ fontSize: '12px', padding: '4px 8px' }} onClick={() => document.getElementById('jd-upload')?.click()} disabled={processing}>
@@ -526,7 +688,7 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
               <button className="pl-btn" style={{ marginBottom: '12px' }} onClick={() => document.getElementById('cv-upload')?.click()} disabled={loading || processing}>
                 + Thêm CV
               </button>
-              <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+              <div style={{ maxHeight: '180px', overflowY: 'auto', paddingRight: '2px' }}>
                 {loading
                   ? <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)' }}>Đang tải…</p>
                   : files.length === 0
@@ -547,26 +709,10 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
                 </button>
               </div>
             </div>
-
-            {/* Log Toggle */}
-            <button className="pl-btn" style={{ justifyContent: 'space-between', width: '100%' }} onClick={() => setLogOpen(o => !o)}>
-              <span>📋 Nhật ký hệ thống</span>
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                {logs.length > 0 ? `${logs.length} dòng` : 'Trống'} {logOpen ? '▲' : '▼'}
-              </span>
-            </button>
-            {logOpen && (
-              <div className="pl-log">
-                {logs.length === 0
-                  ? <span style={{ color: 'var(--text-faint)' }}>Chưa có log…</span>
-                  : logs.map((l, i) => <div key={i} className="pl-log-line">{l}</div>)}
-                <div ref={logEndRef} />
-              </div>
-            )}
           </div>
 
-          {/* Right col — Results */}
-          <div className="pl-card" style={{ padding: '16px 20px' }}>
+          {/* Results */}
+          <div className="pl-card" style={{ padding: '18px 20px', minHeight: '280px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <p className="pl-label" style={{ margin: 0 }}>03 · Kết quả chấm</p>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -575,22 +721,116 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
             </div>
             {resultList.length === 0
               ? (
-                <div style={{ padding: '36px 0', textAlign: 'center' }}>
+                <div style={{ minHeight: '190px', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
                   <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-faint)' }}>
                     Chưa có kết quả — chọn CV và chạy chấm điểm
                   </p>
                 </div>
               )
               : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div className="pl-results-list">
                   {resultList.map(s => <CVResultCard key={s.fileId} s={s} />)}
                 </div>
               )
             }
           </div>
 
+          {/* System Log */}
+          <div className="pl-card" style={{ padding: '14px 16px' }}>
+            <button className="pl-btn" style={{ justifyContent: 'space-between', width: '100%' }} onClick={() => setLogOpen(o => !o)}>
+              <span>📋 Nhật ký hệ thống</span>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                {logs.length > 0 ? `${logs.length} dòng` : 'Trống'} {logOpen ? '▲' : '▼'}
+              </span>
+            </button>
+            {logOpen && (
+              <div className="pl-log" style={{ maxHeight: '280px' }}>
+                {logs.length === 0
+                  ? <span style={{ color: 'var(--text-faint)' }}>Chưa có log…</span>
+                  : logs.map((l, i) => <div key={i} className="pl-log-line">{l}</div>)}
+                <div ref={logEndRef} />
+              </div>
+            )}
+          </div>
+
         </div>
 
+        {toast && (
+          <div className={`pl-toast ${toast.type}`} role="status" aria-live="polite">
+            <span className="pl-toast-dot" />
+            <span>{toast.message}</span>
+          </div>
+        )}
+
+        {jdFormOpen && (
+          <div
+            className="pl-modal-backdrop"
+            onClick={() => !isGeneratingJD && setJdFormOpen(false)}
+          >
+            <div className="pl-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="pl-modal-header">
+                <div>
+                  <p className="pl-label" style={{ margin: 0 }}>Tạo JD bằng AI</p>
+                  <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
+                    Điền các thông tin chính theo mẫu JD để AI tạo file tuyển dụng hoàn chỉnh.
+                  </p>
+                </div>
+                <button
+                  className="pl-btn"
+                  style={{ padding: '6px 10px' }}
+                  onClick={() => setJdFormOpen(false)}
+                  disabled={isGeneratingJD}
+                  aria-label="Đóng form tạo JD"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="pl-form-grid">
+                <p className="pl-label pl-span-2" style={{ margin: '2px 0 0' }}>Thông tin chung</p>
+                {renderJDFormField('position', 'Vị trí', 'VD: Lập trình viên Mini App')}
+                {renderJDFormField('department', 'Phòng ban', 'VD: Khoa học Dữ liệu & HTTT')}
+                {renderJDFormField('location', 'Địa điểm làm việc', 'VD: Hà Nội / Remote / Hybrid')}
+                {renderJDFormField('workTime', 'Thời gian làm việc', 'VD: Full-time hoặc Part-time')}
+
+                <p className="pl-label pl-span-2" style={{ margin: '4px 0 0' }}>Mô tả công việc</p>
+                {renderJDFormField('jobDescription', 'Mô tả công việc', 'Nhập các đầu việc chính, mỗi dòng một ý...', true, true)}
+
+                <p className="pl-label pl-span-2" style={{ margin: '4px 0 0' }}>Yêu cầu ứng viên</p>
+                {renderJDFormField('experience', 'Kinh nghiệm', 'VD: 01 năm kinh nghiệm')}
+                {renderJDFormField('education', 'Học vấn', 'VD: Tốt nghiệp ngành CNTT')}
+                {renderJDFormField('technicalSkills', 'Kỹ năng chuyên môn', 'VD: React, TypeScript, Mini App...', true, true)}
+                {renderJDFormField('softSkills', 'Kỹ năng mềm', 'VD: Chủ động, giao tiếp tốt...', true, true)}
+
+                <p className="pl-label pl-span-2" style={{ margin: '4px 0 0' }}>Quyền lợi</p>
+                {renderJDFormField('salary', 'Mức lương', 'VD: 15.000.000 VNĐ/tháng')}
+                {renderJDFormField('benefits', 'Phúc lợi', 'VD: Thưởng dự án, BHXH...', true)}
+                {renderJDFormField('workEnvironment', 'Môi trường làm việc', 'VD: Trẻ, linh hoạt, sản phẩm thực tế...', true, true)}
+
+                <p className="pl-label pl-span-2" style={{ margin: '4px 0 0' }}>Cách thức ứng tuyển</p>
+                {renderJDFormField('applyEmail', 'Email nhận CV', 'VD: hr@company.vn')}
+                {renderJDFormField('emailSubject', 'Tiêu đề email', 'VD: Vị trí - [Họ và tên]')}
+              </div>
+
+              <div className="pl-modal-actions">
+                <button
+                  className="pl-btn"
+                  onClick={() => { setJdForm(emptyJDForm); setJdPrompt(''); }}
+                  disabled={isGeneratingJD || !isJDFormReady}
+                >
+                  Xóa form
+                </button>
+                <button
+                  className="pl-btn pl-btn-primary"
+                  onClick={handleGenerateJD}
+                  disabled={isGeneratingJD || !isJDFormReady}
+                >
+                  {isGeneratingJD ? 'Đang gửi yêu cầu...' : 'Gửi AI tạo JD'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </>
