@@ -6,7 +6,7 @@ import RecruitmentPanel from './recruitment-panel';
 
 import PipelineDashboard from './pipeline-dashboard';
 import TrainingDashboard from './training-dashboard';
-import LifecycleDashboard from './lifecycle-dashboard';
+import LifecycleDashboard from './lifecycle/LifecycleDashboard';
 import { ensureTemplatesExistGlobal } from './pipeline-service';
 import { MockPipelineService } from './mock-pipeline-service';
 
