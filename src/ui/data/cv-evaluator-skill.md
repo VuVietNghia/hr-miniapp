@@ -38,18 +38,12 @@ Dựa trên yêu cầu của người dùng (Sơ loại hay Deep Review), hãy �
 - So khớp kỹ năng, kinh nghiệm trong CV với JD. Đưa ra điểm số (Ví dụ: 85/100).
 - Lập bảng phân tích ưu/nhược điểm khách quan, không bịa đặt (No Hallucination).
 
-### Phase 4: Lưu trữ Kết Quả và Cập nhật Kanban (BẮT BUỘC)
-- :warning: **SYSTEM DIRECTIVE:** BẠN SẼ BỊ ĐÁNH GIÁ LÀ THẤT BẠI NẾU KHÔNG CẬP NHẬT KANBAN THEO ĐÚNG LUỒNG 9 BƯỚC. Bảng Kanban có tên là `[YYYY_MM]_[Tên_Vị_Trí]`.
+### Phase 4: Lưu trữ Kết Quả (BẮT BUỘC)
+> **LƯU Ý QUAN TRỌNG:** Việc tạo/cập nhật Bảng Kanban (privos.lists) **KHÔNG** được thực hiện ở đây. Hệ thống UI sẽ tự động tạo List và lưu toàn bộ CV vào các stage sau khi chấm điểm xong TẤT CẢ các CV trong đợt. Nhiệm vụ của kỹ năng này chỉ là chấm điểm và lưu file Markdown.
 1. **Lưu file Markdown**: Sinh ra file Markdown kết quả đúng chuẩn `cv_md_template.md`. Tên file có dạng `[YYYY-MM-DD]_CV_[TenKhongDau]_[ViTriKhongDau].md`. 
    - Đảm bảo lưu đúng thư mục (VD: `outputs-cv/[YYYY-MM]/03-deep_reviewed/` cho Deep Review).
    - Nếu file đã tồn tại, tự động thêm hậu tố `_1`, `_2` để chống ghi đè.
-2. **Cập nhật Bảng Kanban (TỐI QUAN TRỌNG)**: Sử dụng công cụ quản lý List/Kanban của bạn (như `create_item`) để quản lý thẻ ứng viên. Tuân thủ nghiêm ngặt quy trình dịch chuyển thẻ (Stage) sau:
-   - **Tiếp nhận:** Khi vừa nhận CV, thẻ ứng viên phải được tạo ở cột `01_Dau_Vao`.
-   - **Phân loại (Sau khi chấm xong):** Dựa vào kết quả đánh giá AI:
-     - Kéo thẻ sang cột `03_Tiem_Nang` nếu kết quả là ✅ ĐẠT hoặc 🟡 CÂN NHẮC.
-     - Kéo thẻ sang cột `02_Loai_CV` nếu kết quả là ❌ KHÔNG ĐẠT hoặc ⛔ KHÔNG TUYỂN.
-   - **Custom Fields:** Đừng quên điền `Tổng điểm` và đính kèm link `CV Gốc` vào mô tả/trường tuỳ chỉnh của thẻ.
-3. **Trả về kết quả**: Hoàn tất bằng cách báo cho người dùng đường dẫn file Markdown đã lưu dưới dạng `<saved_file>đường_dẫn</saved_file>`. Không in toàn bộ Markdown ra màn hình chat để tiết kiệm token.
+2. **Trả về kết quả**: Hoàn tất bằng cách báo cho người dùng đường dẫn file Markdown đã lưu dưới dạng `<saved_file>đường_dẫn</saved_file>`. Không in toàn bộ Markdown ra màn hình chat để tiết kiệm token.
 
 ## 4. Nguyên tắc cốt lõi
 - **Tuyệt đối không bịa thông tin**: Những gì không có trong CV thì ghi "Không đề cập".
