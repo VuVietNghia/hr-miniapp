@@ -7,10 +7,11 @@ import RecruitmentPanel from './recruitment-panel';
 import PipelineDashboard from './pipeline-dashboard';
 import TrainingDashboard from './training-dashboard';
 import LifecycleDashboard from './lifecycle/LifecycleDashboard';
+import PayrollTab from './payroll/PayrollTab';
 import { ensureTemplatesExistGlobal } from './pipeline-service';
 import { MockPipelineService } from './mock-pipeline-service';
 
-type Tab = 'home' | 'recruitment' | 'pipeline' | 'mockPipeline' | 'training' | 'lifecycle';
+type Tab = 'home' | 'recruitment' | 'pipeline' | 'mockPipeline' | 'training' | 'lifecycle' | 'payroll';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'home', label: 'Home' },
@@ -18,6 +19,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'pipeline', label: 'CV Pipeline' },
   { id: 'training', label: 'Đào tạo' },
   { id: 'lifecycle', label: 'Hồ sơ NS' },
+  { id: 'payroll', label: 'Quản lý Lương' },
   { id: 'mockPipeline', label: 'Mock Pipeline' },
 ];
 
@@ -55,6 +57,7 @@ function ThemedApp() {
       {tab === 'pipeline' && <PipelineDashboard />}
       {tab === 'training' && <TrainingDashboard />}
       {tab === 'lifecycle' && <LifecycleDashboard />}
+      {tab === 'payroll' && <PayrollTab />}
       {tab === 'mockPipeline' && (
         <PipelineDashboard 
           serviceFactory={() => new MockPipelineService()} 

@@ -4,9 +4,11 @@ import { KanbanColumn } from './KanbanColumn';
 interface KanbanBoardProps {
   profiles: EmployeeProfile[];
   isLoading: boolean;
+  selectedColumnStatus?: string;
+  onMoveProfile?: (profileId: string, newStatus: string) => void;
 }
 
-export function KanbanBoard({ profiles, isLoading }: KanbanBoardProps) {
+export function KanbanBoard({ profiles, isLoading, selectedColumnStatus = 'all', onMoveProfile }: KanbanBoardProps) {
   if (isLoading) {
     return (
       <div className="kanban-loading">
@@ -16,13 +18,18 @@ export function KanbanBoard({ profiles, isLoading }: KanbanBoardProps) {
     );
   }
 
+  const columnsToDisplay = selectedColumnStatus === 'all'
+    ? KANBAN_COLUMNS
+    : KANBAN_COLUMNS.filter(col => col.status === selectedColumnStatus);
+
   return (
-    <div className="kanban-board-container fade-in">
-      {KANBAN_COLUMNS.map(col => (
+    <div className="hr-kanban-container">
+      {columnsToDisplay.map(col => (
         <KanbanColumn 
           key={col.status}
           column={col} 
-          profiles={profiles.filter(p => p.status === col.status)} 
+          profiles={profiles.filter(p => p.status === col.status)}
+          onMoveProfile={onMoveProfile}
         />
       ))}
     </div>
