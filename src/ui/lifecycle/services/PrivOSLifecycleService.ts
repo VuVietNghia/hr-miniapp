@@ -59,6 +59,44 @@ export class PrivOSLifecycleService implements ILifecycleService {
     };
   }
 
+  async updateProfileStatus(roomId: string, profileId: string, newStatus: string): Promise<void> {
+    try {
+      const list = await this.ensureValidList(roomId);
+      if (!list || !Array.isArray(list.stages)) {
+        console.warn('[PrivOSLifecycleService] Cannot update stage: list or stages not found');
+        return;
+      }
+
+      // Find stage matching newStatus
+      const targetStage = list.stages.find(
+        (s: any) => s.name === newStatus || (s.name || '').toLowerCase() === newStatus.toLowerCase()
+      );
+
+      if (!targetStage) {
+        console.warn(`[PrivOSLifecycleService] Target stage "${newStatus}" not found in list stages:`, list.stages);
+        return;
+      }
+
+      const stageId = targetStage._id || targetStage.id;
+      if (!stageId) {
+        console.warn(`[PrivOSLifecycleService] Target stage "${newStatus}" does not have a valid stageId:`, targetStage);
+        return;
+      }
+
+      await this.app.callServerTool({
+        name: 'privos.lists.moveItemToStage',
+        arguments: {
+          itemId: profileId,
+          stageId
+        }
+      });
+      console.log(`[PrivOSLifecycleService] Successfully moved profile ${profileId} to stage ${newStatus} (${stageId})`);
+    } catch (err) {
+      console.error('[PrivOSLifecycleService] Failed to move profile to stage:', err);
+      throw err;
+    }
+  }
+
   // --- Private Helper Methods ---
 
   private generateLocalId(): string {
@@ -189,9 +227,6 @@ export class PrivOSLifecycleService implements ILifecycleService {
       { name: "Email", type: "TEXT" },
       { name: "Vị trí", type: "SELECT", options: [{value: "Developer"}, {value: "Tester"}, {value: "HR"}, {value: "Sales"}] },
       { name: "Phòng ban", type: "SELECT", options: [{value: "IT"}, {value: "Business"}, {value: "Back-office"}] },
-      { name: "Mã số thuế", type: "TEXT" },
-      { name: "Số tài khoản", type: "TEXT" },
-      { name: "Mức lương", type: "NUMBER" },
       { name: "Ngày bắt đầu", type: "DATE" }
     ];
   }
@@ -284,9 +319,6 @@ export class PrivOSLifecycleService implements ILifecycleService {
     else if (fname.includes('email')) profile.email = value;
     else if (fname.includes('vị trí') || fname.includes('position')) profile.position = value;
     else if (fname.includes('phòng')) profile.department = value;
-    else if (fname.includes('thuế') || fname.includes('mst')) profile.mst = value;
-    else if (fname.includes('tài khoản') || fname.includes('bank')) profile.bankAccount = value;
-    else if (fname.includes('lương') || fname.includes('salary')) profile.salary = value;
     else if (fname.includes('ngày') || fname.includes('date')) profile.startDate = value;
   }
 
@@ -313,9 +345,6 @@ export class PrivOSLifecycleService implements ILifecycleService {
     if (fname.includes('email')) return data.email;
     if (fname.includes('vị trí') || fname.includes('position')) return data.position;
     if (fname.includes('phòng')) return data.department;
-    if (fname.includes('thuế') || fname.includes('mst')) return data.mst;
-    if (fname.includes('tài khoản') || fname.includes('bank')) return data.bankAccount;
-    if (fname.includes('lương') || fname.includes('salary')) return data.salary;
     if (fname.includes('ngày') || fname.includes('date')) return data.startDate;
     return undefined;
   }

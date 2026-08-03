@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { EmployeeProfile } from '../types';
 
 interface CreateProfileFormProps {
   onSubmit: (data: Omit<EmployeeProfile, '_id' | 'status'>) => Promise<void>;
   onCancel: () => void;
 }
+
+const PHONE_REGEX = /^\+?[0-9\s\-().]{8,20}$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function CreateProfileForm({ onSubmit, onCancel }: CreateProfileFormProps) {
   const [formData, setFormData] = useState({
@@ -13,9 +16,6 @@ export function CreateProfileForm({ onSubmit, onCancel }: CreateProfileFormProps
     email: '',
     position: 'Developer',
     department: 'IT',
-    mst: '',
-    bankAccount: '',
-    salary: '',
     startDate: new Date().toISOString().split('T')[0]
   });
 
@@ -31,107 +31,171 @@ export function CreateProfileForm({ onSubmit, onCancel }: CreateProfileFormProps
     e.preventDefault();
     setError('');
 
-    if (!formData.name.trim()) {
-      setError('Vui lòng nhập Họ và Tên.');
+    const trimmedName = formData.name.trim();
+    const trimmedPhone = formData.phone.trim();
+    const trimmedEmail = formData.email.trim();
+
+    if (!trimmedName) {
+      setError('Vui lòng nhập Họ và Tên nhân sự.');
       return;
     }
-    if (!formData.phone.trim()) {
-      setError('Vui lòng nhập Số điện thoại.');
+    if (!trimmedPhone) {
+      setError('Vui lòng nhập Số điện thoại liên hệ.');
+      return;
+    }
+    if (!PHONE_REGEX.test(trimmedPhone)) {
+      setError('Số điện thoại không hợp lệ (hỗ trợ số di động, cố định hoặc quốc tế có +).');
+      return;
+    }
+    if (trimmedEmail && !EMAIL_REGEX.test(trimmedEmail)) {
+      setError('Email không đúng định dạng (VD: an.nguyen@company.com).');
       return;
     }
 
     if (isSubmitting) return;
     setIsSubmitting(true);
     
-    await onSubmit({
-      name: formData.name.trim(),
-      phone: formData.phone.trim(),
-      email: formData.email.trim(),
-      position: formData.position,
-      department: formData.department,
-      mst: formData.mst.trim(),
-      bankAccount: formData.bankAccount.trim(),
-      salary: formData.salary,
-      startDate: formData.startDate
-    });
-    
-    setIsSubmitting(false);
+    try {
+      await onSubmit({
+        name: trimmedName,
+        phone: trimmedPhone,
+        email: trimmedEmail,
+        position: formData.position,
+        department: formData.department,
+        startDate: formData.startDate
+      });
+    } catch (err: any) {
+      setError(err?.message || 'Có lỗi xảy ra khi lưu hồ sơ.');
+      setIsSubmitting(false);
+    }
   };
 
   return (
-    <div className="create-profile-form-container slide-in-top">
-      <form onSubmit={handleSubmit} className="profile-form">
-        <h3 className="form-title">Thêm Nhân Sự Mới</h3>
+    <div className="hr-form-panel">
+      <form onSubmit={handleSubmit}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <h3 className="hr-form-title" style={{ margin: 0 }}>Thêm Hồ Sơ Nhân Sự Mới</h3>
+          <button 
+            type="button" 
+            className="hr-btn hr-btn-subtle" 
+            onClick={onCancel}
+            title="Đóng form"
+          >
+            ✕
+          </button>
+        </div>
         
-        {error && <div className="form-error">{error}</div>}
+        {error && (
+          <div className="hr-status-banner hr-status-error">
+            <span>⚠️</span>
+            <span>{error}</span>
+          </div>
+        )}
 
-        <div className="form-grid">
-          {/* Thông tin cơ bản */}
-          <div className="form-section">
-            <h4 className="section-title">Thông tin cơ bản</h4>
-            <div className="form-group">
-              <label>Họ và Tên *</label>
-              <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="VD: Nguyễn Văn A" autoFocus disabled={isSubmitting} />
-            </div>
-            <div className="form-group">
-              <label>Số điện thoại *</label>
-              <input type="text" name="phone" value={formData.phone} onChange={handleChange} placeholder="VD: 0901234567" disabled={isSubmitting} />
-            </div>
-            <div className="form-group">
-              <label>Email</label>
-              <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="VD: email@example.com" disabled={isSubmitting} />
-            </div>
-            <div className="form-row">
-              <div className="form-group">
-                <label>Vị trí</label>
-                <select name="position" value={formData.position} onChange={handleChange} disabled={isSubmitting}>
-                  <option value="Developer">Developer</option>
-                  <option value="Tester">Tester</option>
-                  <option value="HR">HR</option>
-                  <option value="Sales">Sales</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Phòng ban</label>
-                <select name="department" value={formData.department} onChange={handleChange} disabled={isSubmitting}>
-                  <option value="IT">IT</option>
-                  <option value="Business">Business</option>
-                  <option value="Back-office">Back-office</option>
-                </select>
-              </div>
-            </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+          <div>
+            <label className="hr-label">Họ và Tên <span style={{ color: '#EC0D2A' }}>*</span></label>
+            <input 
+              className="hr-input" 
+              type="text" 
+              name="name" 
+              value={formData.name} 
+              onChange={handleChange} 
+              placeholder="VD: Nguyễn Văn A" 
+              autoFocus 
+              disabled={isSubmitting} 
+            />
           </div>
 
-          {/* Thông tin tài chính & Hợp đồng */}
-          <div className="form-section">
-            <h4 className="section-title">Tài chính & Hợp đồng</h4>
-            <div className="form-group">
-              <label>Mã số thuế</label>
-              <input type="text" name="mst" value={formData.mst} onChange={handleChange} placeholder="VD: 0123456789" disabled={isSubmitting} />
-            </div>
-            <div className="form-group">
-              <label>Số tài khoản</label>
-              <input type="text" name="bankAccount" value={formData.bankAccount} onChange={handleChange} placeholder="VD: 123456789 - VCB" disabled={isSubmitting} />
-            </div>
-            <div className="form-row">
-              <div className="form-group">
-                <label>Mức lương (VNĐ)</label>
-                <input type="number" name="salary" value={formData.salary} onChange={handleChange} placeholder="VD: 15000000" disabled={isSubmitting} />
-              </div>
-              <div className="form-group">
-                <label>Ngày bắt đầu</label>
-                <input type="date" name="startDate" value={formData.startDate} onChange={handleChange} disabled={isSubmitting} />
-              </div>
-            </div>
+          <div>
+            <label className="hr-label">Số điện thoại <span style={{ color: '#EC0D2A' }}>*</span></label>
+            <input 
+              className="hr-input" 
+              type="tel" 
+              name="phone" 
+              value={formData.phone} 
+              onChange={handleChange} 
+              placeholder="VD: 0901 234 567" 
+              disabled={isSubmitting} 
+            />
+          </div>
+
+          <div>
+            <label className="hr-label">Email công việc</label>
+            <input 
+              className="hr-input" 
+              type="email" 
+              name="email" 
+              value={formData.email} 
+              onChange={handleChange} 
+              placeholder="VD: an.nguyen@company.com" 
+              disabled={isSubmitting} 
+            />
+          </div>
+
+          <div>
+            <label className="hr-label">Vị trí công việc</label>
+            <select 
+              className="hr-input" 
+              name="position" 
+              value={formData.position} 
+              onChange={handleChange} 
+              disabled={isSubmitting}
+            >
+              <option value="Developer">Developer</option>
+              <option value="Tester">Tester / QA</option>
+              <option value="Designer">UI/UX Designer</option>
+              <option value="Product Manager">Product Manager</option>
+              <option value="HR">HR Specialist</option>
+              <option value="Sales">Sales Executive</option>
+              <option value="Marketing">Marketing Specialist</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="hr-label">Phòng ban</label>
+            <select 
+              className="hr-input" 
+              name="department" 
+              value={formData.department} 
+              onChange={handleChange} 
+              disabled={isSubmitting}
+            >
+              <option value="IT">Kỹ thuật (IT / R&D)</option>
+              <option value="Business">Kinh doanh (Business / Sales)</option>
+              <option value="Marketing">Truyền thông (Marketing)</option>
+              <option value="Back-office">Khối văn phòng (HR / Admin)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="hr-label">Ngày bắt đầu làm việc</label>
+            <input 
+              className="hr-input" 
+              type="date" 
+              name="startDate" 
+              value={formData.startDate} 
+              onChange={handleChange} 
+              disabled={isSubmitting} 
+            />
           </div>
         </div>
 
-        <div className="form-actions-bottom">
-          <button type="submit" className="primary-btn submit-btn" disabled={isSubmitting}>
-            {isSubmitting ? 'Đang lưu...' : 'Lưu Hồ Sơ'}
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24 }}>
+          <button 
+            type="button" 
+            className="hr-btn" 
+            onClick={onCancel} 
+            disabled={isSubmitting}
+          >
+            Hủy bỏ
           </button>
-          <button type="button" className="cancel-btn" onClick={onCancel} disabled={isSubmitting}>
-            Hủy
+          <button 
+            type="submit" 
+            className="hr-btn hr-btn-accent" 
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? 'Đang lưu hồ sơ...' : 'Tạo hồ sơ nhân sự'}
           </button>
         </div>
       </form>

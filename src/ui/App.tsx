@@ -5,20 +5,22 @@ import BArmyHome from './barmy-home';
 import RecruitmentPanel from './recruitment-panel';
 
 import PipelineDashboard from './pipeline-dashboard';
-import { ensureTemplatesExistGlobal } from './pipeline-service';
-import { MockPipelineService } from './mock-pipeline-service';
 import TrainingDashboard from './training-dashboard';
 import LifecycleDashboard from './lifecycle/LifecycleDashboard';
+import PayrollTab from './payroll/PayrollTab';
+import { ensureTemplatesExistGlobal } from './pipeline-service';
+import { MockPipelineService } from './mock-pipeline-service';
 
-type Tab = 'home' | 'recruitment' | 'pipeline' | 'mockPipeline' | 'training' | 'lifecycle';
+type Tab = 'home' | 'recruitment' | 'pipeline' | 'mockPipeline' | 'training' | 'lifecycle' | 'payroll';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'home', label: 'Home' },
   { id: 'recruitment', label: 'Tuyển dụng' },
   { id: 'pipeline', label: 'CV Pipeline' },
-  { id: 'mockPipeline', label: 'Mock Pipeline' },
   { id: 'training', label: 'Đào tạo' },
   { id: 'lifecycle', label: 'Hồ sơ NS' },
+  { id: 'payroll', label: 'Quản lý Lương' },
+  { id: 'mockPipeline', label: 'Mock Pipeline' },
 ];
 
 function ThemedApp() {
@@ -52,16 +54,15 @@ function ThemedApp() {
 
       {tab === 'home' && <BArmyHome />}
       {tab === 'recruitment' && <RecruitmentPanel />}
-      <div style={{ display: tab === 'pipeline' ? 'block' : 'none' }}>
-        <PipelineDashboard />
-      </div>
-      {tab === 'mockPipeline' && (
-        <PipelineDashboard
-          serviceFactory={() => new MockPipelineService()}
-        />
-      )}
+      {tab === 'pipeline' && <PipelineDashboard />}
       {tab === 'training' && <TrainingDashboard />}
       {tab === 'lifecycle' && <LifecycleDashboard />}
+      {tab === 'payroll' && <PayrollTab />}
+      {tab === 'mockPipeline' && (
+        <PipelineDashboard 
+          serviceFactory={() => new MockPipelineService()} 
+        />
+      )}
     </ThemeProvider>
   );
 }

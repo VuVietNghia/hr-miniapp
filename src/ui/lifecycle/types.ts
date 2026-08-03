@@ -2,13 +2,10 @@ export interface EmployeeProfile {
   _id: string;
   name: string;
   status: string;
-  mst: string;
-  bankAccount: string;
   phone?: string;
   email?: string;
   position?: string;
   department?: string;
-  salary?: string;
   startDate?: string;
 }
 
@@ -27,4 +24,5 @@ export const KANBAN_COLUMNS: KanbanColumnDef[] = [
 export interface ILifecycleService {
   loadProfiles(roomId: string): Promise<EmployeeProfile[]>;
   createProfile(roomId: string, data: Omit<EmployeeProfile, '_id' | 'status'>): Promise<EmployeeProfile>;
+  updateProfileStatus(roomId: string, profileId: string, newStatus: string): Promise<void>;
 }

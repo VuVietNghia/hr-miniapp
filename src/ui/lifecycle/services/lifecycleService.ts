@@ -3,9 +3,9 @@ import { EmployeeProfile } from '../types';
 
 export function getMockProfiles(): EmployeeProfile[] {
   return [
-    { _id: 'sample-1', name: 'Nguyễn Văn A', status: 'Mới nhận việc', mst: '', bankAccount: '' },
-    { _id: 'sample-2', name: 'Lê Thị B', status: 'Đang thử việc', mst: '0123456789', bankAccount: '123456 - VCB' },
-    { _id: 'sample-3', name: 'Trần Văn C', status: 'Chính thức', mst: '9876543210', bankAccount: '654321 - TCB' },
+    { _id: 'sample-1', name: 'Nguyễn Văn A', status: 'Mới nhận việc' },
+    { _id: 'sample-2', name: 'Lê Thị B', status: 'Đang thử việc' },
+    { _id: 'sample-3', name: 'Trần Văn C', status: 'Chính thức' },
   ];
 }
 
@@ -65,8 +65,6 @@ export async function fetchProfilesFromServer(app: McpApp, listId: string): Prom
     _id: item._id || item.id,
     name: item.name || item.title || 'Không có tên',
     status: item.status || item.stage || 'Mới nhận việc',
-    mst: item.mst || item.taxCode || '',
-    bankAccount: item.bankAccount || item.bank || '',
   }));
 }
 
@@ -88,9 +86,7 @@ export async function createEmployeeProfile(app: McpApp, roomId: string, name: s
   const newProfile: EmployeeProfile = {
     _id: `local-${Date.now()}`,
     name,
-    status: 'Mới nhận việc',
-    mst: '',
-    bankAccount: ''
+    status: 'Mới nhận việc'
   };
 
   try {
@@ -108,9 +104,7 @@ export async function createEmployeeProfile(app: McpApp, roomId: string, name: s
             title: name,
             name: name,
             status: 'Mới nhận việc',
-            stage: 'Mới nhận việc',
-            mst: '',
-            bankAccount: ''
+            stage: 'Mới nhận việc'
           }
         }
       });
