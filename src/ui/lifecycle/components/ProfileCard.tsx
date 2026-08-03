@@ -1,60 +1,234 @@
-import { EmployeeProfile } from '../types';
+import React, { useState } from 'react';
+import { EmployeeProfile, KANBAN_COLUMNS } from '../types';
 
 interface ProfileCardProps {
   profile: EmployeeProfile;
+  onMoveProfile?: (profileId: string, newStatus: string) => void;
 }
 
-export function ProfileCard({ profile }: ProfileCardProps) {
+/**
+ * Extracts 1-2 letter uppercase initials from the employee's name
+ */
+function getInitials(name: string): string {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+/**
+ * Calculates probation remaining days or employment tenure
+ */
+function calculateTimelineInfo(status: string, startDateStr?: string) {
+  if (!startDateStr) return null;
+  const start = new Date(startDateStr);
+  if (isNaN(start.getTime())) return null;
+
+  const now = new Date();
+  const diffTime = now.getTime() - start.getTime();
+  const elapsedDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+  if (status === 'Đang thử việc') {
+    const probationLength = 60; // Chuẩn 60 ngày thử việc
+    const remainingDays = Math.max(0, probationLength - elapsedDays);
+    const isUrgent = remainingDays <= 7;
+    return {
+      type: 'probation',
+      text: remainingDays === 0 ? 'Hết hạn thử việc' : `Còn ${remainingDays} ngày thử việc`,
+      isUrgent,
+    };
+  }
+
+  if (status === 'Chính thức') {
+    if (elapsedDays < 30) {
+      return { type: 'tenure', text: 'Mới chính thức' };
+    }
+    const months = Math.floor(elapsedDays / 30);
+    if (months < 12) {
+      return { type: 'tenure', text: `${months} tháng làm việc` };
+    }
+    const years = (elapsedDays / 365).toFixed(1);
+    return { type: 'tenure', text: `${years} năm cống hiến` };
+  }
+
+  return null;
+}
+
+export function ProfileCard({ profile, onMoveProfile }: ProfileCardProps) {
+  const [isDragging, setIsDragging] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
+    e.dataTransfer.setData('text/plain', profile._id);
+    e.dataTransfer.effectAllowed = 'move';
+    setIsDragging(true);
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+  };
+
+  const copyToClipboard = (text: string, field: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 1800);
+  };
+
+  const currentIndex = KANBAN_COLUMNS.findIndex(col => col.status === profile.status);
+  const nextColumn = currentIndex >= 0 && currentIndex < KANBAN_COLUMNS.length - 1 
+    ? KANBAN_COLUMNS[currentIndex + 1] 
+    : null;
+  const prevColumn = currentIndex > 0 
+    ? KANBAN_COLUMNS[currentIndex - 1] 
+    : null;
+
+  const initials = getInitials(profile.name);
+  const timeline = calculateTimelineInfo(profile.status, profile.startDate);
+
   return (
-    <div className="lifecycle-profile-card">
-      <div className="profile-name">
-        <span className="profile-icon">👤</span> 
-        {profile.name}
+    <div 
+      className={`hr-card ${isDragging ? 'is-dragging' : ''}`}
+      draggable={true}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      title="Kéo thẻ để chuyển trạng thái nhân sự"
+    >
+      <div className="profile-card-header">
+        <div className="profile-name-row">
+          <div className="profile-avatar">{initials}</div>
+          <div>
+            <span className="profile-name">{profile.name}</span>
+            {timeline && (
+              <div style={{ marginTop: '2px' }}>
+                {timeline.type === 'probation' ? (
+                  <span className={`badge-probation ${timeline.isUrgent ? 'badge-probation-warning' : ''}`} title="Thời hạn thử việc">
+                    ⏳ {timeline.text}
+                  </span>
+                ) : (
+                  <span className="badge-tenure" title="Thâm niên làm việc">
+                    🎖️ {timeline.text}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="drag-handle" title="Kéo thả thẻ">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="9" cy="5" r="1"/>
+            <circle cx="9" cy="12" r="1"/>
+            <circle cx="9" cy="19" r="1"/>
+            <circle cx="15" cy="5" r="1"/>
+            <circle cx="15" cy="12" r="1"/>
+            <circle cx="15" cy="19" r="1"/>
+          </svg>
+        </div>
       </div>
+
       <div className="profile-badge-row">
         {profile.position && <span className="position-badge">{profile.position}</span>}
         {profile.department && <span className="dept-badge">{profile.department}</span>}
       </div>
       
-      <div className="profile-details">
-        {(profile.phone || profile.email) && (
-          <div className="detail-section">
-            {profile.phone && (
-              <div className="detail-row">
-                <span className="detail-icon">📞</span> 
-                <span className="detail-value">{profile.phone}</span>
+      {(profile.phone || profile.email) && (
+        <div className="profile-details">
+          {profile.phone && (
+            <div className="detail-row" style={{ justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span className="detail-icon">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                  </svg>
+                </span>
+                <span>{profile.phone}</span>
               </div>
-            )}
-            {profile.email && (
-              <div className="detail-row">
-                <span className="detail-icon">✉️</span> 
-                <span className="detail-value text-truncate" title={profile.email}>{profile.email}</span>
+              <div className="hr-action-group">
+                <button 
+                  type="button" 
+                  className={`hr-icon-btn ${copiedField === 'phone' ? 'copied' : ''}`}
+                  onClick={(e) => copyToClipboard(profile.phone!, 'phone', e)}
+                  title="Sao chép SĐT"
+                >
+                  {copiedField === 'phone' ? 'Đã chép' : 'Chép'}
+                </button>
+                <a 
+                  href={`tel:${profile.phone}`} 
+                  className="hr-icon-btn" 
+                  title="Gọi ngay"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Gọi
+                </a>
               </div>
-            )}
-          </div>
-        )}
-
-        <div className="detail-divider"></div>
-
-        <div className="detail-section">
-          <div className="detail-row">
-            <span className="detail-label">MST:</span> 
-            <span className="detail-value">{profile.mst || '---'}</span>
-          </div>
-          <div className="detail-row">
-            <span className="detail-label">STK:</span> 
-            <span className="detail-value">{profile.bankAccount || '---'}</span>
-          </div>
-          {profile.salary && (
-            <div className="detail-row">
-              <span className="detail-label">Lương:</span> 
-              <span className="detail-value font-mono">
-                {parseInt(profile.salary).toLocaleString('vi-VN')} đ
-              </span>
+            </div>
+          )}
+          {profile.email && (
+            <div className="detail-row" style={{ justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, marginRight: '6px' }}>
+                <span className="detail-icon">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                    <polyline points="22,6 12,13 2,6"/>
+                  </svg>
+                </span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={profile.email}>
+                  {profile.email}
+                </span>
+              </div>
+              <div className="hr-action-group">
+                <button 
+                  type="button" 
+                  className={`hr-icon-btn ${copiedField === 'email' ? 'copied' : ''}`}
+                  onClick={(e) => copyToClipboard(profile.email!, 'email', e)}
+                  title="Sao chép Email"
+                >
+                  {copiedField === 'email' ? 'Đã chép' : 'Chép'}
+                </button>
+                <a 
+                  href={`mailto:${profile.email}`} 
+                  className="hr-icon-btn" 
+                  title="Gửi Email"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Gửi
+                </a>
+              </div>
             </div>
           )}
         </div>
-      </div>
+      )}
+
+      {onMoveProfile && (prevColumn || nextColumn) && (
+        <div className="hr-card-quick-actions">
+          {prevColumn && (
+            <button 
+              type="button"
+              className="hr-btn-mini" 
+              title={`Chuyển lùi: ${prevColumn.label}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onMoveProfile(profile._id, prevColumn.status);
+              }}
+            >
+              ← {prevColumn.status}
+            </button>
+          )}
+          {nextColumn && (
+            <button 
+              type="button"
+              className="hr-btn-mini hr-btn-mini-accent" 
+              title={`Chuyển tiếp: ${nextColumn.label}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onMoveProfile(profile._id, nextColumn.status);
+              }}
+            >
+              {nextColumn.status} →
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
