@@ -212,10 +212,12 @@
 /* Kanban Board Layout */
 .hr-kanban-container {
   display: flex;
-  gap: 16px;
+  gap: 14px;
   overflow-x: auto;
   padding-bottom: 20px;
   align-items: flex-start;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .hr-kanban-container::-webkit-scrollbar {
@@ -237,7 +239,8 @@
 }
 
 .hr-kanban-col {
-  flex: 0 0 300px;
+  flex: 1 1 0;
+  min-width: 240px;
   background: var(--surface-2, #F2F3F5);
   border: 1px solid var(--border, #E4E7EA);
   border-radius: var(--radius-md, 10px);
@@ -253,7 +256,7 @@
 }
 
 .hr-kanban-col-header {
-  padding: 14px 16px;
+  padding: 10px 14px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -303,7 +306,7 @@
   background: var(--bg-card, #FFFFFF);
   border: 1px solid var(--border, #E4E7EA);
   border-radius: var(--radius-sm, 6px);
-  padding: 14px;
+  padding: 10px 12px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   cursor: grab;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -319,6 +322,38 @@
 
 .hr-card:active {
   cursor: grabbing;
+}
+
+.hr-view-toggle {
+  display: inline-flex;
+  background: var(--bg, #F7F8FA);
+  border: 1px solid var(--border, #E4E7EA);
+  border-radius: var(--radius-sm, 6px);
+  padding: 2px;
+  gap: 2px;
+}
+
+.hr-view-btn {
+  font-family: var(--hr-font-sans);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 4px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #2F343D);
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.15s ease;
+}
+
+.hr-view-btn.active {
+  background: var(--bg-card, #FFFFFF);
+  color: var(--accent, #156FF5);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 .hr-card.is-dragging {
@@ -862,5 +897,55 @@
   background: #059669;
   border-color: #059669;
   box-shadow: 0 2px 6px rgba(16, 185, 129, 0.25);
+}
+
+/* Payroll Enhancements */
+.hr-input-preview {
+  font-size: 0.725rem;
+  font-weight: 600;
+  color: #10B981;
+  margin-top: 3px;
+  display: block;
+}
+
+.hr-checkbox-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--text-secondary, #2F343D);
+  cursor: pointer;
+  margin-top: 4px;
+  user-select: none;
+  background: rgba(21, 111, 245, 0.05);
+  padding: 3px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(21, 111, 245, 0.15);
+}
+
+.hr-checkbox-control input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: var(--accent, #156FF5);
+  width: 14px;
+  height: 14px;
+}
+
+.badge-probation-rate {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(217, 119, 6, 0.12);
+  color: #D97706;
+  border: 1px solid rgba(217, 119, 6, 0.25);
+}
+
+.badge-probation-100 {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10B981;
+  border-color: rgba(16, 185, 129, 0.2);
 }
 

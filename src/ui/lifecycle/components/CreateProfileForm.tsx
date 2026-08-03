@@ -6,6 +6,9 @@ interface CreateProfileFormProps {
   onCancel: () => void;
 }
 
+const PHONE_REGEX = /^\+?[0-9\s\-().]{8,20}$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export function CreateProfileForm({ onSubmit, onCancel }: CreateProfileFormProps) {
   const [formData, setFormData] = useState({
     name: '',
@@ -28,12 +31,24 @@ export function CreateProfileForm({ onSubmit, onCancel }: CreateProfileFormProps
     e.preventDefault();
     setError('');
 
-    if (!formData.name.trim()) {
+    const trimmedName = formData.name.trim();
+    const trimmedPhone = formData.phone.trim();
+    const trimmedEmail = formData.email.trim();
+
+    if (!trimmedName) {
       setError('Vui lòng nhập Họ và Tên nhân sự.');
       return;
     }
-    if (!formData.phone.trim()) {
+    if (!trimmedPhone) {
       setError('Vui lòng nhập Số điện thoại liên hệ.');
+      return;
+    }
+    if (!PHONE_REGEX.test(trimmedPhone)) {
+      setError('Số điện thoại không hợp lệ (hỗ trợ số di động, cố định hoặc quốc tế có +).');
+      return;
+    }
+    if (trimmedEmail && !EMAIL_REGEX.test(trimmedEmail)) {
+      setError('Email không đúng định dạng (VD: an.nguyen@company.com).');
       return;
     }
 
@@ -42,9 +57,9 @@ export function CreateProfileForm({ onSubmit, onCancel }: CreateProfileFormProps
     
     try {
       await onSubmit({
-        name: formData.name.trim(),
-        phone: formData.phone.trim(),
-        email: formData.email.trim(),
+        name: trimmedName,
+        phone: trimmedPhone,
+        email: trimmedEmail,
         position: formData.position,
         department: formData.department,
         startDate: formData.startDate
