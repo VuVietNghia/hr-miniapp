@@ -7,14 +7,18 @@ import RecruitmentPanel from './recruitment-panel';
 import PipelineDashboard from './pipeline-dashboard';
 import { ensureTemplatesExistGlobal } from './pipeline-service';
 import { MockPipelineService } from './mock-pipeline-service';
+import TrainingDashboard from './training-dashboard';
+import LifecycleDashboard from './lifecycle/LifecycleDashboard';
 
-type Tab = 'home' | 'recruitment' | 'pipeline' | 'mockPipeline';
+type Tab = 'home' | 'recruitment' | 'pipeline' | 'mockPipeline' | 'training' | 'lifecycle';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'home', label: 'Home' },
   { id: 'recruitment', label: 'Tuyển dụng' },
   { id: 'pipeline', label: 'CV Pipeline' },
   { id: 'mockPipeline', label: 'Mock Pipeline' },
+  { id: 'training', label: 'Đào tạo' },
+  { id: 'lifecycle', label: 'Hồ sơ NS' },
 ];
 
 function ThemedApp() {
@@ -48,12 +52,16 @@ function ThemedApp() {
 
       {tab === 'home' && <BArmyHome />}
       {tab === 'recruitment' && <RecruitmentPanel />}
-      {tab === 'pipeline' && <PipelineDashboard />}
+      <div style={{ display: tab === 'pipeline' ? 'block' : 'none' }}>
+        <PipelineDashboard />
+      </div>
       {tab === 'mockPipeline' && (
-        <PipelineDashboard 
-          serviceFactory={() => new MockPipelineService()} 
+        <PipelineDashboard
+          serviceFactory={() => new MockPipelineService()}
         />
       )}
+      {tab === 'training' && <TrainingDashboard />}
+      {tab === 'lifecycle' && <LifecycleDashboard />}
     </ThemeProvider>
   );
 }
