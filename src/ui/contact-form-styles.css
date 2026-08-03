@@ -135,33 +135,158 @@ select:focus {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 16px;
+  gap: 14px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-light);
+  background: color-mix(in srgb, var(--bg-card) 92%, transparent);
 }
 
 /* Tab navigation */
 .app-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.app-nav-section {
   display: inline-flex;
-  gap: 4px;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
+}
+
+.nav-primary-btn {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 17px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-input);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: var(--shadow-card);
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.nav-primary-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.nav-primary-btn.nav-primary-active,
+.nav-primary-btn.nav-primary-open {
+  background: var(--bg-card);
+  border-color: var(--accent);
+  color: var(--text);
+  box-shadow: 0 8px 18px rgba(0,0,0,.08);
+}
+
+.nav-primary-btn.nav-primary-open {
+  transform: translateY(-1px);
+}
+
+.nav-primary-btn.nav-primary-active::after {
+  content: '';
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: -2px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.nav-primary-chevron {
+  display: inline-block;
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 180ms ease, color 160ms ease;
+}
+
+.nav-primary-open .nav-primary-chevron {
+  color: var(--accent);
+  transform: rotate(90deg);
+}
+
+.app-subnav {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 0;
+  min-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transform: translateX(-18px);
+  transition: max-width 280ms ease, opacity 180ms ease, transform 240ms ease, margin-left 240ms ease;
+}
+
+.app-subnav-open {
+  max-width: 520px;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+  margin-left: 8px;
 }
 
 .tab-btn {
-  padding: 6px 14px;
-  background: transparent;
-  border: 1px solid var(--border);
+  min-height: 34px;
+  padding: 7px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
   color: var(--text-muted);
-  border-radius: 6px;
-  font-size: 0.9rem;
+  border-radius: 7px;
+  font-size: 0.86rem;
+  font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
+  box-shadow: var(--shadow-card);
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease;
 }
 
 .tab-btn:hover {
   background: var(--bg-hover);
+  color: var(--text);
+  transform: translateY(-1px);
 }
 
 .tab-btn.tab-active {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+}
+
+@media (max-width: 760px) {
+  .app-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .app-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+  }
+
+  .app-nav-section {
+    flex: 0 0 auto;
+  }
+
+  .app-subnav-open {
+    max-width: 620px;
+  }
 }
 
 /* File upload panel */
@@ -1167,3 +1292,37 @@ textarea:focus {
   .job-form-grid { grid-template-columns: 1fr; }
   .job-form-wide { grid-column: auto; }
 }
+.bot-drafting-tab {
+  padding: 24px;
+}
+
+.bot-drafting-panel {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 28px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-card);
+}
+
+.bot-drafting-eyebrow {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.bot-drafting-panel h1 {
+  margin: 0 0 10px;
+  color: var(--text);
+  font-size: 1.4rem;
+}
+
+.bot-drafting-panel p {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+
