@@ -1,4 +1,4 @@
-import { McpApp } from '@privos/app-react';
+﻿import { McpApp } from '@privos/app-react';
 import { restCall, getFileContent, createOrUpdateFile, ensureFolderPath } from './privos-rest';
 import { ICvContextBuilder } from './cv-context-builder';
 import cvProcessingGuidelinesRaw from './data/cv_processing_guidelines.md?raw';
@@ -6,6 +6,16 @@ import cvMdTemplateRaw from './data/cv_md_template.md?raw';
 import sangLocCvRaw from './data/sang_loc_cv.md?raw';
 import cvEvaluatorSkillRaw from './data/cv-evaluator-skill.md?raw';
 import jdTemplateRaw from './data/jd_template.md?raw';
+import jdGeneratorSkillRaw from './data/jd-generator-skill.md?raw';
+import jdBackendJavaRaw from '../../Tin_Tuyen_Dung/JD_Backend_Java.md?raw';
+import jdITSystemAdminRaw from '../../Tin_Tuyen_Dung/JD_IT_System_Admin.md?raw';
+import jdManualTesterRaw from '../../Tin_Tuyen_Dung/JD_Manual_Tester.md?raw';
+
+const defaultJDTemplates = [
+  { fileName: 'JD_Backend_Java.md', content: jdBackendJavaRaw },
+  { fileName: 'JD_IT_System_Admin.md', content: jdITSystemAdminRaw },
+  { fileName: 'JD_Manual_Tester.md', content: jdManualTesterRaw },
+];
 
 export interface CVFile {
   _id: string;
@@ -41,6 +51,7 @@ export async function ensureTemplatesExistGlobal(app: McpApp, roomId: string, fo
   const sangLocPath = `${baseFolder}/sang_loc_cv.md`;
   const evaluatorSkillPath = `${baseFolder}/cv-evaluator-skill.md`;
   const jdTemplatePath = `${baseFolder}/jd_template.md`;
+  const jdGeneratorSkillPath = `${baseFolder}/jd-generator.md`;
 
   const checkAndUpload = async (path: string, rawContent: string, isGuideline: boolean) => {
     if (!forceReset) {
@@ -73,6 +84,27 @@ export async function ensureTemplatesExistGlobal(app: McpApp, roomId: string, fo
     }
   };
 
+
+  const checkAndUploadDefaultJD = async (fileName: string, rawContent: string) => {
+    const path = `${roomId}/hr-miniapp/jds/${fileName}`;
+    if (!forceReset) {
+      try {
+        const existing = await getFileContent(app, path);
+        if (existing && existing.trim().length > 10) return;
+      } catch (err) {
+        console.warn(`[CẢNH BÁO] Thiếu JD mẫu ${path}. Tự động tạo mới...`);
+      }
+    }
+
+    console.log(`[DEBUG] Đang upload JD mẫu: ${path}`);
+    try {
+      await createOrUpdateFile(app, path, rawContent);
+      console.log(`[DEBUG] Upload JD mẫu thành công: ${path}`);
+    } catch (err: any) {
+      console.error(`[DEBUG] Lỗi khi upload JD mẫu ${path}:`, err);
+      alert(`Lỗi upload JD mẫu: ${err.message}`);
+    }
+  };
   try {
     // Chạy tuần tự thay vì Promise.all để tránh race condition khi tạo folder
     await checkAndUpload(guidelinePath, cvProcessingGuidelinesRaw, true);
@@ -80,6 +112,7 @@ export async function ensureTemplatesExistGlobal(app: McpApp, roomId: string, fo
     await checkAndUpload(sangLocPath, sangLocCvRaw, false);
     await checkAndUpload(evaluatorSkillPath, cvEvaluatorSkillRaw, true);
     await checkAndUpload(jdTemplatePath, jdTemplateRaw, false);
+    await checkAndUpload(jdGeneratorSkillPath, jdGeneratorSkillRaw, true);
 
     // Tự động tạo sẵn thư mục raws-cv, outputs-cv, skills, jds
     try {
@@ -96,6 +129,10 @@ export async function ensureTemplatesExistGlobal(app: McpApp, roomId: string, fo
       console.log(`[DEBUG] Đã đảm bảo tồn tại thư mục jds`);
     } catch (e) {
       console.error(`[CẢNH BÁO] Không thể tạo thư mục gốc cho ứng dụng:`, e);
+    }
+
+    for (const jd of defaultJDTemplates) {
+      await checkAndUploadDefaultJD(jd.fileName, jd.content);
     }
 
     console.log(`[DEBUG] Hoàn tất ensureTemplatesExist`);
@@ -144,34 +181,21 @@ export class PipelineService {
 
   async fetchAvailableJDs(onLog?: (msg: string) => void): Promise<CVFile[]> {
     try {
-      // 1. Resolve and cache jds folderId
+      // Resolve the exact nested folder: hr-miniapp/jds.
+      // Do not search globally by folder name because another root-level "jds" folder may exist.
       if (this.cachedJdsFolderId === undefined) {
-        if (onLog) onLog(`[DEBUG] Đang tra cứu ID của thư mục jds...`);
-        const foldersResponse: any = await this.app.callServerTool({
-          name: 'privos.folders.search',
-          arguments: { channelId: this.roomId, query: 'jds' }
-        });
-
-        let list: any[] = [];
-        const text = foldersResponse?.content?.[0]?.text;
-        if (text) {
-          const parsed = JSON.parse(text);
-          list = Array.isArray(parsed) ? parsed : (parsed?.folders || []);
-        }
-
-        const jdsFolder = list.find((f: any) => f.name?.toLowerCase() === 'jds');
-        this.cachedJdsFolderId = jdsFolder?._id || null;
-        if (onLog) onLog(`[DEBUG] Đã tìm thấy ID thư mục jds: ${this.cachedJdsFolderId}`);
+        if (onLog) onLog(`[DEBUG] Đang tra cứu đúng thư mục hr-miniapp/jds...`);
+        this.cachedJdsFolderId = await ensureFolderPath(this.app, this.roomId, ['hr-miniapp', 'jds']) || null;
+        if (onLog) onLog(`[DEBUG] ID thư mục hr-miniapp/jds: ${this.cachedJdsFolderId}`);
       }
 
       if (!this.cachedJdsFolderId) {
-        if (onLog) onLog(`[CẢNH BÁO] Không tìm thấy thư mục jds trong phòng. Vui lòng tạo thư mục hr-miniapp/jds.`);
-        console.warn('Không tìm thấy thư mục jds.');
+        if (onLog) onLog(`[CẢNH BÁO] Không tìm thấy thư mục hr-miniapp/jds trong phòng.`);
+        console.warn('Không tìm thấy thư mục hr-miniapp/jds.');
         return [];
       }
 
-      // 2. Fetch files directly from jds folder
-      if (onLog) onLog(`[DEBUG] Đang fetch files từ thư mục jds...`);
+      if (onLog) onLog(`[DEBUG] Đang fetch files từ thư mục hr-miniapp/jds...`);
       const filesResponse: any = await this.app.callServerTool({
         name: 'privos.files.getByChannel',
         arguments: { channelId: this.roomId, folderId: this.cachedJdsFolderId }
@@ -182,11 +206,12 @@ export class PipelineService {
       if (filesText) {
         const parsed = JSON.parse(filesText);
         files = Array.isArray(parsed) ? parsed : (parsed?.files || []);
+      } else {
+        files = filesResponse?.files ?? filesResponse?.body?.files ?? filesResponse?.data ?? [];
       }
-      
-      if (onLog) onLog(`[DEBUG] Tìm thấy ${files.length} files trong thư mục jds.`);
 
-      // 3. Map kết quả cho UI
+      if (onLog) onLog(`[DEBUG] Tìm thấy ${files.length} files trong thư mục hr-miniapp/jds.`);
+
       return files
         .filter((f: any) => f.name?.endsWith('.md'))
         .map((f: any) => ({
@@ -397,7 +422,7 @@ export class PipelineService {
       const currentDate = new Date().toISOString().split('T')[0];
       const jdNameClean = jdName.replace(/[^a-zA-Z0-9]/g, '');
       const processorPrompt = `
-        Hãy dùng skill cv-evaluator để chấm CV sau đây: @Files:${this.roomId}/hr-miniapp/cv-lon-xon/${cv.name}
+        Hãy dùng skill cv-evaluator để chấm CV sau đây: @Files:${this.roomId}/${cv.name}
 
         THÔNG TIN HỆ THỐNG HIỆN TẠI:
         - Tháng hiện tại: ${currentMonth}

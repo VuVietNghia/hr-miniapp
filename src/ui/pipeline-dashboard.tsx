@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+﻿import { useState, useEffect, useRef, useCallback } from 'react';
 import { usePrivosApp, usePrivosContext } from '@privos/app-react';
 import { PipelineService, CVFile, ProcessingStatus } from './pipeline-service';
 import { MarkdownPathContextBuilder } from './cv-context-builder';
 
-// ─── Dependency Injection Interface ─────────────────────────────────────────────
+// Dependency Injection Interface
 // Swap implementation easily in the future (e.g. mock for testing)
 export interface IPipelineService {
   fetchAvailableFiles(): Promise<CVFile[]>;
@@ -67,43 +67,52 @@ const emptyJDForm: JDFormState = {
   emailSubject: '',
 };
 
+const defaultJDTemplateNames = new Set([
+  'JD_Backend_Java.md',
+  'JD_IT_System_Admin.md',
+  'JD_Manual_Tester.md',
+]);
+
 const hasJDFormValue = (form: JDFormState) =>
   Object.values(form).some(value => value.trim().length > 0);
 
-const buildJDPromptFromForm = (form: JDFormState) => `
-Thông tin tuyển dụng:
+const buildJDPromptFromForm = (form: JDFormState) => {
+  const unknown = 'Kh\u00f4ng x\u00e1c \u0111\u1ecbnh';
+  return `
+Th\u00f4ng tin tuy\u1ec3n d\u1ee5ng:
 
-1. Thông tin chung
-- Vị trí: ${form.position || 'Không xác định'}
-- Phòng ban: ${form.department || 'Không xác định'}
-- Địa điểm làm việc: ${form.location || 'Không xác định'}
-- Thời gian làm việc: ${form.workTime || 'Không xác định'}
+1. Th\u00f4ng tin chung
+- V\u1ecb tr\u00ed: ${form.position || unknown}
+- Ph\u00f2ng ban: ${form.department || unknown}
+- \u0110\u1ecba \u0111i\u1ec3m l\u00e0m vi\u1ec7c: ${form.location || unknown}
+- Th\u1eddi gian l\u00e0m vi\u1ec7c: ${form.workTime || unknown}
 
-2. Mô tả công việc
-${form.jobDescription || 'Không xác định'}
+2. M\u00f4 t\u1ea3 c\u00f4ng vi\u1ec7c
+${form.jobDescription || unknown}
 
-3. Yêu cầu ứng viên
-- Kinh nghiệm: ${form.experience || 'Không xác định'}
-- Kỹ năng chuyên môn: ${form.technicalSkills || 'Không xác định'}
-- Kỹ năng mềm: ${form.softSkills || 'Không xác định'}
-- Học vấn: ${form.education || 'Không xác định'}
+3. Y\u00eau c\u1ea7u \u1ee9ng vi\u00ean
+- Kinh nghi\u1ec7m: ${form.experience || unknown}
+- K\u1ef9 n\u0103ng chuy\u00ean m\u00f4n: ${form.technicalSkills || unknown}
+- K\u1ef9 n\u0103ng m\u1ec1m: ${form.softSkills || unknown}
+- H\u1ecdc v\u1ea5n: ${form.education || unknown}
 
-4. Quyền lợi
-- Mức lương: ${form.salary || 'Không xác định'}
-- Phúc lợi: ${form.benefits || 'Không xác định'}
-- Môi trường làm việc: ${form.workEnvironment || 'Không xác định'}
+4. Quy\u1ec1n l\u1ee3i
+- M\u1ee9c l\u01b0\u01a1ng: ${form.salary || unknown}
+- Ph\u00fac l\u1ee3i: ${form.benefits || unknown}
+- M\u00f4i tr\u01b0\u1eddng l\u00e0m vi\u1ec7c: ${form.workEnvironment || unknown}
 
-5. Cách thức ứng tuyển
-- Email nhận CV: ${form.applyEmail || 'Không xác định'}
-- Tiêu đề email: ${form.emailSubject || 'Không xác định'}
+5. C\u00e1ch th\u1ee9c \u1ee9ng tuy\u1ec3n
+- Email nh\u1eadn CV: ${form.applyEmail || unknown}
+- Ti\u00eau \u0111\u1ec1 email: ${form.emailSubject || unknown}
 `.trim();
+};
 
 
-// ─── Sub-components ─────────────────────────────────────────────────────────────
+// Sub-components
 
 function StatusBadge({ category }: { category: string }) {
-  const isPass = category === 'DAT' || category === 'ĐẠT';
-  const isWarn = category === 'CAN NHAC' || category === 'CÂN NHẮC';
+  const isPass = category === "DAT" || category === "\u0110\u1ea0T";
+  const isWarn = category === "CAN NHAC" || category === "C\u00c2N NH\u1eaeC";
   const style: React.CSSProperties = {
     display: 'inline-flex', alignItems: 'center', gap: '5px',
     padding: '3px 10px', borderRadius: 'var(--radius-sm)',
@@ -111,16 +120,16 @@ function StatusBadge({ category }: { category: string }) {
     backgroundColor: isPass ? 'var(--success-bg)' : isWarn ? 'var(--status-warn-bg)' : 'var(--status-fail-bg)',
     color: isPass ? 'var(--status-pass)' : isWarn ? 'var(--status-warn)' : 'var(--status-fail)',
   };
-  return <span style={style}>{isPass ? '✓' : isWarn ? '◐' : '✗'} {category}</span>;
+  return <span style={style}>{isPass ? '\u2713' : isWarn ? '\u25cf' : '\u2717'} {category}</span>;
 }
 
 function ProcessingBadge({ status }: { status: ProcessingStatus['status'] }) {
   const map: Record<string, { label: string; color: string }> = {
-    pending: { label: 'Chờ xử lý', color: 'var(--text-faint)' },
-    renaming: { label: 'Đang xử lý…', color: 'var(--accent)' },
-    scoring: { label: 'Chấm điểm…', color: 'var(--accent-warm)' },
-    completed: { label: 'Hoàn thành', color: 'var(--status-pass)' },
-    error: { label: 'Lỗi', color: 'var(--status-fail)' },
+    pending: { label: '\u0110ang ch\u1edd', color: 'var(--text-faint)' },
+    renaming: { label: '\u0110ang x\u1eed l\u00fd\u2026', color: 'var(--accent)' },
+    scoring: { label: 'Ch\u1ea5m \u0111i\u1ec3m\u2026', color: 'var(--accent-warm)' },
+    completed: { label: 'Ho\u00e0n th\u00e0nh', color: 'var(--status-pass)' },
+    error: { label: 'L\u1ed7i', color: 'var(--status-fail)' },
   };
   const { label, color } = map[status] ?? { label: status, color: 'var(--text-muted)' };
   return <span style={{ fontSize: '12px', color, fontWeight: 500 }}>{label}</span>;
@@ -141,7 +150,7 @@ function CVResultCard({ s }: { s: ProcessingStatus }) {
         <div
           style={{ flex: 1, minWidth: 0, cursor: hasDetails ? 'pointer' : 'default' }}
           onClick={() => hasDetails && setIsOpen(!isOpen)}
-          title={hasDetails ? "Nhấn để xem chi tiết" : ""}
+          title={hasDetails ? "Nh\u1ea5n \u0111\u1ec3 xem chi ti\u1ebft" : ""}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -152,7 +161,7 @@ function CVResultCard({ s }: { s: ProcessingStatus }) {
                 fontSize: '9px', color: 'var(--text-faint)',
                 transform: isOpen ? 'rotate(180deg)' : 'none',
                 transition: 'transform 0.2s', display: 'inline-block'
-              }}>▼</span>
+              }}>{'\u25bc'}</span>
             )}
           </div>
           {s.normalizedName && (
@@ -182,7 +191,7 @@ function CVResultCard({ s }: { s: ProcessingStatus }) {
           )}
           {s.errorMsg && (
             <p style={{ margin: s.reason ? '8px 0 0' : 0, fontSize: '12px', color: 'var(--status-fail)', lineHeight: 1.5 }}>
-              ⚠ {s.errorMsg}
+              {'\u26a0'} {s.errorMsg}
             </p>
           )}
         </div>
@@ -191,7 +200,7 @@ function CVResultCard({ s }: { s: ProcessingStatus }) {
   );
 }
 
-// ─── Main Component ─────────────────────────────────────────────────────────────
+// Main Component
 
 export default function PipelineDashboard({ serviceFactory }: PipelineDashboardProps = {}) {
   const app = usePrivosApp();
@@ -200,11 +209,13 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   const [files, setFiles] = useState<CVFile[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [statuses, setStatuses] = useState<Record<string, ProcessingStatus>>({});
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [jdContent, setJdContent] = useState('');
   const [jdName, setJdName] = useState('');
   const [availableJDs, setAvailableJDs] = useState<CVFile[]>([]);
+  const [jdLoading, setJdLoading] = useState(false);
+  const [jdDropdownOpen, setJdDropdownOpen] = useState(false);
   const [jdPrompt, setJdPrompt] = useState('');
   const [jdFormOpen, setJdFormOpen] = useState(false);
   const [jdForm, setJdForm] = useState<JDFormState>(emptyJDForm);
@@ -214,6 +225,7 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
   const toastTimerRef = useRef<number | null>(null);
+  const jdDropdownRef = useRef<HTMLDivElement>(null);
   const serviceRef = useRef<IPipelineService | null>(null);
 
 
@@ -231,17 +243,32 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
       ? serviceFactory(app, roomId)
       : new PipelineService(app, roomId, new MarkdownPathContextBuilder());
 
-    loadFiles();
-    loadJDs();
+    const initPipeline = async () => {
+      setJdLoading(true);
+      try {
+        await serviceRef.current?.ensureTemplatesExist?.(false);
+        await loadFiles();
+        await loadJDs();
+      } finally {
+        setJdLoading(false);
+      }
+    };
+
+    initPipeline().catch(console.error);
   }, [app, roomId]);
 
-  const loadJDs = async () => {
-    if (!serviceRef.current?.fetchAvailableJDs) return;
+  const loadJDs = async (): Promise<CVFile[]> => {
+    if (!serviceRef.current?.fetchAvailableJDs) return [];
+    setJdLoading(true);
     try {
       const jds = await serviceRef.current.fetchAvailableJDs(addLog);
       setAvailableJDs(jds);
+      return jds;
     } catch (err) {
-      console.error('Lỗi tải danh sách JD:', err);
+      console.error('Loi tai danh sach JD:', err);
+      return [];
+    } finally {
+      setJdLoading(false);
     }
   };
 
@@ -257,6 +284,17 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
       document.body.style.overflow = previousOverflow;
     };
   }, [jdFormOpen]);
+
+  useEffect(() => {
+    if (!jdDropdownOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!jdDropdownRef.current?.contains(event.target as Node)) {
+        setJdDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [jdDropdownOpen]);
 
   const addLog = useCallback((msg: string) => {
     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
@@ -295,10 +333,10 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
       const uploadPromises = Array.from(uploadedFiles).map(async (file) => {
         try {
           await serviceRef.current!.uploadCV(file);
-          addLog(`Đã tải lên: ${file.name}`);
+          addLog(`\u0110\u00e3 t\u1ea3i l\u00ean: ${file.name}`);
           return file.name;
         } catch {
-          addLog(`Lỗi tải lên: ${file.name}`);
+          addLog(`L\u1ed7i t\u1ea3i l\u00ean: ${file.name}`);
           return null;
         }
       });
@@ -332,27 +370,27 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
     setLoading(true);
     try {
       const res = await serviceRef.current.uploadJD(file);
-      addLog(`Đã tải lên JD: ${res.name}`);
+      addLog(`\u0110\u00e3 t\u1ea3i l\u00ean JD: ${res.name}`);
       await loadJDs(); // Refresh dropdown
       if (res._id) {
         await handleSelectJD(res._id); // Auto select new JD
       }
     } catch (err: any) {
-      alert('Lỗi tải lên JD: ' + err.message);
-      addLog(`Lỗi tải lên JD: ${err.message}`);
+      alert('L\u1ed7i t\u1ea3i l\u00ean JD: ' + err.message);
+      addLog(`L\u1ed7i t\u1ea3i l\u00ean JD: ${err.message}`);
     } finally {
       setLoading(false);
       e.target.value = '';
     }
   };
 
-  const handleSelectJD = async (fileId: string) => {
+  const handleSelectJD = async (fileId: string, jdList: CVFile[] = availableJDs) => {
     if (!fileId) {
       setJdContent('');
       setJdName('');
       return;
     }
-    const jdFile = availableJDs.find(f => f._id === fileId);
+    const jdFile = jdList.find(f => f._id === fileId);
     if (!jdFile) return;
     try {
       setJdName(jdFile.name);
@@ -374,38 +412,70 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
         }
       }
     } catch (err: any) {
-      alert('Lỗi khi tải nội dung JD: ' + err.message);
+      alert('L\u1ed7i khi t\u1ea3i n\u1ed9i dung JD: ' + err.message);
     }
   };
 
   const handleGenerateJD = async () => {
     if (!jdPrompt.trim() || !serviceRef.current?.askAI) return;
+    const beforeJDNames = new Set(availableJDs.map(jd => jd.name));
     setIsGeneratingJD(true);
     setJdFormOpen(false);
-    addLog(`Đang gửi yêu cầu tạo JD cho AI...`);
+    addLog(`\u0110ang g\u1eedi y\u00eau c\u1ea7u t\u1ea1o JD cho AI...`);
     try {
-      // Use askAI directly to interact with Privos AI engine, ensuring the AI creates and saves the file
-      const fullPrompt = `[SYSTEM AUTOMATION] THỰC THI NGAY LẬP TỨC, KHÔNG HỎI LẠI!
-Hãy đọc file @Files:${roomId}/hr-miniapp/skills/jd-generator.md và thực thi ngay lập tức toàn bộ 4 bước workflow trong đó để tạo JD cho yêu cầu sau: "${jdPrompt}".
-BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả lời khi đã lưu xong!`;
+      // Prompt starts with @Files so askAI will not wrap it in extractor directives.
+      // The JD generator skill needs to run as an automation workflow that writes a file.
+      const fullPrompt = `@Files:${roomId}/hr-miniapp/skills/jd-generator.md
+[SYSTEM AUTOMATION] EXECUTE NOW. DO NOT ASK FOLLOW-UP QUESTIONS.
+Read the skill file above and run the full JD generation workflow.
 
-      addLog(`Đã gửi yêu cầu. Đang chờ AI phân tích và tạo JD (có thể mất 30-60s)...`);
+User JD request:
+${jdPrompt}
+
+REQUIRED:
+1. Save a .md file into RoomFiles/${roomId}/hr-miniapp/jds/.
+2. If the filename already exists, append a number suffix.
+3. Only report completion after the file has been saved.
+4. Return the saved path in <saved_file>...</saved_file>.`;
+
+      addLog(`\u0110\u00e3 g\u1eedi y\u00eau c\u1ea7u. \u0110ang ch\u1edd AI ph\u00e2n t\u00edch v\u00e0 t\u1ea1o JD (c\u00f3 th\u1ec3 m\u1ea5t 30-60s)...`);
 
       const res = await serviceRef.current.askAI(fullPrompt, undefined, undefined, addLog);
 
       if (res && res.text) {
-        addLog(`✨ AI đã tạo xong JD! Đang tải lại danh sách...`);
-        setJdPrompt('');
-        setJdForm(emptyJDForm);
-        setJdFormOpen(false);
-        await loadJDs();
-        showToast('AI đã tạo xong JD mới. Danh sách đã được cập nhật.');
+        addLog(`AI \u0111\u00e3 ph\u1ea3n h\u1ed3i. \u0110ang ki\u1ec3m tra file JD m\u1edbi trong th\u01b0 m\u1ee5c jds...`);
+
+        let refreshedJDs: CVFile[] = [];
+        let createdJD: CVFile | undefined;
+
+        for (let attempt = 1; attempt <= 5; attempt++) {
+          refreshedJDs = await loadJDs();
+          createdJD = refreshedJDs.find(jd => !beforeJDNames.has(jd.name));
+          if (createdJD) break;
+
+          if (attempt < 5) {
+            addLog(`Ch\u01b0a th\u1ea5y file JD m\u1edbi trong danh s\u00e1ch. Th\u1eed t\u1ea3i l\u1ea1i l\u1ea7n ${attempt + 1}/5...`);
+            await new Promise(resolve => window.setTimeout(resolve, 2000));
+          }
+        }
+
+        if (createdJD) {
+          addLog(`AI \u0111\u00e3 t\u1ea1o JD m\u1edbi: ${createdJD.name}`);
+          setJdPrompt('');
+          setJdForm(emptyJDForm);
+          setJdFormOpen(false);
+          await handleSelectJD(createdJD._id, refreshedJDs);
+          showToast(`AI \u0111\u00e3 t\u1ea1o xong JD m\u1edbi: ${createdJD.name}`);
+        } else {
+          addLog(`AI \u0111\u00e3 ph\u1ea3n h\u1ed3i nh\u01b0ng ch\u01b0a th\u1ea5y file JD m\u1edbi trong th\u01b0 m\u1ee5c jds.`);
+          showToast('AI \u0111\u00e3 ph\u1ea3n h\u1ed3i nh\u01b0ng ch\u01b0a th\u1ea5y JD m\u1edbi trong danh s\u00e1ch. Vui l\u00f2ng ki\u1ec3m tra log ho\u1eb7c b\u1ea5m l\u00e0m m\u1edbi JD.', 'error');
+        }
       } else {
-        addLog(`⚠️ AI đã xử lý nhưng không nhận được kết quả text.`);
-        showToast('AI phản hồi chậm hoặc có lỗi. Vui lòng kiểm tra lại.', 'error');
+        addLog(`AI \u0111\u00e3 x\u1eed l\u00fd nh\u01b0ng kh\u00f4ng nh\u1eadn \u0111\u01b0\u1ee3c k\u1ebft qu\u1ea3 text.`);
+        showToast('AI ph\u1ea3n h\u1ed3i ch\u1eadm ho\u1eb7c c\u00f3 l\u1ed7i. Vui l\u00f2ng ki\u1ec3m tra l\u1ea1i.', 'error');
       }
     } catch (err: any) {
-      showToast('Lỗi gửi yêu cầu: ' + err.message, 'error');
+      showToast('L\u1ed7i g\u1eedi y\u00eau c\u1ea7u: ' + err.message, 'error');
     } finally {
       setIsGeneratingJD(false);
     }
@@ -413,9 +483,9 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
 
   const startPipeline = async () => {
     if (!serviceRef.current || selectedIds.size === 0) return;
-    if (!jdContent) { alert('Vui lòng tải lên file JD trước khi bắt đầu.'); return; }
+    if (!jdContent) { alert('Vui l\u00f2ng t\u1ea3i l\u00ean file JD tr\u01b0\u1edbc khi b\u1eaft \u0111\u1ea7u.'); return; }
     setProcessing(true); setLogs([]); setLogOpen(true);
-    addLog('— Pipeline bắt đầu —');
+    addLog('\u2014 Pipeline b\u1eaft \u0111\u1ea7u \u2014');
     const filesToProcess = files.filter(f => selectedIds.has(f._id));
     setStatuses(prev => ({
       ...prev,
@@ -425,7 +495,7 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
     const resultsForKanban: Array<{ originalName: string; normalizedName?: string; score?: number; category?: string; reason?: string }> = [];
 
     for (const cv of filesToProcess) {
-      addLog(`Đang xử lý: ${cv.name}`);
+      addLog(`\u0110ang x\u1eed l\u00fd: ${cv.name}`);
       let currentStatus: any = { originalName: cv.name };
       
       await serviceRef.current.processCV(
@@ -442,22 +512,26 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
     }
 
     if (serviceRef.current.createKanbanBatchViaAI && resultsForKanban.length > 0) {
-      addLog(`Bắt đầu tạo List Kanban và lưu kết quả ${resultsForKanban.length} CV...`);
+      addLog(`B\u1eaft \u0111\u1ea7u t\u1ea1o List Kanban v\u00e0 l\u01b0u k\u1ebft qu\u1ea3 ${resultsForKanban.length} CV...`);
       try {
         await serviceRef.current.createKanbanBatchViaAI(resultsForKanban, jdName, addLog);
       } catch (err: any) {
-        addLog(`Lỗi tạo Kanban: ${err.message}`);
+        addLog(`L\u1ed7i t\u1ea1o Kanban: ${err.message}`);
       }
     }
 
     setProcessing(false);
-    addLog('— Pipeline kết thúc —');
+    addLog('\u2014 Pipeline k\u1ebft th\u00fac \u2014');
     await loadFiles();
-    showToast('Đã chấm điểm xong và lưu kết quả vào list.');
+    showToast('\u0110\u00e3 ch\u1ea5m \u0111i\u1ec3m xong v\u00e0 l\u01b0u k\u1ebft qu\u1ea3 v\u00e0o list.');
   };
 
 
   const resultList = Object.values(statuses);
+  const defaultJDs = availableJDs.filter(jd => defaultJDTemplateNames.has(jd.name));
+  const aiGeneratedJDs = availableJDs.filter(jd => !defaultJDTemplateNames.has(jd.name));
+  const selectedJD = availableJDs.find(jd => jd.name === jdName);
+  const jdDropdownLabel = jdLoading ? "Vui l\u00f2ng ch\u1edd JD \u0111ang t\u1ea3i l\u00ean" : selectedJD?.name || "Ch\u1ecdn JD";
   const isJDFormReady = hasJDFormValue(jdForm);
 
   const updateJDFormField = (field: keyof JDFormState, value: string) => {
@@ -526,6 +600,51 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
         .pl-btn:disabled { opacity: 0.45; cursor: not-allowed; }
         .pl-btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
         .pl-btn-primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); box-shadow: 0 0 0 3px rgba(21,111,245,.2); }
+        .pl-select-wrap { position: relative; flex: 1; min-width: 0; }
+        .pl-select-wrap::after {
+          content: '\\2304'; position: absolute; right: 12px; top: 50%; transform: translateY(-52%);
+          pointer-events: none; color: var(--text-muted); font-size: 14px; line-height: 1;
+        }
+        .pl-select {
+          width: 100%; height: 38px; appearance: none; -webkit-appearance: none;
+          padding: 8px 34px 8px 12px; border: 1px solid var(--border);
+          border-radius: 12px; background: var(--bg-card); color: var(--text);
+          font-family: 'DM Sans', system-ui, sans-serif; font-size: 13px; font-weight: 500;
+          cursor: pointer; outline: none; transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+        }
+        .pl-select:hover { background: var(--bg-hover); border-color: var(--text-muted); }
+        .pl-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(21,111,245,.12); }
+        .pl-dropdown-button {
+          width: 100%; height: 38px; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+          padding: 8px 12px; border: 1px solid var(--border); border-radius: 12px;
+          background: var(--bg-card); color: var(--text); font-family: 'DM Sans', system-ui, sans-serif;
+          font-size: 13px; font-weight: 500; cursor: pointer; text-align: left;
+          transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+        }
+        .pl-dropdown-button:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--text-muted); }
+        .pl-dropdown-button.open { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(21,111,245,.12); }
+        .pl-dropdown-button:disabled { opacity: 0.6; cursor: wait; }
+        .pl-dropdown-button span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pl-dropdown-caret { color: var(--text-muted); flex-shrink: 0; transition: transform 0.15s; }
+        .pl-dropdown-button.open .pl-dropdown-caret { transform: rotate(180deg); }
+        .pl-dropdown-menu {
+          position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 40;
+          max-height: 260px; overflow-y: auto; padding: 8px;
+          background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+          box-shadow: 0 18px 44px rgba(0,0,0,.18); animation: pl-in 0.16s ease;
+        }
+        .pl-dropdown-group + .pl-dropdown-group { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-light); }
+        .pl-dropdown-group p { margin: 2px 6px 6px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
+        .pl-dropdown-item {
+          width: 100%; display: block; padding: 9px 10px; border: 0; border-radius: 10px;
+          background: transparent; color: var(--text); font: inherit; font-size: 13px; text-align: left;
+          cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .pl-dropdown-item:hover { background: var(--bg-hover); }
+        .pl-dropdown-item.selected { background: rgba(21,111,245,.08); color: var(--accent); font-weight: 600; }
+        .pl-dropdown-menu { scrollbar-width: none; -ms-overflow-style: none; }
+        .pl-dropdown-menu::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
 
         .pl-toast {
           position: fixed; top: 20px; right: 24px; z-index: 1300;
@@ -566,14 +685,21 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
         .pl-textarea { min-height: 82px; resize: vertical; line-height: 1.5; }
         .pl-input:focus, .pl-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(21,111,245,.12); }
         .pl-results-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 10px; }
+        .pl-cv-list {
+          width: 100%; max-height: 180px; overflow-y: auto; padding: 8px;
+          border: 1px solid var(--border); border-radius: 14px; background: var(--bg-card);
+          scrollbar-width: none; -ms-overflow-style: none;
+        }
+        .pl-cv-list::-webkit-scrollbar { width: 0; height: 0; display: none; }
+        .pl-cv-empty { margin: 0; padding: 11px 10px; font-size: 13px; color: var(--text-faint); }
         .pl-file-item {
           display: flex; align-items: center; gap: 10px;
           padding: 9px 10px; border-radius: var(--radius-sm);
-          border: 1px solid var(--border); cursor: pointer;
+          border: 1px solid transparent; background: transparent; cursor: pointer;
           font-size: 13px; color: var(--text); margin-bottom: 6px;
           transition: background 0.15s, border-color 0.15s; user-select: none;
         }
-        .pl-file-item:hover { background: var(--bg-hover); }
+        .pl-file-item:hover { background: var(--bg-hover); border-color: transparent; }
         .pl-file-item.sel { background: rgba(21,111,245,.06); border-color: var(--accent); color: var(--accent); }
         .pl-check { width: 14px; height: 14px; flex-shrink: 0; border: 1.5px solid var(--border); border-radius: 3px; transition: background 0.15s, border-color 0.15s; }
         .pl-file-item.sel .pl-check { background: var(--accent); border-color: var(--accent); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 6l3 3 5-5' stroke='white' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-size: 10px; background-position: center; background-repeat: no-repeat; }
@@ -608,18 +734,9 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
               CV Pipeline
             </h1>
             <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
-              Xử lý & chấm điểm CV tự động
-              {jdName && <span style={{ marginLeft: '8px', color: 'var(--accent)', fontWeight: 500 }}>· {jdName}</span>}
+              {'X\u1eed l\u00fd & ch\u1ea5m \u0111i\u1ec3m CV t\u1ef1 \u0111\u1ed9ng'}
+              {jdName && <span style={{ marginLeft: '8px', color: 'var(--accent)', fontWeight: 500 }}>{'\u00b7'} {jdName}</span>}
             </p>
-          </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button className="pl-btn" style={{ borderColor: 'var(--text-muted)', color: 'var(--text-muted)' }} onClick={() => {
-              if (window.confirm('Hành động này sẽ ghi đè các file hướng dẫn AI (Template & Guidelines) về trạng thái mặc định. Bạn có chắc chắn không?')) {
-                serviceRef.current?.ensureTemplatesExist?.(true).then(() => alert('Đã khôi phục mặc định thành công!')).catch((e: any) => alert('Lỗi: ' + e));
-              }
-            }}>
-              ↺ Reset Templates
-            </button>
           </div>
         </header>
 
@@ -631,26 +748,62 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
             {/* JD Card */}
             <div className="pl-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <p className="pl-label" style={{ margin: 0 }}>01 · Job Description</p>
-                {jdContent && <span style={{ fontSize: '12px', color: 'var(--status-pass)', fontWeight: 500 }}>✓ Đã nạp</span>}
+                <p className="pl-label" style={{ margin: 0 }}>{"01 \u00b7 Job Description"}</p>
+                {jdContent && <span style={{ fontSize: '12px', color: 'var(--status-pass)', fontWeight: 500 }}>{'\u2713 \u0110\u00e3 n\u1ea1p'}</span>}
               </div>
 
               {/* JD Selection */}
               <div style={{ marginBottom: '16px' }}>
-                <p style={{ fontSize: '13px', fontWeight: 500, margin: '0 0 6px 0' }}>Chọn JD có sẵn</p>
+                <p style={{ fontSize: '13px', fontWeight: 500, margin: '0 0 6px 0' }}>{'Ch\u1ecdn JD c\u00f3 s\u1eb5n'}</p>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <select
-                    className="pl-btn"
-                    style={{ flex: 1, backgroundColor: 'var(--bg)', textAlign: 'left', minWidth: 0 }}
-                    value={availableJDs.find(j => j.name === jdName)?._id || ''}
-                    onChange={(e) => handleSelectJD(e.target.value)}
-                  >
-                    <option value="">-- Vui lòng chọn JD --</option>
-                    {availableJDs.map(jd => (
-                      <option key={jd._id} value={jd._id}>{jd.name}</option>
-                    ))}
-                  </select>
-                  <button className="pl-btn" onClick={loadJDs} title="Làm mới danh sách JD">↻</button>
+                  <div className="pl-select-wrap" ref={jdDropdownRef}>
+                    <button
+                      type="button"
+                      className={`pl-dropdown-button${jdDropdownOpen ? ' open' : ''}`}
+                      onClick={() => !jdLoading && setJdDropdownOpen(open => !open)}
+                      disabled={jdLoading}
+                    >
+                      <span>{jdDropdownLabel}</span>
+                      <span className="pl-dropdown-caret">{"\u2304"}</span>
+                    </button>
+
+                    {jdDropdownOpen && (
+                      <div className="pl-dropdown-menu">
+                        {defaultJDs.length > 0 && (
+                          <div className="pl-dropdown-group">
+                            <p>{'JD tuy\u1ec3n d\u1ee5ng'}</p>
+                            {defaultJDs.map(jd => (
+                              <button
+                                key={jd._id}
+                                type="button"
+                                className={`pl-dropdown-item${jd.name === jdName ? ' selected' : ''}`}
+                                onClick={() => { handleSelectJD(jd._id); setJdDropdownOpen(false); }}
+                              >
+                                {jd.name}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {aiGeneratedJDs.length > 0 && (
+                          <div className="pl-dropdown-group">
+                            <p>{'JD AI t\u1ea1o'}</p>
+                            {aiGeneratedJDs.map(jd => (
+                              <button
+                                key={jd._id}
+                                type="button"
+                                className={`pl-dropdown-item${jd.name === jdName ? ' selected' : ''}`}
+                                onClick={() => { handleSelectJD(jd._id); setJdDropdownOpen(false); }}
+                              >
+                                {jd.name}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <button className="pl-btn" onClick={() => { setJdDropdownOpen(false); loadJDs(); }} disabled={jdLoading} title={"L\u00e0m m\u1edbi danh s\u00e1ch JD"}>{"\u21bb"}</button>
                 </div>
               </div>
 
@@ -662,15 +815,15 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
                   onClick={() => setJdFormOpen(true)}
                   disabled={isGeneratingJD}
                 >
-                  {isGeneratingJD ? 'Đang tạo JD' : <><span>✨</span> Tạo JD bằng AI</>}
+                  {isGeneratingJD ? '\u0110ang t\u1ea1o JD' : <><span>{'\u2728'}</span> {'T\u1ea1o JD b\u1eb1ng AI'}</>}
                 </button>
               </div>
               {/* JD Upload Fallback */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingTop: '12px', borderTop: '1px dashed var(--border-light)', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Hoặc tải file từ máy tính:</span>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{'Ho\u1eb7c t\u1ea3i file t\u1eeb m\u00e1y t\u00ednh:'}</span>
                 <input type="file" id="jd-upload" style={{ display: 'none' }} onChange={handleUploadJD} accept=".md,.txt" />
                 <button className="pl-btn" style={{ fontSize: '12px', padding: '4px 8px' }} onClick={() => document.getElementById('jd-upload')?.click()} disabled={processing}>
-                  ↑ Upload
+                  {'\u2191 Upload'}
                 </button>
               </div>
             </div>
@@ -678,34 +831,46 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
             {/* CV Queue Card */}
             <div className="pl-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <p className="pl-label" style={{ margin: 0 }}>02 · Hàng chờ CV</p>
-                <button onClick={loadFiles} disabled={loading || processing}
-                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '12px', color: 'var(--text-muted)', textDecoration: 'underline' }}>
-                  Làm mới
+                <p className="pl-label" style={{ margin: 0 }}>{"02 \u00b7 H\u00e0ng ch\u1edd CV"}</p>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 500 }}>
+                  {files.length} CV {'\u00b7'} {'ch\u1ecdn'} {selectedIds.size}
+                </span>
+              </div>
+
+              <input type="file" id="cv-upload" style={{ display: 'none' }} multiple onChange={handleUploadCV} accept=".pdf,.doc,.docx,.jpg,.png" />
+
+              <div style={{ marginBottom: '16px' }}>
+                <p style={{ fontSize: '13px', fontWeight: 500, margin: '0 0 6px 0' }}>{'CV \u0111\u00e3 upload'}</p>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                  <div className="pl-cv-list">
+                    {loading
+                      ? <p className="pl-cv-empty" style={{ color: 'var(--text-muted)' }}>{'Vui l\u00f2ng ch\u1edd CV t\u1ea3i l\u00ean'}</p>
+                      : files.length === 0
+                        ? <p className="pl-cv-empty">{"Kh\u00f4ng c\u00f3 file n\u00e0o"}</p>
+                        : files.map(f => (
+                          <div key={f._id} className={`pl-file-item${selectedIds.has(f._id) ? ' sel' : ''}`}
+                            onClick={() => !processing && handleToggleSelect(f._id)} title={f.name}>
+                            <span className="pl-check" />
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{f.name}</span>
+                          </div>
+                        ))
+                    }
+                  </div>
+                  <button className="pl-btn" onClick={loadFiles} disabled={loading || processing} title={"L\u00e0m m\u1edbi danh s\u00e1ch CV"}>{"\u21bb"}</button>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <button className="pl-btn pl-btn-primary" style={{ width: '100%', justifyContent: 'center' }}
+                  onClick={startPipeline} disabled={selectedIds.size === 0 || processing || !jdContent}>
+                  {processing ? '\u27f3 \u0110ang x\u1eed l\u00fd\u2026' : `Ch\u1ea5m \u0111i\u1ec3m (${selectedIds.size})`}
                 </button>
               </div>
-              <input type="file" id="cv-upload" style={{ display: 'none' }} multiple onChange={handleUploadCV} accept=".pdf,.doc,.docx,.jpg,.png" />
-              <button className="pl-btn" style={{ marginBottom: '12px' }} onClick={() => document.getElementById('cv-upload')?.click()} disabled={loading || processing}>
-                + Thêm CV
-              </button>
-              <div style={{ maxHeight: '180px', overflowY: 'auto', paddingRight: '2px' }}>
-                {loading
-                  ? <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)' }}>Đang tải…</p>
-                  : files.length === 0
-                    ? <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-faint)' }}>Không có file nào</p>
-                    : files.map(f => (
-                      <div key={f._id} className={`pl-file-item${selectedIds.has(f._id) ? ' sel' : ''}`}
-                        onClick={() => !processing && handleToggleSelect(f._id)} title={f.name}>
-                        <span className="pl-check" />
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{f.name}</span>
-                      </div>
-                    ))
-                }
-              </div>
-              <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid var(--border-light)', display: 'flex', gap: '8px' }}>
-                <button className="pl-btn pl-btn-primary" style={{ flex: 1, justifyContent: 'center' }}
-                  onClick={startPipeline} disabled={selectedIds.size === 0 || processing || !jdContent}>
-                  {processing ? '⟳ Đang xử lý…' : `Chấm điểm (${selectedIds.size})`}
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingTop: '12px', borderTop: '1px dashed var(--border-light)', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{'Ho\u1eb7c t\u1ea3i CV t\u1eeb m\u00e1y t\u00ednh:'}</span>
+                <button className="pl-btn" style={{ fontSize: '12px', padding: '4px 8px' }} onClick={() => document.getElementById('cv-upload')?.click()} disabled={loading || processing}>
+                  {'\u2191 Upload'}
                 </button>
               </div>
             </div>
@@ -714,7 +879,7 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
           {/* Results */}
           <div className="pl-card" style={{ padding: '18px 20px', minHeight: '280px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <p className="pl-label" style={{ margin: 0 }}>03 · Kết quả chấm</p>
+              <p className="pl-label" style={{ margin: 0 }}>{"03 \u00b7 K\u1ebft qu\u1ea3 ch\u1ea5m"}</p>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 {resultList.length > 0 && <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{resultList.length} CV</span>}
               </div>
@@ -723,7 +888,7 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
               ? (
                 <div style={{ minHeight: '190px', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
                   <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-faint)' }}>
-                    Chưa có kết quả — chọn CV và chạy chấm điểm
+                    {'Ch\u01b0a c\u00f3 k\u1ebft qu\u1ea3 \u2014 ch\u1ecdn CV v\u00e0 ch\u1ea1y ch\u1ea5m \u0111i\u1ec3m'}
                   </p>
                 </div>
               )
@@ -738,15 +903,15 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
           {/* System Log */}
           <div className="pl-card" style={{ padding: '14px 16px' }}>
             <button className="pl-btn" style={{ justifyContent: 'space-between', width: '100%' }} onClick={() => setLogOpen(o => !o)}>
-              <span>📋 Nhật ký hệ thống</span>
+              <span>{'\ud83d\udccb Nh\u1eadt k\u00fd h\u1ec7 th\u1ed1ng'}</span>
               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                {logs.length > 0 ? `${logs.length} dòng` : 'Trống'} {logOpen ? '▲' : '▼'}
+                {logs.length > 0 ? `${logs.length} d\u00f2ng` : "Tr\u1ed1ng"} {logOpen ? "\u25b2" : "\u25bc"}
               </span>
             </button>
             {logOpen && (
               <div className="pl-log" style={{ maxHeight: '280px' }}>
                 {logs.length === 0
-                  ? <span style={{ color: 'var(--text-faint)' }}>Chưa có log…</span>
+                  ? <span style={{ color: 'var(--text-faint)' }}>{'Ch\u01b0a c\u00f3 log\u2026'}</span>
                   : logs.map((l, i) => <div key={i} className="pl-log-line">{l}</div>)}
                 <div ref={logEndRef} />
               </div>
@@ -770,9 +935,9 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
             <div className="pl-modal" onClick={(e) => e.stopPropagation()}>
               <div className="pl-modal-header">
                 <div>
-                  <p className="pl-label" style={{ margin: 0 }}>Tạo JD bằng AI</p>
+                  <p className="pl-label" style={{ margin: 0 }}>{"T\u1ea1o JD b\u1eb1ng AI"}</p>
                   <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
-                    Điền các thông tin chính theo mẫu JD để AI tạo file tuyển dụng hoàn chỉnh.
+                    {'\u0110i\u1ec1n c\u00e1c th\u00f4ng tin ch\u00ednh theo m\u1eabu JD \u0111\u1ec3 AI t\u1ea1o file tuy\u1ec3n d\u1ee5ng ho\u00e0n ch\u1ec9nh.'}
                   </p>
                 </div>
                 <button
@@ -780,36 +945,36 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
                   style={{ padding: '6px 10px' }}
                   onClick={() => setJdFormOpen(false)}
                   disabled={isGeneratingJD}
-                  aria-label="Đóng form tạo JD"
+                  aria-label={"\u0110\u00f3ng form t\u1ea1o JD"}
                 >
-                  ✕
+                  {'\u2715'}
                 </button>
               </div>
 
               <div className="pl-form-grid">
-                <p className="pl-label pl-span-2" style={{ margin: '2px 0 0' }}>Thông tin chung</p>
-                {renderJDFormField('position', 'Vị trí', 'VD: Lập trình viên Mini App')}
-                {renderJDFormField('department', 'Phòng ban', 'VD: Khoa học Dữ liệu & HTTT')}
-                {renderJDFormField('location', 'Địa điểm làm việc', 'VD: Hà Nội / Remote / Hybrid')}
-                {renderJDFormField('workTime', 'Thời gian làm việc', 'VD: Full-time hoặc Part-time')}
+                <p className="pl-label pl-span-2" style={{ margin: '2px 0 0' }}>{"Th\u00f4ng tin chung"}</p>
+                {renderJDFormField('position', 'V\u1ecb tr\u00ed', 'VD: L\u1eadp tr\u00ecnh vi\u00ean Mini App')}
+                {renderJDFormField('department', 'Ph\u00f2ng ban', 'VD: Khoa h\u1ecdc D\u1eef li\u1ec7u & HTTT')}
+                {renderJDFormField('location', '\u0110\u1ecba \u0111i\u1ec3m l\u00e0m vi\u1ec7c', 'VD: H\u00e0 N\u1ed9i / Remote / Hybrid')}
+                {renderJDFormField('workTime', 'Th\u1eddi gian l\u00e0m vi\u1ec7c', 'VD: Full-time ho\u1eb7c Part-time')}
 
-                <p className="pl-label pl-span-2" style={{ margin: '4px 0 0' }}>Mô tả công việc</p>
-                {renderJDFormField('jobDescription', 'Mô tả công việc', 'Nhập các đầu việc chính, mỗi dòng một ý...', true, true)}
+                <p className="pl-label pl-span-2" style={{ margin: '4px 0 0' }}>{"M\u00f4 t\u1ea3 c\u00f4ng vi\u1ec7c"}</p>
+                {renderJDFormField('jobDescription', 'M\u00f4 t\u1ea3 c\u00f4ng vi\u1ec7c', 'Nh\u1eadp c\u00e1c \u0111\u1ea7u vi\u1ec7c ch\u00ednh, m\u1ed7i d\u00f2ng m\u1ed9t \u00fd...', true, true)}
 
-                <p className="pl-label pl-span-2" style={{ margin: '4px 0 0' }}>Yêu cầu ứng viên</p>
-                {renderJDFormField('experience', 'Kinh nghiệm', 'VD: 01 năm kinh nghiệm')}
-                {renderJDFormField('education', 'Học vấn', 'VD: Tốt nghiệp ngành CNTT')}
-                {renderJDFormField('technicalSkills', 'Kỹ năng chuyên môn', 'VD: React, TypeScript, Mini App...', true, true)}
-                {renderJDFormField('softSkills', 'Kỹ năng mềm', 'VD: Chủ động, giao tiếp tốt...', true, true)}
+                <p className="pl-label pl-span-2" style={{ margin: '4px 0 0' }}>{"Y\u00eau c\u1ea7u \u1ee9ng vi\u00ean"}</p>
+                {renderJDFormField('experience', 'Kinh nghi\u1ec7m', 'VD: 01 n\u0103m kinh nghi\u1ec7m')}
+                {renderJDFormField('education', 'H\u1ecdc v\u1ea5n', 'VD: T\u1ed1t nghi\u1ec7p ng\u00e0nh CNTT')}
+                {renderJDFormField('technicalSkills', 'K\u1ef9 n\u0103ng chuy\u00ean m\u00f4n', 'VD: React, TypeScript, Mini App...', true, true)}
+                {renderJDFormField('softSkills', 'K\u1ef9 n\u0103ng m\u1ec1m', 'VD: Ch\u1ee7 \u0111\u1ed9ng, giao ti\u1ebfp t\u1ed1t...', true, true)}
 
-                <p className="pl-label pl-span-2" style={{ margin: '4px 0 0' }}>Quyền lợi</p>
-                {renderJDFormField('salary', 'Mức lương', 'VD: 15.000.000 VNĐ/tháng')}
-                {renderJDFormField('benefits', 'Phúc lợi', 'VD: Thưởng dự án, BHXH...', true)}
-                {renderJDFormField('workEnvironment', 'Môi trường làm việc', 'VD: Trẻ, linh hoạt, sản phẩm thực tế...', true, true)}
+                <p className="pl-label pl-span-2" style={{ margin: '4px 0 0' }}>{"Quy\u1ec1n l\u1ee3i"}</p>
+                {renderJDFormField('salary', 'M\u1ee9c l\u01b0\u01a1ng', 'VD: 15.000.000 VN\u0110/th\u00e1ng')}
+                {renderJDFormField('benefits', 'Ph\u00fac l\u1ee3i', 'VD: Th\u01b0\u1edfng d\u1ef1 \u00e1n, BHXH...', true)}
+                {renderJDFormField('workEnvironment', 'M\u00f4i tr\u01b0\u1eddng l\u00e0m vi\u1ec7c', 'VD: Tr\u1ebb, linh ho\u1ea1t, s\u1ea3n ph\u1ea9m th\u1ef1c t\u1ebf...', true, true)}
 
-                <p className="pl-label pl-span-2" style={{ margin: '4px 0 0' }}>Cách thức ứng tuyển</p>
-                {renderJDFormField('applyEmail', 'Email nhận CV', 'VD: hr@company.vn')}
-                {renderJDFormField('emailSubject', 'Tiêu đề email', 'VD: Vị trí - [Họ và tên]')}
+                <p className="pl-label pl-span-2" style={{ margin: '4px 0 0' }}>{"C\u00e1ch th\u1ee9c \u1ee9ng tuy\u1ec3n"}</p>
+                {renderJDFormField('applyEmail', 'Email nh\u1eadn CV', 'VD: hr@company.vn')}
+                {renderJDFormField('emailSubject', 'Ti\u00eau \u0111\u1ec1 email', 'VD: V\u1ecb tr\u00ed - [H\u1ecd v\u00e0 t\u00ean]')}
               </div>
 
               <div className="pl-modal-actions">
@@ -818,14 +983,14 @@ BẮT BUỘC phải lưu thành file .md vào thư mục jds/ và chỉ trả l�
                   onClick={() => { setJdForm(emptyJDForm); setJdPrompt(''); }}
                   disabled={isGeneratingJD || !isJDFormReady}
                 >
-                  Xóa form
+                  {'X\u00f3a form'}
                 </button>
                 <button
                   className="pl-btn pl-btn-primary"
                   onClick={handleGenerateJD}
                   disabled={isGeneratingJD || !isJDFormReady}
                 >
-                  {isGeneratingJD ? 'Đang gửi yêu cầu...' : 'Gửi AI tạo JD'}
+                  {isGeneratingJD ? '\u0110ang g\u1eedi y\u00eau c\u1ea7u...' : 'G\u1eedi AI t\u1ea1o JD'}
                 </button>
               </div>
             </div>
