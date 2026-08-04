@@ -1,0 +1,461 @@
+/* ==========================================================================
+   HR 360 Profiles & Payroll Management Styles
+   ========================================================================== */
+
+/* Filter & Search Toolbar */
+.hr-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  background: var(--bg-card, #FFFFFF);
+  border: 1px solid var(--border, #E4E7EA);
+  border-radius: var(--radius-md, 10px);
+  padding: 10px 16px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.hr-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 280px;
+}
+
+.hr-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hr-search-box {
+  position: relative;
+  flex: 1;
+  max-width: 320px;
+}
+
+.hr-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted, #6C737A);
+  pointer-events: none;
+  font-size: 0.85rem;
+}
+
+.hr-search-input {
+  font-family: var(--hr-font-sans);
+  width: 100%;
+  padding: 7px 12px 7px 32px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border, #E4E7EA);
+  background: var(--bg-input, #FFFFFF);
+  color: var(--text, #1F2329);
+  font-size: 0.8125rem;
+  outline: none;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+}
+
+.hr-search-input:focus {
+  border-color: var(--accent, #156FF5);
+  box-shadow: 0 0 0 3px rgba(21, 111, 245, 0.12);
+}
+
+.hr-select {
+  font-family: var(--hr-font-sans);
+  padding: 7px 12px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border, #E4E7EA);
+  background: var(--bg-input, #FFFFFF);
+  color: var(--text, #1F2329);
+  font-size: 0.8125rem;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.hr-select:focus {
+  border-color: var(--accent, #156FF5);
+  box-shadow: 0 0 0 3px rgba(21, 111, 245, 0.12);
+}
+
+/* Department Filter Pills */
+.hr-pill-group {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  align-items: center;
+}
+
+.hr-filter-pill {
+  font-family: var(--hr-font-sans);
+  font-size: 0.775rem;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 14px;
+  border: 1px solid var(--border, #E4E7EA);
+  background: var(--bg-hover, #F2F3F5);
+  color: var(--text-secondary, #2F343D);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.hr-filter-pill:hover {
+  border-color: var(--accent, #156FF5);
+  color: var(--accent, #156FF5);
+}
+
+.hr-filter-pill.active {
+  background: var(--accent, #156FF5);
+  border-color: var(--accent, #156FF5);
+  color: #FFFFFF;
+  font-weight: 600;
+}
+
+/* Profile Card & Grid */
+.hr-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.hr-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition: all 0.15s ease;
+}
+
+.hr-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--accent);
+}
+
+.hr-card-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.hr-card-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.hr-profile-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.hr-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent) 0%, #0d5dd6 100%);
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.125rem;
+  box-shadow: 0 2px 6px rgba(21, 111, 245, 0.25);
+  flex-shrink: 0;
+}
+
+.hr-profile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hr-profile-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+.hr-profile-role {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.hr-profile-dept {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.hr-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  background: var(--bg-hover);
+  padding: 12px;
+  border-radius: var(--radius-md);
+}
+
+.hr-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hr-detail-label {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.hr-detail-value {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Modern Data Table (Payroll & Contracts) */
+.hr-table-wrapper {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow-x: auto;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 24px;
+}
+
+.hr-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.875rem;
+}
+
+.hr-table thead {
+  background: var(--bg-table-head, #F7F8FA);
+  border-bottom: 1px solid var(--border, #E4E7EA);
+}
+
+.hr-table th {
+  padding: 12px 16px;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: var(--text-muted, #6C737A);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.hr-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-light, #EBECEF);
+  color: var(--text, #1F2329);
+  vertical-align: middle;
+}
+
+.hr-table tbody tr {
+  transition: background 0.1s ease;
+}
+
+.hr-table tbody tr:hover {
+  background: var(--bg-hover, #F2F3F5);
+}
+
+.hr-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.hr-doc-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+/* Probation & Tenure Badges */
+.badge-probation {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.725rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(21, 111, 245, 0.08);
+  color: var(--accent, #156FF5);
+}
+
+.badge-probation-warning {
+  background: rgba(217, 119, 6, 0.12);
+  color: #D97706;
+  border: 1px solid rgba(217, 119, 6, 0.25);
+  animation: pulseWarn 2s infinite ease-in-out;
+}
+
+@keyframes pulseWarn {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.75; }
+}
+
+.badge-tenure {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.725rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(16, 185, 129, 0.1);
+  color: #10B981;
+}
+
+/* 1-Click Action Group & Copy Buttons */
+.hr-action-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.hr-icon-btn {
+  background: transparent;
+  border: 1px solid var(--border-light, #EBECEF);
+  color: var(--text-muted, #6C737A);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: all 0.15s ease;
+}
+
+.hr-icon-btn:hover {
+  background: var(--bg-hover, #F2F3F5);
+  color: var(--text, #1F2329);
+  border-color: var(--border, #E4E7EA);
+}
+
+.hr-icon-btn.copied {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #10B981;
+}
+
+/* Bank Tag & Data Integrity Badges in Payroll */
+.bank-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  font-size: 0.75rem;
+  background: rgba(21, 111, 245, 0.08);
+  color: var(--accent, #156FF5);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-right: 6px;
+}
+
+.contract-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--bg-hover, #F2F3F5);
+  color: var(--text-secondary, #2F343D);
+}
+
+.badge-missing {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.725rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(239, 68, 68, 0.1);
+  color: #EF4444;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.badge-missing-warn {
+  background: rgba(245, 158, 11, 0.1);
+  color: #D97706;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.hr-btn-export {
+  background: #10B981;
+  border-color: #10B981;
+  color: #FFFFFF !important;
+  font-weight: 600;
+}
+
+.hr-btn-export:hover:not(:disabled) {
+  background: #059669;
+  border-color: #059669;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.25);
+}
+
+/* Payroll Enhancements */
+.hr-input-preview {
+  font-size: 0.725rem;
+  font-weight: 600;
+  color: #10B981;
+  margin-top: 3px;
+  display: block;
+}
+
+.hr-checkbox-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--text-secondary, #2F343D);
+  cursor: pointer;
+  margin-top: 4px;
+  user-select: none;
+  background: rgba(21, 111, 245, 0.05);
+  padding: 3px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(21, 111, 245, 0.15);
+}
+
+.hr-checkbox-control input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: var(--accent, #156FF5);
+  width: 14px;
+  height: 14px;
+}
+
+.badge-probation-rate {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(217, 119, 6, 0.12);
+  color: #D97706;
+  border: 1px solid rgba(217, 119, 6, 0.25);
+}
+
+.badge-probation-100 {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10B981;
+  border-color: rgba(16, 185, 129, 0.2);
+}

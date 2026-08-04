@@ -1,0 +1,101 @@
+/* ==========================================================================
+   Design Tokens & CSS Variables (Variables & Theming)
+   ========================================================================== */
+
+/* Light theme (default)
+   Matches Rocket.Chat Design System (RCX) light tokens:
+   https://github.com/RocketChat/fuselage/tree/develop/packages/fuselage-tokens
+*/
+:root,
+[data-theme="light"] {
+  --bg: #ffffff;
+  --bg-card: #ffffff;
+  --bg-input: #ffffff;
+  --bg-hover: #f7f8fa;
+  --bg-field-panel: #f7f8fa;
+  --bg-editing: #f0f4ff;
+  --bg-table-head: #f7f8fa;
+  --text: #2f343d;
+  --text-secondary: #6c727a;
+  --text-muted: #9ea2a8;
+  --text-faint: #cbced1;
+  --border: #e4e7ea;
+  --border-light: #f2f3f5;
+  --accent: #156ff5;
+  --accent-hover: #0d5dd6;
+  --danger: #d43f3a;
+  --danger-hover: #c9302c;
+  --success-bg: #e8f5e9;
+  --success-text: #2e7d32;
+  --error-bg: #ffebee;
+  --error-text: #c62828;
+  --overlay: rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 1px 2px rgba(0,0,0,.03), 0 3px 6px rgba(0,0,0,.03);
+  --shadow-card-hover: 0 4px 12px rgba(0,0,0,.07), 0 1px 3px rgba(0,0,0,.04);
+  --surface-2: #f2f5f9;
+
+  /* HR Lifecycle Premium Design Tokens */
+  --hr-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --hr-font-mono: 'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, monospace;
+  
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 12px 24px -4px rgba(0, 0, 0, 0.12);
+  
+  --status-pass-bg: #E1F5FE;
+  --status-pass: #0288D1;
+  --status-warn-bg: #FFF8E1;
+  --status-warn: #FFA000;
+  --status-fail-bg: #FFEBEE;
+  --status-fail: #D32F2F;
+}
+
+/* Dark theme — surfaceColor from host overrides --bg for exact room background match */
+[data-theme="dark"] {
+  --bg: #1f2329;
+  --bg-card: #282c34;
+  --bg-input: #23272e;
+  --bg-hover: #2f343e;
+  --bg-field-panel: #242830;
+  --bg-editing: #1e283a;
+  --bg-table-head: #242830;
+  --text: #f2f3f5;
+  --text-secondary: #caced1;
+  --text-muted: #9ea2a8;
+  --text-faint: #6c727a;
+  --border: #3a3f4a;
+  --border-light: #303540;
+  --accent: #2980f8;
+  --accent-hover: #4092ff;
+  --danger: #d43f3a;
+  --danger-hover: #e0534f;
+  --success-bg: #1b3820;
+  --success-text: #81c784;
+  --error-bg: #3d1c1c;
+  --error-text: #e57373;
+  --overlay: rgba(0, 0, 0, 0.65);
+  --shadow-card: 0 1px 2px rgba(0,0,0,.15), 0 3px 6px rgba(0,0,0,.15);
+  --shadow-card-hover: 0 4px 14px rgba(0,0,0,.35), 0 1px 3px rgba(0,0,0,.2);
+  --surface-2: #232a35;
+
+  --status-pass-bg: rgba(2, 136, 209, 0.2);
+  --status-pass: #4FC3F7;
+  --status-warn-bg: rgba(255, 160, 0, 0.2);
+  --status-warn: #FFD54F;
+  --status-fail-bg: rgba(211, 47, 47, 0.2);
+  --status-fail: #E57373;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.4;
+  font-size: 14px;
+}

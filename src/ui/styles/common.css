@@ -1,0 +1,318 @@
+/* ==========================================================================
+   Common & Shared Layout Components (App header, Navigation, Global UI)
+   ========================================================================== */
+
+/* App header with theme toggle */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.app-header h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.app-nav-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.nav-primary-btn {
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.nav-primary-btn:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.nav-primary-btn.active {
+  background: var(--accent-hover);
+  box-shadow: 0 0 0 2px rgba(21, 111, 245, 0.3);
+}
+
+.app-subnav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-left: 1px solid var(--border);
+  padding-left: 12px;
+}
+
+.tab-btn.subnav-btn {
+  font-size: 12px;
+  padding: 4px 8px;
+  color: var(--text-secondary);
+}
+
+.tab-btn.subnav-btn:hover {
+  color: var(--text);
+}
+
+.tab-btn.subnav-btn.active {
+  color: var(--accent);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
+
+/* Theme toggle */
+.theme-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 3px 8px;
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.theme-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* Tab navigation */
+.app-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  padding: 0 16px;
+  gap: 4px;
+}
+
+.tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tab-btn:hover {
+  color: var(--text);
+}
+
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.tab-badge {
+  background: var(--border);
+  color: var(--text-secondary);
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.tab-btn.active .tab-badge {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+/* Messages & Alerts */
+.error-message {
+  background: var(--error-bg);
+  color: var(--error-text);
+  padding: 8px 12px;
+  border-radius: 4px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.success-message {
+  background: var(--success-bg);
+  color: var(--success-text);
+  padding: 8px 12px;
+  border-radius: 4px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: none;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-danger:hover {
+  background: var(--danger-hover);
+}
+
+.btn-sm {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+/* Status Notifications */
+.hr-status-banner {
+  padding: 10px 16px;
+  border-radius: var(--radius-md, 10px);
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.875rem;
+  animation: hrFadeIn 0.2s ease;
+}
+
+.hr-status-banner-success {
+  background: var(--success-bg, #e8f5e9);
+  color: var(--success-text, #2e7d32);
+  border: 1px solid rgba(46, 125, 50, 0.2);
+}
+
+.hr-status-banner-error {
+  background: var(--error-bg, #ffebee);
+  color: var(--error-text, #c62828);
+  border: 1px solid rgba(198, 40, 40, 0.2);
+}
+
+/* Status Pills */
+.hr-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.hr-status-pill-pass {
+  background: var(--success-bg, #C1EBDD);
+  color: var(--success-text, #148660);
+}
+
+.hr-status-pill-warn {
+  background: var(--status-warn-bg, rgba(217, 119, 6, 0.1));
+  color: var(--status-warn, #D97706);
+}
+
+/* Debug Modal / Panel */
+.hr-debug-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay, rgba(0, 0, 0, 0.4));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+  padding: 20px;
+}
+
+.hr-debug-modal-content {
+  background: var(--bg-card, #FFFFFF);
+  border: 1px solid var(--border, #E4E7EA);
+  border-radius: var(--radius-lg, 14px);
+  width: 100%;
+  max-width: 650px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 36px rgba(0,0,0,0.18);
+  overflow: hidden;
+  animation: hrFadeIn 0.2s ease;
+}
+
+.hr-debug-modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border, #E4E7EA);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.hr-debug-pre {
+  padding: 16px 20px;
+  margin: 0;
+  font-family: var(--hr-font-mono);
+  font-size: 0.8125rem;
+  background: var(--bg, #F7F8FA);
+  color: var(--text, #1F2329);
+  overflow: auto;
+  line-height: 1.5;
+}
+
+@keyframes hrFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
