@@ -569,6 +569,19 @@
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.45);
 }
 
+.bot-btn-reset {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
+  color: #DC2626;
+}
+
+.bot-btn-reset:hover {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: #DC2626;
+  color: #B91C1C;
+  transform: translateY(-1px);
+}
+
 /* Zoom Controls */
 .bot-zoom-controls {
   display: inline-flex;

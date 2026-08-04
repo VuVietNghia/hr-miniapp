@@ -1,5 +1,5 @@
 import { McpApp } from '@privos/app-react';
-import { EmployeeProfile, ILifecycleService } from '../types';
+import { EmployeeProfile, ILifecycleService, PassedCandidate } from '../types';
 
 export class PrivOSLifecycleService implements ILifecycleService {
   private static readonly LIST_IDENTIFIERS = ['nhan-su', 'nhansu', 'employee', 'lifecycle', 'hồ sơ'];
@@ -22,6 +22,31 @@ export class PrivOSLifecycleService implements ILifecycleService {
         .map(item => this.mapItemToProfile(item, list, fieldDefMap));
     } catch (err) {
       console.error('[PrivOSLifecycleService] Error loading profiles:', err);
+      return [];
+    }
+  }
+
+  async loadPassedCandidates(roomId: string): Promise<PassedCandidate[]> {
+    try {
+      const allLists = await this.fetchAllLists(roomId);
+      const screeningLists = allLists.filter(list => this.isScreeningList(list));
+      if (screeningLists.length === 0) return [];
+
+      const candidatesPromises = screeningLists.map(async (list) => {
+        const items = await this.fetchListItems(list._id || list.id);
+        const validItems = items.filter(item => !this.isSystemConfigItem(item));
+        return validItems
+          .filter(item => this.isPassedCandidateItem(item, list.stages))
+          .map(item => this.mapItemToPassedCandidate(item, list));
+      });
+
+      const candidatesNested = await Promise.all(candidatesPromises);
+      const allCandidates = candidatesNested.flat();
+
+      // Sort by score descending (highest score first)
+      return allCandidates.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    } catch (err) {
+      console.error('[PrivOSLifecycleService] Error loading passed candidates:', err);
       return [];
     }
   }
@@ -355,5 +380,124 @@ export class PrivOSLifecycleService implements ILifecycleService {
       if (opt) return opt._id || opt.id;
     }
     return displayValue;
+  }
+
+  private async fetchAllLists(roomId: string): Promise<any[]> {
+    const res: any = await this.app.callServerTool({
+      name: 'privos.lists.getAll',
+      arguments: { roomId }
+    });
+
+    const text = res?.content?.[0]?.text;
+    if (!text) return [];
+
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed : (parsed?.lists || []);
+  }
+
+  private isScreeningList(list: any): boolean {
+    const name = (list.name || '').toUpperCase();
+    return name.includes('SCREENING') || name.includes('CHẤM CV') || name.includes('CHAM CV');
+  }
+
+  private isPassedCandidateItem(item: any, stages?: any[]): boolean {
+    const stageName = this.getStageName(item, stages || []).toUpperCase();
+    const customFields = item.customFields;
+    
+    // Explicit fail stages
+    if (stageName.includes('LOAI_CV') || stageName.includes('LOAI_SAU_PV') || stageName.includes('KHONG DAT')) {
+      return false;
+    }
+
+    // Category / Classification check
+    const category = String(this.extractFieldValue(customFields, ['phan_loai', 'loại', 'category', 'ket_qua']) || '').toUpperCase();
+    if (category.includes('KHONG DAT') || category.includes('KHONG TUYEN')) {
+      return false;
+    }
+
+    // Explicit pass stages or pass categories
+    const isPassStage = stageName.includes('TIEM_NANG') || 
+                        stageName.includes('PHONE_SCREENING') || 
+                        stageName.includes('PHONG_VAN') || 
+                        stageName.includes('GUI_OFFER') || 
+                        stageName.includes('NHAN_VIEC') || 
+                        stageName.includes('DAU');
+
+    const isPassCategory = category.includes('DAT') || category.includes('ĐẠT') || category.includes('CAN NHAC') || category.includes('CÂN NHẮC');
+
+    return isPassStage || isPassCategory;
+  }
+
+  private mapItemToPassedCandidate(item: any, list: any): PassedCandidate {
+    const rawTitle = item.name || item.title || 'Không có tên';
+    const parsedNameInfo = this.cleanCandidateName(rawTitle);
+    const scoreVal = this.extractFieldValue(item.customFields, ['tong_diem', 'điểm', 'score', 'diem']);
+    const categoryVal = this.extractFieldValue(item.customFields, ['phan_loai', 'loại', 'category', 'ket_qua']);
+    const reasonVal = this.extractFieldValue(item.customFields, ['ly_do', 'lý do', 'reason', 'nhan_xet']);
+
+    return {
+      _id: item._id || item.id,
+      name: parsedNameInfo.name,
+      listName: list.name || 'Screening List',
+      listId: list._id || list.id,
+      score: typeof scoreVal === 'number' ? scoreVal : (scoreVal ? Number(scoreVal) : undefined),
+      category: categoryVal ? String(categoryVal) : undefined,
+      stageName: this.getStageName(item, list.stages || []),
+      reason: reasonVal ? String(reasonVal) : (item.description || undefined),
+      position: parsedNameInfo.position,
+    };
+  }
+
+  private extractFieldValue(customFields: any, fieldKeys: string[]): any {
+    if (!customFields) return undefined;
+    
+    if (Array.isArray(customFields)) {
+      for (const cf of customFields) {
+        const id = (cf.fieldId || cf.fieldDefinitionId || cf.name || '').toLowerCase();
+        if (fieldKeys.some(key => id.includes(key.toLowerCase()))) {
+          return cf.value;
+        }
+      }
+    } else if (typeof customFields === 'object') {
+      for (const key of Object.keys(customFields)) {
+        if (fieldKeys.some(k => key.toLowerCase().includes(k.toLowerCase()))) {
+          return customFields[key];
+        }
+      }
+    }
+    return undefined;
+  }
+
+  private cleanCandidateName(rawTitle: string): { name: string, position?: string } {
+    let title = rawTitle.replace(/\.(md|pdf)$/i, '').trim();
+    // Remove date prefix like 2026-07-06_ or 2026_07_06_
+    title = title.replace(/^\d{4}[-_]\d{2}[-_]\d{2}_?/i, '');
+    // Remove CV_ or CV- prefix
+    title = title.replace(/^CV[-_]?/i, '');
+
+    // Split by _ or - to extract position if present (e.g. "NguyenVanA_Developer")
+    const parts = title.split(/[-_]/).filter(Boolean);
+    if (parts.length >= 2) {
+      const candidateName = parts[0].replace(/([A-Z])/g, ' $1').trim();
+      const rawPos = parts.slice(1).join(' ').replace(/([A-Z])/g, ' $1').trim();
+      return {
+        name: candidateName || parts[0],
+        position: this.normalizePosition(rawPos)
+      };
+    }
+
+    return { name: title };
+  }
+
+  private normalizePosition(rawPosition: string): string {
+    const pos = rawPosition.toLowerCase();
+    if (pos.includes('dev') || pos.includes('lap trinh') || pos.includes('developer')) return 'Developer';
+    if (pos.includes('test') || pos.includes('qa') || pos.includes('kiem thu')) return 'Tester';
+    if (pos.includes('design') || pos.includes('ui') || pos.includes('ux')) return 'Designer';
+    if (pos.includes('product') || pos.includes('pm')) return 'Product Manager';
+    if (pos.includes('hr') || pos.includes('nhan su') || pos.includes('recruiter')) return 'HR';
+    if (pos.includes('sale') || pos.includes('kinh doanh')) return 'Sales';
+    if (pos.includes('market')) return 'Marketing';
+    return rawPosition;
   }
 }

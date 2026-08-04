@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { usePrivosApp, usePrivosContext } from '@privos/app-react';
-import { EmployeeProfile } from './types';
+import { EmployeeProfile, PassedCandidate } from './types';
 import { PrivOSLifecycleService } from './services/PrivOSLifecycleService';
 import { LifecycleServiceProvider, useLifecycleService } from './di/LifecycleContext';
 import { KanbanBoard } from './components/KanbanBoard';
@@ -13,7 +13,9 @@ function LifecycleContent() {
   const service = useLifecycleService();
   
   const [profiles, setProfiles] = useState<EmployeeProfile[]>([]);
+  const [passedCandidates, setPassedCandidates] = useState<PassedCandidate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
   const [statusMsg, setStatusMsg] = useState<{text: string, type: 'info' | 'success' | 'error'} | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -21,11 +23,25 @@ function LifecycleContent() {
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
 
+  const refreshCandidates = useCallback(async () => {
+    if (!roomId) return;
+    setIsLoadingCandidates(true);
+    try {
+      const candidates = await service.loadPassedCandidates(roomId);
+      setPassedCandidates(candidates);
+    } catch (err) {
+      console.error('[LifecycleDashboard] Error loading candidates:', err);
+    } finally {
+      setIsLoadingCandidates(false);
+    }
+  }, [roomId, service]);
+
   useEffect(() => {
     if (roomId) {
       refreshProfiles();
+      refreshCandidates();
     }
-  }, [roomId, service]);
+  }, [roomId, service, refreshCandidates]);
 
   const refreshProfiles = async () => {
     if (!roomId) return;
@@ -161,6 +177,8 @@ function LifecycleContent() {
         <CreateProfileForm 
           onSubmit={handleCreateSubmit} 
           onCancel={() => setIsCreating(false)} 
+          passedCandidates={passedCandidates}
+          isLoadingCandidates={isLoadingCandidates}
         />
       )}
 

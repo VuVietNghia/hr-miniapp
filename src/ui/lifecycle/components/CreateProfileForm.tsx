@@ -1,15 +1,31 @@
 import React, { useState } from 'react';
-import { EmployeeProfile } from '../types';
+import { EmployeeProfile, PassedCandidate } from '../types';
 
 interface CreateProfileFormProps {
   onSubmit: (data: Omit<EmployeeProfile, '_id' | 'status'>) => Promise<void>;
   onCancel: () => void;
+  passedCandidates?: PassedCandidate[];
+  isLoadingCandidates?: boolean;
 }
 
 const PHONE_REGEX = /^\+?[0-9\s\-().]{8,20}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function CreateProfileForm({ onSubmit, onCancel }: CreateProfileFormProps) {
+function getDepartmentForPosition(position: string): string {
+  const pos = position.toLowerCase();
+  if (pos.includes('dev') || pos.includes('test') || pos.includes('design')) return 'IT';
+  if (pos.includes('sale') || pos.includes('kinh doanh')) return 'Business';
+  if (pos.includes('market')) return 'Marketing';
+  if (pos.includes('hr') || pos.includes('admin') || pos.includes('product')) return 'Back-office';
+  return 'IT';
+}
+
+export function CreateProfileForm({
+  onSubmit,
+  onCancel,
+  passedCandidates = [],
+  isLoadingCandidates = false,
+}: CreateProfileFormProps) {
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -19,8 +35,29 @@ export function CreateProfileForm({ onSubmit, onCancel }: CreateProfileFormProps
     startDate: new Date().toISOString().split('T')[0]
   });
 
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  const selectedCandidate = passedCandidates.find(c => c._id === selectedCandidateId);
+
+  const handleSelectCandidate = (candidateId: string) => {
+    setSelectedCandidateId(candidateId);
+    if (!candidateId) return;
+
+    const candidate = passedCandidates.find(c => c._id === candidateId);
+    if (!candidate) return;
+
+    const matchedPosition = candidate.position || formData.position;
+    const matchedDepartment = getDepartmentForPosition(matchedPosition);
+
+    setFormData(prev => ({
+      ...prev,
+      name: candidate.name,
+      position: matchedPosition,
+      department: matchedDepartment
+    }));
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -91,6 +128,53 @@ export function CreateProfileForm({ onSubmit, onCancel }: CreateProfileFormProps
             <span>{error}</span>
           </div>
         )}
+
+        {/* Quick Selection from Passed Screening Candidates */}
+        <div style={{
+          marginBottom: 20,
+          padding: '12px 16px',
+          background: 'rgba(59, 130, 246, 0.06)',
+          border: '1px solid rgba(59, 130, 246, 0.2)',
+          borderRadius: 8
+        }}>
+          <label className="hr-label" style={{ color: '#2563EB', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span>✨</span> Chọn nhanh từ ứng viên đã đạt sơ loại tuyển dụng ({passedCandidates.length} ứng viên)
+          </label>
+          <select
+            className="hr-input"
+            value={selectedCandidateId}
+            onChange={(e) => handleSelectCandidate(e.target.value)}
+            disabled={isSubmitting || isLoadingCandidates}
+            style={{ marginTop: 6 }}
+          >
+            <option value="">-- Chọn ứng viên trúng tuyển để tự động điền --</option>
+            {passedCandidates.map((c) => (
+              <option key={c._id} value={c._id}>
+                👤 {c.name} {c.score !== undefined ? `(${c.score}đ)` : ''} — Đợt: {c.listName} {c.position ? `[${c.position}]` : ''}
+              </option>
+            ))}
+          </select>
+
+          {selectedCandidate && (
+            <div style={{
+              marginTop: 10,
+              fontSize: '0.8rem',
+              color: 'var(--text-muted, #64748b)',
+              display: 'flex',
+              gap: 12,
+              flexWrap: 'wrap',
+              alignItems: 'center'
+            }}>
+              <span>📌 Đợt: <strong>{selectedCandidate.listName}</strong></span>
+              {selectedCandidate.score !== undefined && (
+                <span>⭐ Điểm: <strong>{selectedCandidate.score}/100</strong></span>
+              )}
+              {selectedCandidate.stageName && (
+                <span>🏷️ Cột: <strong>{selectedCandidate.stageName}</strong></span>
+              )}
+            </div>
+          )}
+        </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
           <div>

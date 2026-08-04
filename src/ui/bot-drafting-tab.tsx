@@ -160,6 +160,28 @@ function mapProfileToFormData(profile: EmployeeProfile, currentData: Record<stri
 }
 
 /**
+ * Safely replaces a field value or placeholder inside a document while preserving AI-generated modifications.
+ */
+function replaceValueInDocument(doc: string, oldValue: string, newValue: string, fieldKey?: string): string {
+  if (!doc) return doc;
+
+  // 1. If oldValue is meaningful (not empty and distinct from newValue) and exists in doc
+  if (oldValue && oldValue.trim() !== '' && oldValue !== newValue && doc.includes(oldValue)) {
+    return doc.split(oldValue).join(newValue);
+  }
+
+  // 2. If oldValue is not found but template placeholder exists (e.g. {{fieldKey}})
+  if (fieldKey) {
+    const placeholder = `{{${fieldKey}}}`;
+    if (doc.includes(placeholder)) {
+      return doc.split(placeholder).join(newValue);
+    }
+  }
+
+  return doc;
+}
+
+/**
  * Checks if a template is designed for personnel / HR onboarding.
  */
 function isPersonnelTemplate(template: DraftingTemplate): boolean {
@@ -218,6 +240,7 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
   const [documentContent, setDocumentContent] = useState<string>('');
   const [viewMode, setViewMode] = useState<'a4' | 'raw'>('a4');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [isAiModified, setIsAiModified] = useState<boolean>(false);
   const [pollingStatus, setPollingStatus] = useState<string>('');
   const [aiCustomPrompt, setAiCustomPrompt] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -291,17 +314,25 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
   // Initialize Form Data when Template Changes
   useEffect(() => {
     setSelectedProfileId('');
+    setIsAiModified(false);
     setFormData({ ...currentTemplate.defaultData });
     const initialText = renderDraftingTemplate(currentTemplate.templateText, currentTemplate.defaultData);
     setDocumentContent(initialText);
   }, [selectedTemplateId, currentTemplate]);
 
-  // Update Live Document when form inputs change
+  // Update Live Document when form inputs change (smart find-and-replace if AI-modified)
   const handleInputChange = (key: string, value: string) => {
+    const oldValue = formData[key] ?? '';
     const updated = { ...formData, [key]: value };
     setFormData(updated);
-    const rendered = renderDraftingTemplate(currentTemplate.templateText, updated);
-    setDocumentContent(rendered);
+
+    if (isAiModified) {
+      const updatedContent = replaceValueInDocument(documentContent, oldValue, value, key);
+      setDocumentContent(updatedContent);
+    } else {
+      const rendered = renderDraftingTemplate(currentTemplate.templateText, updated);
+      setDocumentContent(rendered);
+    }
   };
 
   // Handle Quick Employee Profile Selection & Auto-populate
@@ -313,10 +344,33 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
     if (!profile) return;
 
     const updated = mapProfileToFormData(profile, formData);
-    setFormData(updated);
-    const rendered = renderDraftingTemplate(currentTemplate.templateText, updated);
-    setDocumentContent(rendered);
+
+    if (isAiModified) {
+      let updatedContent = documentContent;
+      for (const [key, newVal] of Object.entries(updated)) {
+        const oldVal = formData[key] ?? '';
+        if (oldVal !== newVal) {
+          updatedContent = replaceValueInDocument(updatedContent, oldVal, newVal, key);
+        }
+      }
+      setFormData(updated);
+      setDocumentContent(updatedContent);
+    } else {
+      setFormData(updated);
+      const rendered = renderDraftingTemplate(currentTemplate.templateText, updated);
+      setDocumentContent(rendered);
+    }
     showToast(`Đã tự động nạp hồ sơ nhân sự "${profile.name}" vào văn bản!`);
+  };
+
+  // Restore Default Template (Discards AI modifications)
+  const handleResetTemplate = () => {
+    setSelectedProfileId('');
+    setIsAiModified(false);
+    setFormData({ ...currentTemplate.defaultData });
+    const initialText = renderDraftingTemplate(currentTemplate.templateText, currentTemplate.defaultData);
+    setDocumentContent(initialText);
+    showToast('Đã khôi phục văn bản về mẫu chuẩn ban đầu!');
   };
 
   // AI Pipeline Execution with Real-Time Polling Status
@@ -354,6 +408,7 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
       finalMarkdown = finalMarkdown.replace(/—/g, ' - ');
 
       setDocumentContent(finalMarkdown);
+      setIsAiModified(true);
       setPollingStatus('Hoàn tất!');
       showToast('AI đã hoàn tất soạn thảo văn bản!');
       if (actionType === 'custom') setAiCustomPrompt('');
@@ -1050,6 +1105,16 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
 
             {/* Action Buttons */}
             <div className="bot-action-buttons">
+              {isAiModified && (
+                <button
+                  type="button"
+                  className="bot-action-btn bot-btn-reset"
+                  onClick={handleResetTemplate}
+                  title="Khôi phục về mẫu chuẩn ban đầu (bỏ các thay đổi của AI)"
+                >
+                  <span>↺</span> Khôi phục mẫu
+                </button>
+              )}
               <button
                 type="button"
                 className="bot-action-btn bot-btn-docx-primary"
