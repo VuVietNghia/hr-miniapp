@@ -14,7 +14,7 @@ import { PrivOSLifecycleService } from './lifecycle/services/PrivOSLifecycleServ
 import { getMockProfiles } from './lifecycle/services/lifecycleService';
 import type { EmployeeProfile, ILifecycleService } from './lifecycle/types';
 import './contact-form-styles.css';
-import './styles/bot-drafting.css';
+import './bot-drafting.css';
 
 export interface BotDraftingTabProps {
   app?: McpApp | null;
