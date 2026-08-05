@@ -1,4 +1,4 @@
-﻿import { McpApp } from '@privos/app-react';
+import { McpApp } from '@privos/app-react';
 import { restCall, getFileContent, createOrUpdateFile, ensureFolderPath } from './privos-rest';
 import { ICvContextBuilder } from './cv-context-builder';
 import cvProcessingGuidelinesRaw from './data/cv_processing_guidelines.md?raw';
@@ -799,7 +799,38 @@ ${content}
         arguments: { listId, items }
       }));
 
-      const createdCount = batchRes?.created ?? batchRes?.items?.length ?? items.length;
+      // Create System Config Item to store stages mapping (so UI can reconstruct stageIds)
+      try {
+        await this.app.callServerTool({
+          name: 'privos.lists.createItem',
+          arguments: {
+            listId,
+            title: '[Hệ thống] Không xoá - Cấu hình Stages',
+            description: JSON.stringify(createdStages)
+          }
+        });
+      } catch (e) {
+        console.warn('Failed to create stages config item', e);
+      }
+
+      // Explicitly move items to their correct stages because batchCreateItems places them all in the first column
+      const createdItems = batchRes?.items || [];
+      for (let i = 0; i < createdItems.length; i++) {
+        const item = createdItems[i];
+        const intendedStageId = items[i]?.stageId;
+        if (intendedStageId && item._id) {
+          try {
+            await this.app.callServerTool({
+              name: 'privos.lists.moveItemToStage',
+              arguments: { itemId: item._id, stageId: intendedStageId }
+            });
+          } catch (e) {
+            console.warn(`Failed to move item ${item._id} to stage ${intendedStageId}`);
+          }
+        }
+      }
+
+      const createdCount = createdItems.length || items.length;
       if (onLog) onLog(`[Kanban] ✅ Đã tạo List "${listName}" và lưu ${createdCount} thẻ ứng viên vào đúng stage.`);
     } catch (err: any) {
       if (onLog) onLog(`[Kanban] Lỗi khi tạo Kanban: ${err.message}`);
