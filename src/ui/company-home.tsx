@@ -208,6 +208,36 @@ function summarizeList(items: string[], max = 3): string {
   return `${visible.join(', ')}${items.length > visible.length ? ', ...' : ''}`;
 }
 
+function truncateWords(text: string, max = 15): string {
+  const words = text.trim().split(/\s+/);
+  if (words.length <= max) return text.trim();
+  return words.slice(0, max).join(' ') + '...';
+}
+
+// --- LocalStorage helpers: split profile into 3 keys to avoid QuotaExceededError ---
+function lsKey(roomId: string) { return `hr-miniapp-cp2-${roomId}`; }
+
+function saveProfileToLocal(roomId: string, profile: CompanyProfile): void {
+  const base = lsKey(roomId);
+  // Always save text (tiny). Images saved separately — each fails independently.
+  const { logoDataUrl, heroImageDataUrl, ...text } = profile;
+  try { localStorage.setItem(base, JSON.stringify(text)); } catch { }
+  try { if (logoDataUrl) localStorage.setItem(`${base}-logo`, logoDataUrl); else localStorage.removeItem(`${base}-logo`); } catch { }
+  try { if (heroImageDataUrl) localStorage.setItem(`${base}-hero`, heroImageDataUrl); else localStorage.removeItem(`${base}-hero`); } catch { }
+}
+
+function loadProfileFromLocal(roomId: string): CompanyProfile | null {
+  const base = lsKey(roomId);
+  try {
+    const text = localStorage.getItem(base);
+    if (!text) return null;
+    const obj = JSON.parse(text);
+    try { obj.logoDataUrl = localStorage.getItem(`${base}-logo`) || ''; } catch { }
+    try { obj.heroImageDataUrl = localStorage.getItem(`${base}-hero`) || ''; } catch { }
+    return toCompanyProfile(obj);
+  } catch { return null; }
+}
+
 function extractJsonObject(text: string): any {
   const fenced = [...text.matchAll(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/gi)];
   for (let i = fenced.length - 1; i >= 0; i--) {
@@ -311,11 +341,11 @@ Return only valid JSON with this exact schema:
 
 Rules:
 - Use the website and uploaded documents as the only sources.
-- Detect the website's main language. If the website is Vietnamese, return all homepage content in Vietnamese and language="vi". If English, return all homepage content in English and language="en".
+- LANGUAGE RULE (CRITICAL): Read the website content language first. If the website text is primarily in English, you MUST write ALL output fields in English and set language="en". If the website text is primarily in Vietnamese, write ALL output fields in Vietnamese and set language="vi". Never mix languages. Never default to Vietnamese if the website is in English.
 - Detect dominant brand colors from website CSS, logo, header, hero, buttons, and repeated visual accents. Return hex colors only.
 - Choose layoutStyle from the actual website feel: corporate, product, editorial, minimal, or bold.
 - Build a polished company homepage like a large company website: hero, overview, brand/product sections, culture/work section, and clear CTA content.
-- Keep text concise but useful: tagline max 12 words, description max 55 words, cultureSummary max 35 words, goals max 24 words, each list item max 10 words.
+- Keep text concise but useful: tagline max 12 words, description max 55 words, cultureSummary max 35 words, goals max 15 words, each list item max 10 words, industry max 15 words, team max 15 words, contact max 15 words.
 - Return up to 6 specific products/services. Return product names or product lines, not counts.
 - Return up to 8 brands in "brands": owned brands, sub-brands, partner brands, or customer/client brands shown on the website. If no reliable brands/customers are visible, return an empty array.
 - Return up to 6 values, highlights, and differentiators. Hide missing sections by returning empty strings or empty arrays.
@@ -379,10 +409,10 @@ export default function CompanyHome() {
   const logoSrc = logoPreview || displayProfile.logoDataUrl;
   const heroImageSrc = heroImagePreview || displayProfile.heroImageDataUrl;
   const facts = [
-    { label: pageText.industry, value: displayProfile.industry },
-    { label: pageText.team, value: displayProfile.team },
-    { label: pageText.contact, value: displayProfile.contact },
-    { label: pageText.goals, value: displayProfile.goals },
+    { label: pageText.industry, value: truncateWords(displayProfile.industry) },
+    { label: pageText.team, value: truncateWords(displayProfile.team) },
+    { label: pageText.contact, value: truncateWords(displayProfile.contact) },
+    { label: pageText.goals, value: truncateWords(displayProfile.goals) },
     { label: pageText.productCount, value: summarizeList(displayProfile.products) },
     { label: pageText.brands, value: summarizeList(displayProfile.brands) },
   ].filter((item) => item.value);
@@ -402,28 +432,67 @@ export default function CompanyHome() {
   useEffect(() => {
     if (!roomId) return;
     let cancelled = false;
-    getFileContent(app, `${roomId}/hr-miniapp/company/company-profile.json`)
-      .then((content) => {
+
+    // 1. Show from localStorage immediately (zero network wait)
+    const cached = loadProfileFromLocal(roomId);
+    if (cached && hasProfileContent(cached)) {
+      setProfile(cached);
+      setDraftProfile(cached);
+      setLogoPreview(cached.logoDataUrl);
+      setHeroImagePreview(cached.heroImageDataUrl);
+      setIsSetupOpen(false);
+      if (cached.website) setWebsite(cached.website);
+    }
+
+    // 2. Load from server (lean JSON + separate image files)
+    (async () => {
+      try {
+        const content = await getFileContent(app, `${roomId}/hr-miniapp/company/company-profile.json`);
         if (cancelled || !content.trim()) return;
-        const nextProfile = toCompanyProfile(JSON.parse(content));
-        setProfile(nextProfile);
-        setDraftProfile(nextProfile);
-        setLogoPreview(nextProfile.logoDataUrl);
-        setHeroImagePreview(nextProfile.heroImageDataUrl);
-        setIsSetupOpen(false);
-        if (nextProfile.website) setWebsite(nextProfile.website);
-      })
-      .catch(() => { });
+        const obj = JSON.parse(content);
+
+        // Load images: localStorage first, then .b64 text files on server
+        const base = lsKey(roomId);
+        let logoDataUrl = '';
+        let heroImageDataUrl = '';
+        try { logoDataUrl = localStorage.getItem(`${base}-logo`) || ''; } catch { }
+        try { heroImageDataUrl = localStorage.getItem(`${base}-hero`) || ''; } catch { }
+        if (!logoDataUrl) { try { logoDataUrl = await getFileContent(app, `${roomId}/hr-miniapp/company/assets/logo.b64`); } catch { } }
+        if (!heroImageDataUrl) { try { heroImageDataUrl = await getFileContent(app, `${roomId}/hr-miniapp/company/assets/hero.b64`); } catch { } }
+
+        obj.logoDataUrl = logoDataUrl;
+        obj.heroImageDataUrl = heroImageDataUrl;
+        const nextProfile = toCompanyProfile(obj);
+        if (!cancelled) {
+          setProfile(nextProfile);
+          setDraftProfile(nextProfile);
+          setLogoPreview(nextProfile.logoDataUrl);
+          setHeroImagePreview(nextProfile.heroImageDataUrl);
+          setIsSetupOpen(false);
+          if (nextProfile.website) setWebsite(nextProfile.website);
+          saveProfileToLocal(roomId, nextProfile);
+        }
+      } catch { }
+    })();
+
     return () => { cancelled = true; };
   }, [app, roomId]);
 
   const saveProfile = async (nextProfile: CompanyProfile) => {
-    await createOrUpdateFile(app, `${roomId}/hr-miniapp/company/company-profile.json`, JSON.stringify(nextProfile, null, 2));
+    // 1. Save to localStorage immediately (instant on next reload)
+    saveProfileToLocal(roomId, nextProfile);
+    // 2. Save lean JSON to server (no base64 images — avoids file size limit)
+    const { logoDataUrl, heroImageDataUrl, ...lean } = nextProfile;
+    await createOrUpdateFile(app, `${roomId}/hr-miniapp/company/company-profile.json`, JSON.stringify(lean, null, 2));
+    // 3. Save images as separate plain-text .b64 files (loadable via getFileContent)
+    if (logoDataUrl) { try { await createOrUpdateFile(app, `${roomId}/hr-miniapp/company/assets/logo.b64`, logoDataUrl); } catch { } }
+    if (heroImageDataUrl) { try { await createOrUpdateFile(app, `${roomId}/hr-miniapp/company/assets/hero.b64`, heroImageDataUrl); } catch { } }
     setProfile(nextProfile);
     setDraftProfile(nextProfile);
     setLogoPreview(nextProfile.logoDataUrl);
     setHeroImagePreview(nextProfile.heroImageDataUrl);
   };
+
 
   const handleLogoSelect = async (file: File | null) => {
     setSelectedLogo(file);

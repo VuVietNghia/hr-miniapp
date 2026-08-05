@@ -1,6 +1,10 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useState, useEffect } from 'react';
+import { usePrivosApp, usePrivosContext } from '@privos/app-react';
+import { createOrUpdateFile } from './privos-rest';
+import { PipelineService } from './pipeline-service';
+import { MarkdownPathContextBuilder } from './cv-context-builder';
 
-type Department = 'it' | 'marketing' | 'hr' | 'other';
+type Department = string;
 
 interface Job {
   title: string;
@@ -8,170 +12,364 @@ interface Job {
   salary: string;
   summary: string;
   responsibilities: string[];
-  requirements: string[];
-  bonuses: string[];
+  
+  // Old format compatibility
+  requirements?: string[];
+  bonuses?: string[];
+
+  // New format
+  location?: string;
+  req_experience?: string[];
+  req_professional?: string[];
+  req_soft?: string[];
+  req_education?: string[];
+  benefits?: string[];
+  contact_email?: string;
+  contact_title?: string;
 }
 
 interface JobDraft {
   title: string;
   type: string;
   salary: string;
+  location: string;
   summary: string;
   responsibilities: string;
-  requirements: string;
-  bonuses: string;
+  req_experience: string;
+  req_professional: string;
+  req_soft: string;
+  req_education: string;
+  benefits: string;
+  contact_email: string;
+  contact_title: string;
 }
 
 const EMPTY_DRAFT: JobDraft = {
   title: '',
   type: '',
   salary: '',
+  location: '',
   summary: '',
   responsibilities: '',
-  requirements: '',
-  bonuses: '',
+  req_experience: '',
+  req_professional: '',
+  req_soft: '',
+  req_education: '',
+  benefits: '',
+  contact_email: '',
+  contact_title: '',
 };
 
 const DEPARTMENTS: { id: Department; label: string; count?: number }[] = [
-  { id: 'it', label: 'IT', count: 3 },
+  { id: 'it', label: 'IT' },
   { id: 'marketing', label: 'Marketing' },
   { id: 'hr', label: 'HR' },
   { id: 'other', label: 'Khác' },
 ];
 
-const IT_JOBS: Job[] = [
-  {
-    title: 'Thực tập sinh / Junior Backend Java Developer',
-    type: 'Full-time hoặc Part-time',
-    salary: 'Hỗ trợ thực tập 3 – 6 triệu/tháng',
-    summary: 'Tham gia phát triển backend cho MiniApp và Web App cùng đội ngũ kỹ thuật.',
-    responsibilities: [
-      'Phát triển hệ thống backend Java/Spring Boot cho MiniApp và Web App.',
-      'Thiết kế, tối ưu cơ sở dữ liệu SQL Server và MySQL.',
-      'Tích hợp APIs cùng đội ngũ Frontend và viết unit test.',
-    ],
-    requirements: [
-      'Nắm vững Java và kiến thức phát triển ứng dụng web.',
-      'Hiểu Spring Boot: Spring MVC, Spring Data JPA, Spring Security.',
-      'Biết Git/GitHub; tư duy logic, chủ động và có trách nhiệm.',
-    ],
-    bonuses: ['Có dự án Spring Boot thực tế.', 'Biết Docker, VueJS hoặc Python là lợi thế.'],
-  },
-  {
-    title: 'Chuyên viên CNTT / Hệ thống',
-    type: 'Full-time',
-    salary: '12 – 18 triệu/tháng',
-    summary: 'Vận hành hạ tầng công nghệ, hỗ trợ người dùng và tư vấn giải pháp CNTT cho công ty.',
-    responsibilities: [
-      'Quản lý mạng nội bộ, camera, máy chấm công và server.',
-      'Triển khai, vận hành các phần mềm MS365, Base.vn, FastWork, NextCloud.',
-      'Hỗ trợ Helpdesk và tham mưu giải pháp tối ưu hiệu suất doanh nghiệp.',
-    ],
-    requirements: [
-      'Tốt nghiệp CNTT, An toàn thông tin hoặc Điện tử viễn thông.',
-      'Có kinh nghiệm Microsoft 365, Base.vn và hạ tầng mạng.',
-      'Troubleshooting tốt, cẩn thận và có khả năng tự nghiên cứu.',
-    ],
-    bonuses: ['Có chứng chỉ CCNA/MCSA.', 'Biết AWS, Azure hoặc ảo hóa.'],
-  },
-  {
-    title: 'Thực tập sinh Manual Tester / QC',
-    type: 'Full-time hoặc Part-time',
-    salary: 'Hỗ trợ thực tập 2 – 5 triệu/tháng',
-    summary: 'Kiểm thử sản phẩm Web, Mobile và MiniApp để mang lại trải nghiệm chất lượng cho người dùng.',
-    responsibilities: [
-      'Phân tích PRD/SOP và viết Test Case, Test Scenario.',
-      'Kiểm thử thủ công trên Web, Mobile và MiniApp.',
-      'Theo dõi bug bằng Trello/Jira và phối hợp nghiệm thu tính năng.',
-    ],
-    requirements: [
-      'Hiểu Testing Lifecycle, Test Levels và Test Types.',
-      'Viết Test Case rõ ràng; tỉ mỉ khi phát hiện lỗi UI/UX và logic.',
-      'Sử dụng tốt Trello, Excel hoặc công cụ quản lý bug.',
-    ],
-    bonuses: ['Biết Postman.', 'Có kiến thức Selenium, Photoshop hoặc Figma.'],
-  },
-];
+const IT_JOBS: Job[] = [];
 
 function splitLines(value: string) {
   return value.split('\n').map((item) => item.trim()).filter(Boolean);
 }
 
 export default function RecruitmentPanel() {
+  const app = usePrivosApp();
+  const { roomId } = usePrivosContext();
+
+  const [departments, setDepartments] = useState<{ id: Department; label: string; count?: number }[]>([
+    { id: 'it', label: 'IT' },
+    { id: 'marketing', label: 'Marketing' },
+    { id: 'hr', label: 'HR' },
+    { id: 'other', label: 'Khác' },
+  ]);
   const [department, setDepartment] = useState<Department>('it');
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
-  const [customJobs, setCustomJobs] = useState<Job[]>([]);
+  const [jobsByDept, setJobsByDept] = useState<Record<string, Job[]>>({
+    'it': IT_JOBS,
+    'marketing': [],
+    'hr': [],
+    'other': [],
+  });
   const [showForm, setShowForm] = useState(false);
   const [draft, setDraft] = useState<JobDraft>(EMPTY_DRAFT);
+
+  useEffect(() => {
+    if (!app || !roomId) return;
+    const loadJDs = async () => {
+      try {
+        const service = new PipelineService(app, roomId, new MarkdownPathContextBuilder());
+        const jds = await service.fetchAvailableJDs();
+        
+        const nextJobsByDept: Record<string, Job[]> = {
+          it: [],
+          marketing: [],
+          hr: [],
+          other: []
+        };
+        const nextDepts = [
+          { id: 'it', label: 'IT' },
+          { id: 'marketing', label: 'Marketing' },
+          { id: 'hr', label: 'HR' },
+          { id: 'other', label: 'Khác' },
+        ];
+
+        for (const jd of jds) {
+          if (!jd.name.startsWith('JD_')) continue;
+          
+          let content = '';
+          try {
+            if (jd.downloadUrl) {
+              const res = await fetch(jd.downloadUrl);
+              content = await res.text();
+            } else {
+              const res: any = await app.callServerTool({
+                name: 'privos.files.getContent',
+                arguments: { path: `${roomId}/hr-miniapp/jds/${jd.name}` }
+              });
+              content = typeof res === 'string' ? res : (res?.data || '');
+            }
+          } catch (e: any) {
+            content = await service.getMarkdownContent(jd.name);
+          }
+          if (!content) {
+            continue;
+          }
+
+          const titleH1Match = content.match(/^# TUYỂN DỤNG:\s*(.*)/m);
+          const titleMatch = content.match(/^# (.*)/m);
+          const title = titleH1Match ? titleH1Match[1].trim() : (titleMatch ? titleMatch[1].trim() : '');
+          if (!title) continue;
+
+          // Parse table format
+          const deptTableMatch = content.match(/\|\s*\*\*Phòng ban\*\*\s*\|\s*(.*?)\s*\|/);
+          const locationTableMatch = content.match(/\|\s*\*\*Địa điểm làm việc\*\*\s*\|\s*(.*?)\s*\|/);
+          const typeTableMatch = content.match(/\|\s*\*\*Thời gian làm việc\*\*\s*\|\s*(.*?)\s*\|/);
+          const salaryTableMatch = content.match(/\|\s*\*\*Mức lương\*\*\s*\|\s*(.*?)\s*\|/);
+
+          // Parse old format
+          const deptOldMatch = content.match(/- Ph\u00f2ng ban: (.*)/);
+          const typeOldMatch = content.match(/- H\u00ecnh th\u1ee9c: (.*)/);
+          const salaryOldMatch = content.match(/- Thu nh\u1eadp: (.*)/);
+          const summaryOldMatch = content.match(/- M\u00f4 t\u1ea3 ng\u1eafn: (.*)/);
+          const summaryHtmlMatch = content.match(/<!-- SUMMARY:\s*(.*?)\s*-->/);
+          
+          const deptLabel = deptTableMatch ? deptTableMatch[1].trim() : (deptOldMatch ? deptOldMatch[1].trim() : 'Khác');
+          const type = typeTableMatch ? typeTableMatch[1].trim() : (typeOldMatch ? typeOldMatch[1].trim() : 'Thỏa thuận');
+          const salary = salaryTableMatch ? salaryTableMatch[1].trim() : (salaryOldMatch ? salaryOldMatch[1].trim() : 'Thỏa thuận');
+          const location = locationTableMatch ? locationTableMatch[1].trim() : 'Không xác định';
+          const summary = summaryHtmlMatch ? summaryHtmlMatch[1].trim() : (summaryOldMatch ? summaryOldMatch[1].trim() : '');
+
+          const deptId = deptLabel.toLowerCase().replace(/\s+/g, '_');
+          if (!nextDepts.find(d => d.id === deptId)) {
+            nextDepts.push({ id: deptId, label: deptLabel });
+          }
+
+          if (!nextJobsByDept[deptId]) nextJobsByDept[deptId] = [];
+
+          const respMatch = content.match(/## 2\. Mô tả công việc\n([\s\S]*?)(?=\n## |\n*$)/) || content.match(/## M\u00f4 t\u1ea3 c\u00f4ng vi\u1ec7c\n([\s\S]*?)(?=\n## |\n*$)/);
+          const responsibilities = respMatch ? respMatch[1].split('\n').filter(l => l.trim().startsWith('* ') || l.trim().startsWith('- ')).map(l => l.replace(/^[* -]\s*/, '').trim()) : [];
+          
+          const oldReqMatch = content.match(/## Y\u00eau c\u1ea7u\n([\s\S]*?)(?=\n## |\n*$)/);
+          const requirements = oldReqMatch ? oldReqMatch[1].split('\n').filter(l => l.trim().startsWith('- ')).map(l => l.replace(/^-\s*/, '').trim()) : undefined;
+
+          const oldBonusMatch = content.match(/## \u0110i\u1ec3m c\u1ed9ng\n([\s\S]*?)(?=\n## |\n*$)/);
+          const bonuses = oldBonusMatch ? oldBonusMatch[1].split('\n').filter(l => l.trim().startsWith('- ')).map(l => l.replace(/^-\s*/, '').trim()) : undefined;
+
+          // New format specific blocks
+          const reqExpMatch = content.match(/### Kinh nghiệm\n([\s\S]*?)(?=\n### |\n## |\n*$)/);
+          const req_experience = reqExpMatch ? reqExpMatch[1].split('\n').filter(l => l.trim().startsWith('* ')).map(l => l.replace(/^\*\s*/, '').trim()) : [];
+          
+          const reqProfMatch = content.match(/### Kỹ năng chuyên môn\n([\s\S]*?)(?=\n### |\n## |\n*$)/);
+          const req_professional = reqProfMatch ? reqProfMatch[1].split('\n').filter(l => l.trim().startsWith('* ')).map(l => l.replace(/^\*\s*/, '').trim()) : [];
+          
+          const reqSoftMatch = content.match(/### Kỹ năng mềm\n([\s\S]*?)(?=\n### |\n## |\n*$)/);
+          const req_soft = reqSoftMatch ? reqSoftMatch[1].split('\n').filter(l => l.trim().startsWith('* ')).map(l => l.replace(/^\*\s*/, '').trim()) : [];
+          
+          const reqEduMatch = content.match(/### Học vấn\n([\s\S]*?)(?=\n### |\n## |\n*$)/);
+          const req_education = reqEduMatch ? reqEduMatch[1].split('\n').filter(l => l.trim().startsWith('* ')).map(l => l.replace(/^\*\s*/, '').trim()) : [];
+
+          const benefitsMatch = content.match(/## 4\. Quyền lợi\n([\s\S]*?)(?=\n## |\n*$)/);
+          const benefits = benefitsMatch ? benefitsMatch[1].split('\n').filter(l => l.trim().startsWith('* ')).map(l => l.replace(/^\*\s*/, '').trim()) : [];
+
+          // Avoid duplicates
+          if (!nextJobsByDept[deptId].find(j => j.title === title)) {
+            nextJobsByDept[deptId].push({
+              title, type, salary, location, summary, responsibilities, requirements, bonuses,
+              req_experience, req_professional, req_soft, req_education, benefits
+            });
+          }
+        }
+
+        setDepartments(nextDepts);
+        setJobsByDept(nextJobsByDept);
+      } catch (e: any) {
+        console.error("Failed to load JDs from room files", e);
+      }
+    };
+    loadJDs();
+  }, [app, roomId]);
 
   const selectDepartment = (nextDepartment: Department) => {
     setDepartment(nextDepartment);
     setSelectedJob(null);
   };
 
-  const submitJob = (event: FormEvent<HTMLFormElement>) => {
+  const submitJob = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!draft.title.trim() || !draft.summary.trim()) return;
 
-    setCustomJobs((jobs) => [
-      ...jobs,
-      {
-        title: draft.title.trim(),
-        type: draft.type.trim() || 'Thỏa thuận',
-        salary: draft.salary.trim() || 'Thỏa thuận',
-        summary: draft.summary.trim(),
-        responsibilities: splitLines(draft.responsibilities),
-        requirements: splitLines(draft.requirements),
-        bonuses: splitLines(draft.bonuses),
-      },
-    ]);
+    const newJob: Job = {
+      title: draft.title.trim(),
+      type: draft.type.trim() || 'Thỏa thuận',
+      salary: draft.salary.trim() || 'Thỏa thuận',
+      location: draft.location.trim() || 'Không xác định',
+      summary: draft.summary.trim(),
+      responsibilities: splitLines(draft.responsibilities),
+      req_experience: splitLines(draft.req_experience),
+      req_professional: splitLines(draft.req_professional),
+      req_soft: splitLines(draft.req_soft),
+      req_education: splitLines(draft.req_education),
+      benefits: splitLines(draft.benefits),
+      contact_email: draft.contact_email.trim() || 'Không xác định',
+      contact_title: draft.contact_title.trim() || 'Không xác định',
+    };
+
+    setJobsByDept(prev => ({
+      ...prev,
+      [department]: [...(prev[department] || []), newJob]
+    }));
+
+    if (app && roomId) {
+      const deptLabel = departments.find(d => d.id === department)?.label || department;
+      const content = `# TUYỂN DỤNG: ${newJob.title.toUpperCase()}
+
+***
+
+## 1. Thông tin chung
+
+| Hạng mục               | Chi tiết             |
+| ---------------------- | -------------------- |
+| **Vị trí tuyển dụng**  | ${newJob.title}    |
+| **Phòng ban**          | ${deptLabel}                  |
+| **Địa điểm làm việc**  | ${newJob.location}               |
+| **Thời gian làm việc** | ${newJob.type}            |
+| **Mức lương**          | ${newJob.salary} |
+
+***
+
+## 2. Mô tả công việc
+
+${newJob.responsibilities.length > 0 ? newJob.responsibilities.map(x => `* ${x}`).join('\n') : '* (Chưa cập nhật)'}
+
+***
+
+## 3. Yêu cầu ứng viên
+
+### Kinh nghiệm
+
+${newJob.req_experience && newJob.req_experience.length > 0 ? newJob.req_experience.map(x => `* ${x}`).join('\n') : '* Không yêu cầu'}
+
+### Kỹ năng chuyên môn
+
+${newJob.req_professional && newJob.req_professional.length > 0 ? newJob.req_professional.map(x => `* ${x}`).join('\n') : '* Không yêu cầu'}
+
+### Kỹ năng mềm
+
+${newJob.req_soft && newJob.req_soft.length > 0 ? newJob.req_soft.map(x => `* ${x}`).join('\n') : '* Không yêu cầu'}
+
+### Học vấn
+
+${newJob.req_education && newJob.req_education.length > 0 ? newJob.req_education.map(x => `* ${x}`).join('\n') : '* Không yêu cầu'}
+
+***
+
+## 4. Quyền lợi
+
+${newJob.benefits && newJob.benefits.length > 0 ? newJob.benefits.map(x => `* ${x}`).join('\n') : '* Trao đổi khi phỏng vấn'}
+
+***
+
+## 5. Cách thức ứng tuyển
+
+* **Email nhận CV:** _${newJob.contact_email}_
+* **Tiêu đề email:** _${newJob.contact_title}_
+
+> ⚠️ Thông tin email và tiêu đề ứng tuyển có thể thay đổi tùy đợt tuyển dụng. Vui lòng cập nhật nếu cần.
+
+***
+
+_Đăng ngày: ${new Date().toISOString().slice(0, 10)}_
+
+<!-- SUMMARY: ${newJob.summary} -->
+`;
+      const normalizedTitle = newJob.title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
+      const fileName = `JD_${normalizedTitle.replace(/[^a-zA-Z0-9_ -]/g, '').trim().replace(/\s+/g, '_')}.md`;
+      createOrUpdateFile(app, `${roomId}/hr-miniapp/jds/${fileName}`, content)
+        .catch(console.error);
+    }
+
     setDraft(EMPTY_DRAFT);
     setShowForm(false);
   };
 
-  const jobs = department === 'it' ? IT_JOBS : customJobs;
-  const departmentLabel = department === 'it' ? 'IT' : 'Khác';
+  const addDepartment = () => {
+    const name = window.prompt("Nhập tên phòng ban mới:");
+    if (name && name.trim()) {
+      const id = name.trim().toLowerCase().replace(/\s+/g, '_');
+      if (!departments.find(d => d.id === id)) {
+        setDepartments([...departments, { id, label: name.trim() }]);
+        setJobsByDept(prev => ({ ...prev, [id]: [] }));
+        setDepartment(id);
+      }
+    }
+  };
+
+  const jobs = jobsByDept[department] || [];
+  const departmentLabel = departments.find(d => d.id === department)?.label || department;
 
   return (
     <main className="recruitment-page">
       <section className="recruitment-hero">
-        <span>B.ARMY CAREERS</span>
-        <h1>Cùng tạo nên những sản phẩm công nghệ có ảnh hưởng.</h1>
-        <p>Khám phá cơ hội nghề nghiệp và phát triển cùng đội ngũ B.ARMY.</p>
+        <span>QUẢN LÝ TUYỂN DỤNG</span>
+        <h1>Tạo và quản lý các vị trí tuyển dụng.</h1>
+        <p>Thêm mới Job Description (JD) để tự động hóa quy trình sàng lọc và đánh giá CV.</p>
       </section>
 
       <section className="recruitment-content">
-        <div className="recruitment-category-list" role="tablist" aria-label="Nhóm vị trí tuyển dụng">
-          {DEPARTMENTS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              aria-selected={department === item.id}
-              className={`recruitment-category${department === item.id ? ' recruitment-category-active' : ''}`}
-              onClick={() => selectDepartment(item.id)}
-            >
-              {item.label}
-              {(item.count || item.id === 'other') && <span>{item.id === 'other' ? customJobs.length : item.count}</span>}
-            </button>
-          ))}
+        <div className="recruitment-category-list" role="tablist" aria-label="Nhóm vị trí tuyển dụng" style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px' }}>
+          {departments.map((item) => {
+            const count = jobsByDept[item.id]?.length || 0;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                aria-selected={department === item.id}
+                className={`recruitment-category${department === item.id ? ' recruitment-category-active' : ''}`}
+                onClick={() => selectDepartment(item.id)}
+              >
+                {item.label}
+                {count > 0 && <span>{count}</span>}
+              </button>
+            );
+          })}
+          <button type="button" className="recruitment-category" onClick={addDepartment} style={{ borderStyle: 'dashed' }}>
+            + Thêm phòng ban
+          </button>
         </div>
 
-        {(department === 'it' || department === 'other') && (
-          <>
             <div className="recruitment-heading">
               <div>
-                <span>{department === 'it' ? 'ĐANG TUYỂN' : 'TỰ TẠO JD'}</span>
+                <span>{jobs.length > 0 ? 'ĐANG TUYỂN' : 'TỰ TẠO JD'}</span>
                 <h2>Vị trí {departmentLabel}</h2>
               </div>
-              {department === 'other' && (
-                <button type="button" className="add-job-button" onClick={() => setShowForm(true)}>
-                  <span aria-hidden="true">+</span> Thêm JD
-                </button>
-              )}
+              <button type="button" className="add-job-button" onClick={() => setShowForm(true)}>
+                <span aria-hidden="true">+</span> Thêm JD
+              </button>
             </div>
 
-            {department === 'other' && showForm && (
+            {showForm && (
               <form className="job-form" onSubmit={submitJob}>
                 <div className="job-form-heading">
                   <div>
@@ -180,34 +378,58 @@ export default function RecruitmentPanel() {
                   </div>
                   <button type="button" aria-label="Đóng form thêm JD" onClick={() => setShowForm(false)}>×</button>
                 </div>
-                <div className="job-form-grid">
+                <div className="job-form-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
                   <label>
-                    Tên vị trí <b>*</b>
-                    <input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="Ví dụ: Chuyên viên Vận hành" required />
+                    Vị trí tuyển dụng <b>*</b>
+                    <input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="Ví dụ: Backend Developer" required />
                   </label>
                   <label>
-                    Hình thức
+                    Thời gian làm việc
                     <input value={draft.type} onChange={(event) => setDraft({ ...draft, type: event.target.value })} placeholder="Ví dụ: Full-time" />
                   </label>
                   <label>
-                    Thu nhập
-                    <input value={draft.salary} onChange={(event) => setDraft({ ...draft, salary: event.target.value })} placeholder="Ví dụ: 15 – 20 triệu/tháng" />
+                    Mức lương
+                    <input value={draft.salary} onChange={(event) => setDraft({ ...draft, salary: event.target.value })} placeholder="Ví dụ: 12.000.000 VNĐ/tháng" />
                   </label>
-                  <label className="job-form-wide">
+                  <label>
+                    Địa điểm làm việc
+                    <input value={draft.location} onChange={(event) => setDraft({ ...draft, location: event.target.value })} placeholder="Ví dụ: Hà Nội" />
+                  </label>
+                  <label className="job-form-wide" style={{ gridColumn: '1 / -1' }}>
                     Mô tả ngắn <b>*</b>
-                    <textarea value={draft.summary} onChange={(event) => setDraft({ ...draft, summary: event.target.value })} placeholder="Giới thiệu ngắn về vị trí..." required />
+                    <textarea value={draft.summary} onChange={(event) => setDraft({ ...draft, summary: event.target.value })} placeholder="Giới thiệu ngắn hiển thị trên thẻ..." required />
                   </label>
-                  <label>
+                  <label className="job-form-wide" style={{ gridColumn: '1 / -1' }}>
                     Mô tả công việc
-                    <textarea value={draft.responsibilities} onChange={(event) => setDraft({ ...draft, responsibilities: event.target.value })} placeholder="Mỗi dòng là một đầu việc" />
+                    <textarea value={draft.responsibilities} onChange={(event) => setDraft({ ...draft, responsibilities: event.target.value })} placeholder="Mỗi dòng là một đầu việc (*...)" />
                   </label>
                   <label>
-                    Yêu cầu
-                    <textarea value={draft.requirements} onChange={(event) => setDraft({ ...draft, requirements: event.target.value })} placeholder="Mỗi dòng là một yêu cầu" />
+                    Kinh nghiệm
+                    <textarea value={draft.req_experience} onChange={(event) => setDraft({ ...draft, req_experience: event.target.value })} placeholder="Yêu cầu về kinh nghiệm..." />
                   </label>
-                  <label className="job-form-wide">
-                    Điểm cộng
-                    <textarea value={draft.bonuses} onChange={(event) => setDraft({ ...draft, bonuses: event.target.value })} placeholder="Mỗi dòng là một điểm cộng" />
+                  <label>
+                    Kỹ năng chuyên môn
+                    <textarea value={draft.req_professional} onChange={(event) => setDraft({ ...draft, req_professional: event.target.value })} placeholder="Kỹ năng chuyên môn..." />
+                  </label>
+                  <label>
+                    Kỹ năng mềm
+                    <textarea value={draft.req_soft} onChange={(event) => setDraft({ ...draft, req_soft: event.target.value })} placeholder="Kỹ năng mềm..." />
+                  </label>
+                  <label>
+                    Học vấn
+                    <textarea value={draft.req_education} onChange={(event) => setDraft({ ...draft, req_education: event.target.value })} placeholder="Yêu cầu học vấn..." />
+                  </label>
+                  <label className="job-form-wide" style={{ gridColumn: '1 / -1' }}>
+                    Quyền lợi
+                    <textarea value={draft.benefits} onChange={(event) => setDraft({ ...draft, benefits: event.target.value })} placeholder="Mỗi dòng là một quyền lợi..." />
+                  </label>
+                  <label>
+                    Email nhận CV
+                    <input type="email" value={draft.contact_email} onChange={(event) => setDraft({ ...draft, contact_email: event.target.value })} placeholder="Ví dụ: hr@company.com" />
+                  </label>
+                  <label>
+                    Tiêu đề email
+                    <input value={draft.contact_title} onChange={(event) => setDraft({ ...draft, contact_title: event.target.value })} placeholder="Ví dụ: [Backend] - Họ tên" />
                   </label>
                 </div>
                 <div className="job-form-actions">
@@ -258,28 +480,35 @@ export default function RecruitmentPanel() {
                   <button type="button" onClick={() => setSelectedJob(null)} aria-label="Đóng chi tiết vị trí">×</button>
                 </div>
                 <div className="job-detail-columns">
-                  {selectedJob.responsibilities.length > 0 && (
+                  {selectedJob.responsibilities && selectedJob.responsibilities.length > 0 && (
                     <div><h3>Mô tả công việc</h3><ul>{selectedJob.responsibilities.map((item) => <li key={item}>{item}</li>)}</ul></div>
                   )}
-                  {selectedJob.requirements.length > 0 && (
+                  {selectedJob.requirements && selectedJob.requirements.length > 0 && (
                     <div><h3>Yêu cầu</h3><ul>{selectedJob.requirements.map((item) => <li key={item}>{item}</li>)}</ul></div>
                   )}
-                  {selectedJob.bonuses.length > 0 && (
+                  {selectedJob.bonuses && selectedJob.bonuses.length > 0 && (
                     <div><h3>Điểm cộng</h3><ul>{selectedJob.bonuses.map((item) => <li key={item}>{item}</li>)}</ul></div>
+                  )}
+                  
+                  {/* New format fields */}
+                  {selectedJob.req_experience && selectedJob.req_experience.length > 0 && (
+                    <div><h3>Kinh nghiệm</h3><ul>{selectedJob.req_experience.map((item) => <li key={item}>{item}</li>)}</ul></div>
+                  )}
+                  {selectedJob.req_professional && selectedJob.req_professional.length > 0 && (
+                    <div><h3>Kỹ năng chuyên môn</h3><ul>{selectedJob.req_professional.map((item) => <li key={item}>{item}</li>)}</ul></div>
+                  )}
+                  {selectedJob.req_soft && selectedJob.req_soft.length > 0 && (
+                    <div><h3>Kỹ năng mềm</h3><ul>{selectedJob.req_soft.map((item) => <li key={item}>{item}</li>)}</ul></div>
+                  )}
+                  {selectedJob.req_education && selectedJob.req_education.length > 0 && (
+                    <div><h3>Học vấn</h3><ul>{selectedJob.req_education.map((item) => <li key={item}>{item}</li>)}</ul></div>
+                  )}
+                  {selectedJob.benefits && selectedJob.benefits.length > 0 && (
+                    <div><h3>Quyền lợi</h3><ul>{selectedJob.benefits.map((item) => <li key={item}>{item}</li>)}</ul></div>
                   )}
                 </div>
               </article>
             )}
-          </>
-        )}
-
-        {(department === 'marketing' || department === 'hr') && (
-          <section className="recruitment-empty">
-            <div aria-hidden="true">+</div>
-            <h2>Vị trí {department === 'marketing' ? 'Marketing' : 'HR'} đang được cập nhật</h2>
-            <p>Hãy quay lại sau để khám phá những cơ hội phù hợp với bạn.</p>
-          </section>
-        )}
       </section>
     </main>
   );

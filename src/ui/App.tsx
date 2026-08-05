@@ -7,9 +7,10 @@ import PipelineDashboard from './pipeline-dashboard';
 import LifecycleDashboard from './lifecycle/LifecycleDashboard';
 import PayrollTab from './payroll/PayrollTab';
 import BotDraftingTab from './bot-drafting-tab';
+import CVScoredTab from './cv-scored/CVScoredTab';
 import { ensureTemplatesExistGlobal } from './pipeline-service';
 
-type Tab = 'home' | 'recruitment' | 'pipeline' | 'lifecycle' | 'payroll' | 'botDrafting';
+type Tab = 'home' | 'recruitment' | 'pipeline' | 'cvScored' | 'lifecycle' | 'payroll' | 'botDrafting';
 type SectionId = 'hr' | 'admin';
 
 type TabSection = {
@@ -25,6 +26,7 @@ const TAB_SECTIONS: TabSection[] = [
     tabs: [
       { id: 'recruitment', label: 'Tuy\u1ec3n d\u1ee5ng' },
       { id: 'pipeline', label: 'CV Pipeline' },
+      { id: 'cvScored', label: 'CV \u0111\u00e3 ch\u1ea5m' },
     ],
   },
   {
@@ -116,6 +118,7 @@ function ThemedApp() {
       <div className={tab === 'home' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'home'}>
         <CompanyHome />
       </div>
+<<<<<<< HEAD
 
       {visitedTabs.has('recruitment') && (
         <div className={tab === 'recruitment' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'recruitment'}>
@@ -146,6 +149,20 @@ function ThemedApp() {
           <BotDraftingTab />
         </div>
       )}
+=======
+      <div className={tab === 'recruitment' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'recruitment'}>
+        <RecruitmentPanel />
+      </div>
+      <div className={tab === 'pipeline' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'pipeline'}>
+        <PipelineDashboard />
+      </div>
+      <div className={tab === 'cvScored' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'cvScored'}>
+        <CVScoredTab />
+      </div>
+      {tab === 'lifecycle' && <LifecycleDashboard />}
+      {tab === 'payroll' && <PayrollTab />}
+      {tab === 'botDrafting' && <BotDraftingTab />}
+>>>>>>> origin/main
     </ThemeProvider>
   );
 }
