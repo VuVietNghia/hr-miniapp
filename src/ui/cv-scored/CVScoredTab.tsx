@@ -43,7 +43,16 @@ function CVCard({ cv, onMove }: { cv: CVProfile, onMove: (id: string, newStatus:
             <div className="profile-name" style={{ whiteSpace: 'nowrap', overflow: 'hidden' }} title={cv.name}>{displayName}</div>
             <div style={{ marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span className="badge-tenure">Điểm: {cv.score ?? 'N/A'}</span>
-              {cv.category && <span className="position-badge" style={{ fontSize: '10px', padding: '2px 6px' }}>{cv.category}</span>}
+              {cv.category && (() => {
+                let badgeStyle: React.CSSProperties = { fontSize: '10px', padding: '2px 6px' };
+                const catLower = cv.category.toLowerCase();
+                if (catLower.includes('không đạt') || catLower.includes('không tuyển')) {
+                  badgeStyle = { ...badgeStyle, backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca' };
+                } else if (catLower.includes('cân nhắc')) {
+                  badgeStyle = { ...badgeStyle, backgroundColor: '#fefce8', color: '#eab308', border: '1px solid #fef08a' };
+                }
+                return <span className="position-badge" style={badgeStyle}>{cv.category}</span>;
+              })()}
             </div>
           </div>
         </div>
@@ -146,8 +155,17 @@ export default function CVScoredTab() {
       const parsed = JSON.parse(res?.content?.[0]?.text || '{}');
       const allLists = Array.isArray(parsed) ? parsed : (parsed.lists || []);
       
-      // Get all lists for the day and sort newest first (assuming server returns them in creation order, so reverse it)
-      const targetLists = allLists.filter((l: any) => l.name?.startsWith(listName)).reverse();
+      // Get all lists for the day and sort newest first by createdAt or _id
+      const targetLists = allLists
+        .filter((l: any) => l.name?.startsWith(listName))
+        .sort((a: any, b: any) => {
+          const tA = new Date(a.createdAt || a.created_at || 0).getTime();
+          const tB = new Date(b.createdAt || b.created_at || 0).getTime();
+          if (tA !== tB && tA > 0 && tB > 0) return tB - tA;
+          const idA = a._id || a.id || '';
+          const idB = b._id || b.id || '';
+          return idB.localeCompare(idA);
+        });
       
       if (targetLists.length === 0) {
         setBoards([]);
@@ -311,7 +329,7 @@ export default function CVScoredTab() {
             value={date} 
             onChange={e => setDate(e.target.value)} 
           />
-          <button className="hr-btn" onClick={loadData} disabled={loading} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <button className="hr-btn" onClick={loadData} disabled={loading} style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
             </svg>

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { usePrivosApp, usePrivosContext } from '@privos/app-react';
 import { PipelineService, CVFile, ProcessingStatus } from './pipeline-service';
 import { MarkdownPathContextBuilder } from './cv-context-builder';
@@ -528,8 +528,8 @@ REQUIRED:
 
 
   const resultList = Object.values(statuses);
-  const defaultJDs = availableJDs.filter(jd => defaultJDTemplateNames.has(jd.name));
-  const aiGeneratedJDs = availableJDs.filter(jd => !defaultJDTemplateNames.has(jd.name));
+  const defaultJDs = availableJDs.filter(jd => defaultJDTemplateNames.has(jd.name) || jd.name.startsWith('JD_'));
+  const aiGeneratedJDs = availableJDs.filter(jd => !defaultJDTemplateNames.has(jd.name) && !jd.name.startsWith('JD_'));
   const selectedJD = availableJDs.find(jd => jd.name === jdName);
   const jdDropdownLabel = jdLoading ? "Vui l\u00f2ng ch\u1edd JD \u0111ang t\u1ea3i l\u00ean" : selectedJD?.name || "Ch\u1ecdn JD";
   const isJDFormReady = hasJDFormValue(jdForm);

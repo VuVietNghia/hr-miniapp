@@ -1,6 +1,10 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useState, useEffect } from 'react';
+import { usePrivosApp, usePrivosContext } from '@privos/app-react';
+import { createOrUpdateFile } from './privos-rest';
+import { PipelineService } from './pipeline-service';
+import { MarkdownPathContextBuilder } from './cv-context-builder';
 
-type Department = 'it' | 'marketing' | 'hr' | 'other';
+type Department = string;
 
 interface Job {
   title: string;
@@ -98,39 +102,181 @@ function splitLines(value: string) {
 }
 
 export default function RecruitmentPanel() {
+  const app = usePrivosApp();
+  const { roomId } = usePrivosContext();
+
+  const [departments, setDepartments] = useState<{ id: Department; label: string; count?: number }[]>([
+    { id: 'it', label: 'IT', count: 3 },
+    { id: 'marketing', label: 'Marketing' },
+    { id: 'hr', label: 'HR' },
+    { id: 'other', label: 'Khác' },
+  ]);
   const [department, setDepartment] = useState<Department>('it');
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
-  const [customJobs, setCustomJobs] = useState<Job[]>([]);
+  const [jobsByDept, setJobsByDept] = useState<Record<string, Job[]>>({
+    'it': IT_JOBS,
+    'marketing': [],
+    'hr': [],
+    'other': [],
+  });
   const [showForm, setShowForm] = useState(false);
   const [draft, setDraft] = useState<JobDraft>(EMPTY_DRAFT);
+
+  useEffect(() => {
+    if (!app || !roomId) return;
+    const loadJDs = async () => {
+      try {
+        const service = new PipelineService(app, roomId, new MarkdownPathContextBuilder());
+        const jds = await service.fetchAvailableJDs();
+        
+        const nextJobsByDept: Record<string, Job[]> = {
+          it: [...IT_JOBS],
+          marketing: [],
+          hr: [],
+          other: []
+        };
+        const nextDepts = [
+          { id: 'it', label: 'IT', count: 3 },
+          { id: 'marketing', label: 'Marketing' },
+          { id: 'hr', label: 'HR' },
+          { id: 'other', label: 'Khác' },
+        ];
+
+        for (const jd of jds) {
+          if (!jd.name.startsWith('JD_')) continue;
+          if (jd.name === 'JD_Backend_Java.md' || jd.name === 'JD_IT_System_Admin.md' || jd.name === 'JD_Manual_Tester.md') continue;
+          
+          let content = '';
+          try {
+            if (jd.downloadUrl) {
+              const res = await fetch(jd.downloadUrl);
+              content = await res.text();
+            } else {
+              const res: any = await app.callServerTool({
+                name: 'privos.files.getContent',
+                arguments: { path: `${roomId}/hr-miniapp/jds/${jd.name}` }
+              });
+              content = typeof res === 'string' ? res : (res?.data || '');
+            }
+          } catch (e: any) {
+            content = await service.getMarkdownContent(jd.name);
+          }
+          if (!content) {
+            continue;
+          }
+
+          const titleMatch = content.match(/^# (.*)/m);
+          if (!titleMatch) {
+            continue;
+          }
+
+          const deptMatch = content.match(/- Ph\u00f2ng ban: (.*)/);
+          const typeMatch = content.match(/- H\u00ecnh th\u1ee9c: (.*)/);
+          const salaryMatch = content.match(/- Thu nh\u1eadp: (.*)/);
+          const summaryMatch = content.match(/- M\u00f4 t\u1ea3 ng\u1eafn: (.*)/);
+          
+          const title = titleMatch[1].trim();
+          const deptLabel = deptMatch ? deptMatch[1].trim() : 'Khác';
+          const type = typeMatch ? typeMatch[1].trim() : 'Thỏa thuận';
+          const salary = salaryMatch ? salaryMatch[1].trim() : 'Thỏa thuận';
+          const summary = summaryMatch ? summaryMatch[1].trim() : '';
+
+          const deptId = deptLabel.toLowerCase().replace(/\s+/g, '_');
+          if (!nextDepts.find(d => d.id === deptId)) {
+            nextDepts.push({ id: deptId, label: deptLabel });
+          }
+
+          if (!nextJobsByDept[deptId]) nextJobsByDept[deptId] = [];
+
+          const respMatch = content.match(/## M\u00f4 t\u1ea3 c\u00f4ng vi\u1ec7c\n([\s\S]*?)(?=\n## |\n*$)/);
+          const responsibilities = respMatch ? respMatch[1].split('\n').filter(l => l.startsWith('- ')).map(l => l.replace(/^- /, '').trim()) : [];
+          
+          const reqMatch = content.match(/## Y\u00eau c\u1ea7u\n([\s\S]*?)(?=\n## |\n*$)/);
+          const requirements = reqMatch ? reqMatch[1].split('\n').filter(l => l.startsWith('- ')).map(l => l.replace(/^- /, '').trim()) : [];
+
+          const bonusMatch = content.match(/## \u0110i\u1ec3m c\u1ed9ng\n([\s\S]*?)(?=\n## |\n*$)/);
+          const bonuses = bonusMatch ? bonusMatch[1].split('\n').filter(l => l.startsWith('- ')).map(l => l.replace(/^- /, '').trim()) : [];
+
+          // Avoid duplicates
+          if (!nextJobsByDept[deptId].find(j => j.title === title)) {
+            nextJobsByDept[deptId].push({
+              title, type, salary, summary, responsibilities, requirements, bonuses
+            });
+          }
+        }
+
+        setDepartments(nextDepts);
+        setJobsByDept(nextJobsByDept);
+      } catch (e: any) {
+        console.error("Failed to load JDs from room files", e);
+      }
+    };
+    loadJDs();
+  }, [app, roomId]);
 
   const selectDepartment = (nextDepartment: Department) => {
     setDepartment(nextDepartment);
     setSelectedJob(null);
   };
 
-  const submitJob = (event: FormEvent<HTMLFormElement>) => {
+  const submitJob = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!draft.title.trim() || !draft.summary.trim()) return;
 
-    setCustomJobs((jobs) => [
-      ...jobs,
-      {
-        title: draft.title.trim(),
-        type: draft.type.trim() || 'Thỏa thuận',
-        salary: draft.salary.trim() || 'Thỏa thuận',
-        summary: draft.summary.trim(),
-        responsibilities: splitLines(draft.responsibilities),
-        requirements: splitLines(draft.requirements),
-        bonuses: splitLines(draft.bonuses),
-      },
-    ]);
+    const newJob: Job = {
+      title: draft.title.trim(),
+      type: draft.type.trim() || 'Thỏa thuận',
+      salary: draft.salary.trim() || 'Thỏa thuận',
+      summary: draft.summary.trim(),
+      responsibilities: splitLines(draft.responsibilities),
+      requirements: splitLines(draft.requirements),
+      bonuses: splitLines(draft.bonuses),
+    };
+
+    setJobsByDept(prev => ({
+      ...prev,
+      [department]: [...(prev[department] || []), newJob]
+    }));
+
+    if (app && roomId) {
+      const content = `# ${newJob.title}
+- Phòng ban: ${departments.find(d => d.id === department)?.label || department}
+- Hình thức: ${newJob.type}
+- Thu nhập: ${newJob.salary}
+- Mô tả ngắn: ${newJob.summary}
+
+## Mô tả công việc
+${newJob.responsibilities.map(x => `- ${x}`).join('\n')}
+
+## Yêu cầu
+${newJob.requirements.map(x => `- ${x}`).join('\n')}
+
+## Điểm cộng
+${newJob.bonuses.map(x => `- ${x}`).join('\n')}
+`;
+      const fileName = `JD_${newJob.title.replace(/[^a-zA-Z0-9_]/g, '_')}.md`;
+      createOrUpdateFile(app, `${roomId}/hr-miniapp/jds/${fileName}`, content)
+        .catch(console.error);
+    }
+
     setDraft(EMPTY_DRAFT);
     setShowForm(false);
   };
 
-  const jobs = department === 'it' ? IT_JOBS : customJobs;
-  const departmentLabel = department === 'it' ? 'IT' : 'Khác';
+  const addDepartment = () => {
+    const name = window.prompt("Nhập tên phòng ban mới:");
+    if (name && name.trim()) {
+      const id = name.trim().toLowerCase().replace(/\s+/g, '_');
+      if (!departments.find(d => d.id === id)) {
+        setDepartments([...departments, { id, label: name.trim() }]);
+        setJobsByDept(prev => ({ ...prev, [id]: [] }));
+        setDepartment(id);
+      }
+    }
+  };
+
+  const jobs = jobsByDept[department] || [];
+  const departmentLabel = departments.find(d => d.id === department)?.label || department;
 
   return (
     <main className="recruitment-page">
@@ -141,37 +287,39 @@ export default function RecruitmentPanel() {
       </section>
 
       <section className="recruitment-content">
-        <div className="recruitment-category-list" role="tablist" aria-label="Nhóm vị trí tuyển dụng">
-          {DEPARTMENTS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              aria-selected={department === item.id}
-              className={`recruitment-category${department === item.id ? ' recruitment-category-active' : ''}`}
-              onClick={() => selectDepartment(item.id)}
-            >
-              {item.label}
-              {(item.count || item.id === 'other') && <span>{item.id === 'other' ? customJobs.length : item.count}</span>}
-            </button>
-          ))}
+        <div className="recruitment-category-list" role="tablist" aria-label="Nhóm vị trí tuyển dụng" style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px' }}>
+          {departments.map((item) => {
+            const count = item.id === 'it' ? 3 : (jobsByDept[item.id]?.length || 0);
+            return (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                aria-selected={department === item.id}
+                className={`recruitment-category${department === item.id ? ' recruitment-category-active' : ''}`}
+                onClick={() => selectDepartment(item.id)}
+              >
+                {item.label}
+                {count > 0 && <span>{count}</span>}
+              </button>
+            );
+          })}
+          <button type="button" className="recruitment-category" onClick={addDepartment} style={{ borderStyle: 'dashed' }}>
+            + Thêm phòng ban
+          </button>
         </div>
 
-        {(department === 'it' || department === 'other') && (
-          <>
             <div className="recruitment-heading">
               <div>
-                <span>{department === 'it' ? 'ĐANG TUYỂN' : 'TỰ TẠO JD'}</span>
+                <span>{jobs.length > 0 ? 'ĐANG TUYỂN' : 'TỰ TẠO JD'}</span>
                 <h2>Vị trí {departmentLabel}</h2>
               </div>
-              {department === 'other' && (
-                <button type="button" className="add-job-button" onClick={() => setShowForm(true)}>
-                  <span aria-hidden="true">+</span> Thêm JD
-                </button>
-              )}
+              <button type="button" className="add-job-button" onClick={() => setShowForm(true)}>
+                <span aria-hidden="true">+</span> Thêm JD
+              </button>
             </div>
 
-            {department === 'other' && showForm && (
+            {showForm && (
               <form className="job-form" onSubmit={submitJob}>
                 <div className="job-form-heading">
                   <div>
@@ -270,16 +418,6 @@ export default function RecruitmentPanel() {
                 </div>
               </article>
             )}
-          </>
-        )}
-
-        {(department === 'marketing' || department === 'hr') && (
-          <section className="recruitment-empty">
-            <div aria-hidden="true">+</div>
-            <h2>Vị trí {department === 'marketing' ? 'Marketing' : 'HR'} đang được cập nhật</h2>
-            <p>Hãy quay lại sau để khám phá những cơ hội phù hợp với bạn.</p>
-          </section>
-        )}
       </section>
     </main>
   );
