@@ -303,7 +303,8 @@ _Đăng ngày: ${new Date().toISOString().slice(0, 10)}_
 
 <!-- SUMMARY: ${newJob.summary} -->
 `;
-      const fileName = `JD_${newJob.title.replace(/[^a-zA-Z0-9_]/g, '_')}.md`;
+      const normalizedTitle = newJob.title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
+      const fileName = `JD_${normalizedTitle.replace(/[^a-zA-Z0-9_ -]/g, '').trim().replace(/\s+/g, '_')}.md`;
       createOrUpdateFile(app, `${roomId}/hr-miniapp/jds/${fileName}`, content)
         .catch(console.error);
     }
@@ -330,9 +331,9 @@ _Đăng ngày: ${new Date().toISOString().slice(0, 10)}_
   return (
     <main className="recruitment-page">
       <section className="recruitment-hero">
-        <span>B.ARMY CAREERS</span>
-        <h1>Cùng tạo nên những sản phẩm công nghệ có ảnh hưởng.</h1>
-        <p>Khám phá cơ hội nghề nghiệp và phát triển cùng đội ngũ B.ARMY.</p>
+        <span>QUẢN LÝ TUYỂN DỤNG</span>
+        <h1>Tạo và quản lý các vị trí tuyển dụng.</h1>
+        <p>Thêm mới Job Description (JD) để tự động hóa quy trình sàng lọc và đánh giá CV.</p>
       </section>
 
       <section className="recruitment-content">
