@@ -118,8 +118,6 @@ function ThemedApp() {
       <div className={tab === 'home' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'home'}>
         <CompanyHome />
       </div>
-<<<<<<< HEAD
-
       {visitedTabs.has('recruitment') && (
         <div className={tab === 'recruitment' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'recruitment'}>
           <RecruitmentPanel />
@@ -129,6 +127,12 @@ function ThemedApp() {
       {visitedTabs.has('pipeline') && (
         <div className={tab === 'pipeline' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'pipeline'}>
           <PipelineDashboard />
+        </div>
+      )}
+
+      {visitedTabs.has('cvScored') && (
+        <div className={tab === 'cvScored' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'cvScored'}>
+          <CVScoredTab />
         </div>
       )}
 
@@ -149,20 +153,6 @@ function ThemedApp() {
           <BotDraftingTab />
         </div>
       )}
-=======
-      <div className={tab === 'recruitment' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'recruitment'}>
-        <RecruitmentPanel />
-      </div>
-      <div className={tab === 'pipeline' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'pipeline'}>
-        <PipelineDashboard />
-      </div>
-      <div className={tab === 'cvScored' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'cvScored'}>
-        <CVScoredTab />
-      </div>
-      {tab === 'lifecycle' && <LifecycleDashboard />}
-      {tab === 'payroll' && <PayrollTab />}
-      {tab === 'botDrafting' && <BotDraftingTab />}
->>>>>>> origin/main
     </ThemeProvider>
   );
 }
