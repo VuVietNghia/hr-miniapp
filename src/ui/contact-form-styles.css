@@ -2866,18 +2866,28 @@ textarea:focus {
 
 .company-stats-bar article {
   min-width: 0;
-  min-height: 126px;
+  min-height: 140px;
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
-  gap: 6px;
-  padding: 20px clamp(18px, 2vw, 30px);
+  justify-content: center;
+  gap: 8px;
+  padding: 20px clamp(16px, 2vw, 28px);
   border-right: 1px solid color-mix(in srgb, var(--company-primary) 14%, var(--border) 86%);
+  overflow: hidden;
 }
 
 .company-stats-bar article:last-child { border-right: 0; }
-.company-stats-bar span { color: color-mix(in srgb, var(--company-text) 58%, transparent); font-size: 0.72rem; font-weight: 900; letter-spacing: 0; text-transform: uppercase; }
-.company-stats-bar strong { color: var(--company-text); font-size: clamp(1.05rem, 1.8vw, 1.55rem); line-height: 1.18; overflow-wrap: anywhere; }
+.company-stats-bar span { color: color-mix(in srgb, var(--company-text) 58%, transparent); font-size: 0.72rem; font-weight: 900; letter-spacing: 0; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.company-stats-bar strong {
+  color: var(--company-text);
+  font-size: clamp(0.95rem, 1.5vw, 1.15rem);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .company-about-section,
 .company-focus-section,

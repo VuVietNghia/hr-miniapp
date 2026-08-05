@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { usePrivosApp, usePrivosContext } from '@privos/app-react';
 import { PipelineService, CVFile, ProcessingStatus } from './pipeline-service';
 import { MarkdownPathContextBuilder } from './cv-context-builder';
@@ -67,11 +67,7 @@ const emptyJDForm: JDFormState = {
   emailSubject: '',
 };
 
-const defaultJDTemplateNames = new Set([
-  'JD_Backend_Java.md',
-  'JD_IT_System_Admin.md',
-  'JD_Manual_Tester.md',
-]);
+
 
 const hasJDFormValue = (form: JDFormState) =>
   Object.values(form).some(value => value.trim().length > 0);
@@ -528,8 +524,8 @@ REQUIRED:
 
 
   const resultList = Object.values(statuses);
-  const defaultJDs = availableJDs.filter(jd => defaultJDTemplateNames.has(jd.name));
-  const aiGeneratedJDs = availableJDs.filter(jd => !defaultJDTemplateNames.has(jd.name));
+  const defaultJDs = availableJDs.filter(jd => jd.name.startsWith('JD_'));
+  const aiGeneratedJDs = availableJDs.filter(jd => !jd.name.startsWith('JD_'));
   const selectedJD = availableJDs.find(jd => jd.name === jdName);
   const jdDropdownLabel = jdLoading ? "Vui l\u00f2ng ch\u1edd JD \u0111ang t\u1ea3i l\u00ean" : selectedJD?.name || "Ch\u1ecdn JD";
   const isJDFormReady = hasJDFormValue(jdForm);
