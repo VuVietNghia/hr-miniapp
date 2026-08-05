@@ -9,7 +9,7 @@ export function getInitials(name: string): string {
 }
 
 export interface TimelineInfo {
-  type: 'probation' | 'tenure';
+  type: 'probation' | 'tenure' | 'resigned';
   text: string;
   isUrgent?: boolean;
 }
@@ -18,6 +18,10 @@ export interface TimelineInfo {
  * Calculates probation remaining days or employment tenure
  */
 export function calculateTimelineInfo(status: string, startDateStr?: string): TimelineInfo | null {
+  if (status === 'Nghỉ việc') {
+    return { type: 'resigned', text: 'Đã kết thúc hợp đồng' };
+  }
+
   if (!startDateStr) return null;
   const start = new Date(startDateStr);
   if (isNaN(start.getTime())) return null;

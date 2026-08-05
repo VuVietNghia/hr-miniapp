@@ -44,6 +44,7 @@ function ThemedApp() {
   const app = usePrivosApp();
   const { theme, roomId } = usePrivosContext();
   const [tab, setTab] = useState<Tab>('home');
+  const [visitedTabs, setVisitedTabs] = useState<Set<Tab>>(() => new Set<Tab>(['home']));
   const [openSection, setOpenSection] = useState<SectionId | null>(null);
 
   useEffect(() => {
@@ -51,6 +52,16 @@ function ThemedApp() {
       ensureTemplatesExistGlobal(app, roomId, true).catch(console.error);
     }
   }, [app, roomId]);
+
+  const handleSelectTab = (selectedTab: Tab) => {
+    setTab(selectedTab);
+    setVisitedTabs((prev) => {
+      if (prev.has(selectedTab)) return prev;
+      const next = new Set(prev);
+      next.add(selectedTab);
+      return next;
+    });
+  };
 
   const isSectionActive = (section: TabSection) => section.tabs.some((t) => t.id === tab);
 
@@ -62,7 +73,7 @@ function ThemedApp() {
             type="button"
             className={`nav-primary-btn${tab === 'home' ? ' nav-primary-active' : ''}`}
             onClick={() => {
-              setTab('home');
+              handleSelectTab('home');
               setOpenSection(null);
             }}
           >
@@ -92,7 +103,7 @@ function ThemedApp() {
                       type="button"
                       className={`tab-btn${tab === t.id ? ' tab-active' : ''}`}
                       tabIndex={isOpen ? 0 : -1}
-                      onClick={() => setTab(t.id)}
+                      onClick={() => handleSelectTab(t.id)}
                     >
                       {t.label}
                     </button>
@@ -107,6 +118,38 @@ function ThemedApp() {
       <div className={tab === 'home' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'home'}>
         <CompanyHome />
       </div>
+<<<<<<< HEAD
+
+      {visitedTabs.has('recruitment') && (
+        <div className={tab === 'recruitment' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'recruitment'}>
+          <RecruitmentPanel />
+        </div>
+      )}
+
+      {visitedTabs.has('pipeline') && (
+        <div className={tab === 'pipeline' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'pipeline'}>
+          <PipelineDashboard />
+        </div>
+      )}
+
+      {visitedTabs.has('lifecycle') && (
+        <div className={tab === 'lifecycle' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'lifecycle'}>
+          <LifecycleDashboard />
+        </div>
+      )}
+
+      {visitedTabs.has('payroll') && (
+        <div className={tab === 'payroll' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'payroll'}>
+          <PayrollTab />
+        </div>
+      )}
+
+      {visitedTabs.has('botDrafting') && (
+        <div className={tab === 'botDrafting' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'botDrafting'}>
+          <BotDraftingTab />
+        </div>
+      )}
+=======
       <div className={tab === 'recruitment' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'recruitment'}>
         <RecruitmentPanel />
       </div>
@@ -119,6 +162,7 @@ function ThemedApp() {
       {tab === 'lifecycle' && <LifecycleDashboard />}
       {tab === 'payroll' && <PayrollTab />}
       {tab === 'botDrafting' && <BotDraftingTab />}
+>>>>>>> origin/main
     </ThemeProvider>
   );
 }

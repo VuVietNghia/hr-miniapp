@@ -19,6 +19,7 @@ export const KANBAN_COLUMNS: KanbanColumnDef[] = [
   { status: 'Mới nhận việc', label: 'Đang chờ hoàn thiện hồ sơ', color: '#f59e0b' },
   { status: 'Đang thử việc', label: 'Đang thử việc', color: '#3b82f6' },
   { status: 'Chính thức', label: 'Nhân viên chính thức', color: '#10b981' },
+  { status: 'Nghỉ việc', label: 'Đã nghỉ việc', color: '#ef4444' },
 ];
 
 export interface PassedCandidate {

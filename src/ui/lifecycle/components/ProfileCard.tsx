@@ -58,6 +58,10 @@ export function ProfileCard({ profile, onMoveProfile }: ProfileCardProps) {
                   <span className={`badge-probation ${timeline.isUrgent ? 'badge-probation-warning' : ''}`} title="Thời hạn thử việc">
                     ⏳ {timeline.text}
                   </span>
+                ) : timeline.type === 'resigned' ? (
+                  <span className="badge-resigned" title="Trạng thái nghỉ việc">
+                    🛑 {timeline.text}
+                  </span>
                 ) : (
                   <span className="badge-tenure" title="Thâm niên làm việc">
                     🎖️ {timeline.text}

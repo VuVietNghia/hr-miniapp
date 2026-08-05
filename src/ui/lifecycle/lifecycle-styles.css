@@ -130,22 +130,14 @@
   overflow-x: auto;
   padding: 4px 4px 16px 4px;
   min-height: 400px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
-/* Custom Scrollbar for Kanban */
 .kanban-board-container::-webkit-scrollbar {
-  height: 8px;
-}
-.kanban-board-container::-webkit-scrollbar-track {
-  background: var(--bg-main);
-  border-radius: 4px;
-}
-.kanban-board-container::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 4px;
-}
-.kanban-board-container::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .lifecycle-kanban-column {

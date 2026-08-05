@@ -118,6 +118,7 @@ function LifecycleContent() {
       wait: profiles.filter(p => p.status === 'Mới nhận việc').length,
       probation: profiles.filter(p => p.status === 'Đang thử việc').length,
       official: profiles.filter(p => p.status === 'Chính thức').length,
+      resigned: profiles.filter(p => p.status === 'Nghỉ việc').length,
     };
     return counts;
   }, [profiles]);
@@ -156,8 +157,11 @@ function LifecycleContent() {
         <div className="header-actions" style={{ display: 'flex', gap: '10px' }}>
           <button 
             className="hr-btn" 
-            onClick={refreshProfiles}
-            disabled={isLoading}
+            onClick={() => {
+              refreshProfiles();
+              refreshCandidates();
+            }}
+            disabled={isLoading || isLoadingCandidates}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
@@ -166,7 +170,13 @@ function LifecycleContent() {
           </button>
           <button 
             className="hr-btn hr-btn-accent" 
-            onClick={() => setIsCreating(!isCreating)}
+            onClick={() => {
+              const nextState = !isCreating;
+              setIsCreating(nextState);
+              if (nextState) {
+                refreshCandidates();
+              }
+            }}
           >
             {isCreating ? 'Đóng form' : '+ Tạo Hồ Sơ Mới'}
           </button>
@@ -231,6 +241,13 @@ function LifecycleContent() {
               onClick={() => setSelectedStatus('Chính thức')}
             >
               Chính thức ({statusCounts.official})
+            </button>
+            <button
+              type="button"
+              className={`hr-filter-pill ${selectedStatus === 'Nghỉ việc' ? 'active' : ''}`}
+              onClick={() => setSelectedStatus('Nghỉ việc')}
+            >
+              Nghỉ việc ({statusCounts.resigned})
             </button>
           </div>
 
