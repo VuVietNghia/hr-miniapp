@@ -7,15 +7,6 @@ import sangLocCvRaw from './data/sang_loc_cv.md?raw';
 import cvEvaluatorSkillRaw from './data/cv-evaluator-skill.md?raw';
 import jdTemplateRaw from './data/jd_template.md?raw';
 import jdGeneratorSkillRaw from './data/jd-generator-skill.md?raw';
-import jdBackendJavaRaw from '../../Tin_Tuyen_Dung/JD_Backend_Java.md?raw';
-import jdITSystemAdminRaw from '../../Tin_Tuyen_Dung/JD_IT_System_Admin.md?raw';
-import jdManualTesterRaw from '../../Tin_Tuyen_Dung/JD_Manual_Tester.md?raw';
-
-const defaultJDTemplates = [
-  { fileName: 'JD_Backend_Java.md', content: jdBackendJavaRaw },
-  { fileName: 'JD_IT_System_Admin.md', content: jdITSystemAdminRaw },
-  { fileName: 'JD_Manual_Tester.md', content: jdManualTesterRaw },
-];
 
 export interface CVFile {
   _id: string;
@@ -85,26 +76,7 @@ export async function ensureTemplatesExistGlobal(app: McpApp, roomId: string, fo
   };
 
 
-  const checkAndUploadDefaultJD = async (fileName: string, rawContent: string) => {
-    const path = `${roomId}/hr-miniapp/jds/${fileName}`;
-    if (!forceReset) {
-      try {
-        const existing = await getFileContent(app, path);
-        if (existing && existing.trim().length > 10) return;
-      } catch (err) {
-        console.warn(`[CẢNH BÁO] Thiếu JD mẫu ${path}. Tự động tạo mới...`);
-      }
-    }
 
-    console.log(`[DEBUG] Đang upload JD mẫu: ${path}`);
-    try {
-      await createOrUpdateFile(app, path, rawContent);
-      console.log(`[DEBUG] Upload JD mẫu thành công: ${path}`);
-    } catch (err: any) {
-      console.error(`[DEBUG] Lỗi khi upload JD mẫu ${path}:`, err);
-      alert(`Lỗi upload JD mẫu: ${err.message}`);
-    }
-  };
   try {
     // Chạy tuần tự thay vì Promise.all để tránh race condition khi tạo folder
     await checkAndUpload(guidelinePath, cvProcessingGuidelinesRaw, true);
@@ -131,9 +103,7 @@ export async function ensureTemplatesExistGlobal(app: McpApp, roomId: string, fo
       console.error(`[CẢNH BÁO] Không thể tạo thư mục gốc cho ứng dụng:`, e);
     }
 
-    for (const jd of defaultJDTemplates) {
-      await checkAndUploadDefaultJD(jd.fileName, jd.content);
-    }
+
 
     console.log(`[DEBUG] Hoàn tất ensureTemplatesExist`);
     if (forceReset) alert('Đã khôi phục/tạo mới file hướng dẫn thành công!');
