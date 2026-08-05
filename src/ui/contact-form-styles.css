@@ -2869,15 +2869,15 @@ textarea:focus {
   min-height: 126px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 10px;
+  justify-content: flex-start;
+  gap: 6px;
   padding: 20px clamp(18px, 2vw, 30px);
   border-right: 1px solid color-mix(in srgb, var(--company-primary) 14%, var(--border) 86%);
 }
 
 .company-stats-bar article:last-child { border-right: 0; }
-.company-stats-bar strong { color: var(--company-text); font-size: clamp(1.05rem, 1.8vw, 1.55rem); line-height: 1.18; overflow-wrap: anywhere; }
 .company-stats-bar span { color: color-mix(in srgb, var(--company-text) 58%, transparent); font-size: 0.72rem; font-weight: 900; letter-spacing: 0; text-transform: uppercase; }
+.company-stats-bar strong { color: var(--company-text); font-size: clamp(1.05rem, 1.8vw, 1.55rem); line-height: 1.18; overflow-wrap: anywhere; }
 
 .company-about-section,
 .company-focus-section,
@@ -2912,12 +2912,75 @@ textarea:focus {
 .company-focus-grid p { max-width: 390px; margin: 38px 0 0; color: var(--company-text); font-size: clamp(1.08rem, 1.8vw, 1.45rem); font-weight: 800; line-height: 1.35; }
 
 .company-portfolio-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: clamp(32px, 5vw, 64px); }
-.company-portfolio-grid article { min-height: 230px; display: flex; flex-direction: column; justify-content: space-between; padding: 24px; border: 1px solid color-mix(in srgb, var(--company-primary) 17%, var(--border) 83%); border-radius: 8px; background: color-mix(in srgb, var(--company-primary) 6%, var(--company-surface) 94%); transition: transform .2s ease, border-color .2s ease; }
+.company-portfolio-grid article { min-height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; border: 1px solid color-mix(in srgb, var(--company-primary) 17%, var(--border) 83%); border-radius: 8px; background: color-mix(in srgb, var(--company-primary) 6%, var(--company-surface) 94%); transition: transform .2s ease, border-color .2s ease; }
 .company-portfolio-grid article:hover { border-color: var(--company-primary); transform: translateY(-3px); }
-.company-portfolio-grid h4 { margin: 52px 0 0; color: var(--company-text); font-size: clamp(1.25rem, 2.2vw, 1.8rem); line-height: 1.2; }
+.company-portfolio-grid article > span { font-size: .75rem; font-weight: 900; color: var(--company-primary); letter-spacing: 0; margin-bottom: 14px; }
+.company-portfolio-grid h4 { margin: 0; color: var(--company-text); font-size: clamp(1.15rem, 2vw, 1.6rem); line-height: 1.25; }
 
-.company-partner-list { display: flex; flex-wrap: wrap; gap: 12px; margin-top: clamp(32px, 5vw, 58px); }
-.company-partner-list span { min-width: min(100%, 180px); padding: 18px 22px; border: 1px solid color-mix(in srgb, var(--company-primary) 15%, var(--border) 85%); border-radius: 7px; color: var(--company-text); font-weight: 850; text-align: center; }
+/* Brands — centered staggered rows (5 / 4 alternating) */
+.company-brand-grid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: clamp(32px, 5vw, 58px);
+}
+
+.company-brand-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.company-brand-pill {
+  display: inline-flex;
+  align-items: center;
+}
+
+.company-brand-pill span {
+  display: inline-flex;
+  align-items: center;
+  padding: 11px 22px;
+  border: 1px solid color-mix(in srgb, var(--company-primary) 22%, var(--border) 78%);
+  border-radius: 999px;
+  background:
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--company-primary) 7%, var(--company-surface) 93%),
+      color-mix(in srgb, var(--company-accent) 5%, var(--company-surface) 95%)
+    );
+  color: var(--company-text);
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+  cursor: default;
+  box-shadow: 0 2px 8px rgba(0,0,0,.04);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.company-brand-pill:hover span {
+  border-color: var(--company-primary);
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--company-primary) 14%, var(--company-surface) 86%),
+    color-mix(in srgb, var(--company-accent) 10%, var(--company-surface) 90%)
+  );
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--company-primary) 18%, rgba(0,0,0,.06));
+  color: var(--company-primary);
+}
+
+@media (max-width: 900px) {
+  .company-brand-grid {
+    gap: 10px;
+  }
+  .company-brand-row {
+    gap: 8px;
+  }
+  .company-brand-pill span {
+    padding: 9px 16px;
+    font-size: 0.84rem;
+  }
+}
 
 .company-collaboration-section { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(36px, 7vw, 120px); }
 .company-collaboration-copy { min-width: 0; }
@@ -2933,7 +2996,7 @@ textarea:focus {
   .company-collaboration-section { grid-template-columns: 1fr; }
   .company-masthead { min-height: auto; gap: 28px; padding: 38px 24px 24px; }
   .company-masthead .company-hero-aside { min-height: min(78vw, 420px); }
-  .company-stats-bar article { min-height: 104px; border-right: 0; border-bottom: 1px solid color-mix(in srgb, var(--company-primary) 14%, var(--border) 86%); }
+  .company-stats-bar article { border-right: 0; border-bottom: 1px solid color-mix(in srgb, var(--company-primary) 14%, var(--border) 86%); }
   .company-stats-bar article:last-child { border-bottom: 0; }
   .company-focus-grid { grid-template-columns: 1fr; }
   .company-portfolio-grid { grid-template-columns: 1fr; }
@@ -2942,4 +3005,18 @@ textarea:focus {
   .company-portfolio-section,
   .company-partners-section,
   .company-collaboration-section { padding: 48px 24px; }
+}
+
+/* Masthead logo: large logo displayed in hero area */
+.company-masthead-logo {
+  margin-bottom: 28px;
+}
+
+.company-masthead-logo img {
+  height: 64px;
+  max-width: 240px;
+  width: auto;
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 12px rgba(0,0,0,.12));
 }

@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
 import { usePrivosApp, usePrivosContext } from '@privos/app-react';
 import { createOrUpdateFile, ensureFolderPath, getFileContent, restCall } from './privos-rest';
 
@@ -387,6 +387,8 @@ export default function CompanyHome() {
     { label: pageText.brands, value: summarizeList(displayProfile.brands) },
   ].filter((item) => item.value);
   const focusItems = Array.from(new Set([...displayProfile.highlights, ...displayProfile.differentiators, ...displayProfile.values].filter(Boolean))).slice(0, 6);
+  const brandRows: string[][] = [];
+  { let i = 0, rowIdx = 0; while (i < displayProfile.brands.length) { const size = rowIdx % 2 === 0 ? 5 : 4; brandRows.push(displayProfile.brands.slice(i, i + size)); i += size; rowIdx++; } }
 
   const previewStyle = {
     '--company-primary': displayTheme.primaryColor,
@@ -634,12 +636,9 @@ export default function CompanyHome() {
 
       {profileReady ? (
         <section className={`company-preview company-layout-${displayProfile.layoutStyle}`} style={previewStyle} aria-label="Company home preview">
-          <header className="company-site-header" aria-label={`${heroTitle} identity`}>
-            <div className="company-brand-id company-site-logo">{logoSrc ? <img src={logoSrc} alt={`${heroTitle} logo`} /> : <span>{heroTitle.slice(0, 1)}</span>}</div>
-          </header>
-
           <section className="company-hero-shell company-masthead" id="company-overview">
             <div className="company-hero-main">
+              {logoSrc && <div className="company-masthead-logo"><img src={logoSrc} alt={`${heroTitle} logo`} /></div>}
               {displayProfile.industry && <span className="company-hero-eyebrow">{displayProfile.industry}</span>}
               <h2>{heroTitle}</h2>
               {displayProfile.tagline && <p className="company-tagline">{displayProfile.tagline}</p>}
@@ -648,7 +647,7 @@ export default function CompanyHome() {
             <aside className="company-hero-aside">{heroImageSrc ? <img className="company-hero-photo" src={heroImageSrc} alt={`${heroTitle} visual`} /> : <div className="company-hero-photo-placeholder" aria-hidden="true" />}</aside>
           </section>
 
-          {facts.length > 0 && <section className="company-stats-bar" aria-label={pageText.overview}>{facts.map((fact) => <article key={fact.label}><strong>{fact.value}</strong><span>{fact.label}</span></article>)}</section>}
+          {facts.length > 0 && <section className="company-stats-bar" aria-label={pageText.overview}>{facts.map((fact) => <article key={fact.label}><span>{fact.label}</span><strong>{fact.value}</strong></article>)}</section>}
 
           {(displayProfile.description || displayProfile.goals) && (
             <section className="company-about-section">
@@ -667,16 +666,27 @@ export default function CompanyHome() {
           {displayProfile.products.length > 0 && (
             <section className="company-portfolio-section" id="company-explore">
               <div className="company-section-heading"><span className="company-kicker">{pageText.explore}</span><h3>{pageText.products}</h3></div>
-              <div className="company-portfolio-grid">{displayProfile.products.map((item, index) => <article key={item}><span>{String(index + 1).padStart(2, '0')}</span><h4>{item}</h4></article>)}</div>
+              <div className="company-portfolio-grid">{displayProfile.products.map((item, index) => <article key={item} className="company-portfolio-card"><span>{String(index + 1).padStart(2, '0')}</span><h4>{item}</h4></article>)}</div>
             </section>
           )}
 
-          {displayProfile.brands.length > 0 && (
+          {brandRows.length > 0 && (
             <section className="company-partners-section">
               <div className="company-section-heading"><span className="company-kicker">{pageText.brands}</span><h3>{pageText.brands}</h3></div>
-              <div className="company-partner-list">{displayProfile.brands.map((item) => <span key={item}>{item}</span>)}</div>
+              <div className="company-brand-grid">
+                {brandRows.map((row, rowIndex) => (
+                  <div key={rowIndex} className="company-brand-row">
+                    {row.map((item) => (
+                      <div key={item} className="company-brand-pill">
+                        <span>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
             </section>
           )}
+
 
           {(displayProfile.values.length > 0 || displayProfile.cultureSummary || displayProfile.hiringTone) && (
             <section className="company-collaboration-section" id="company-work">
