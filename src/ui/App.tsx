@@ -107,9 +107,15 @@ function ThemedApp() {
       <div className={tab === 'home' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'home'}>
         <CompanyHome />
       </div>
-      {tab === 'recruitment' && <RecruitmentPanel />}
-      {tab === 'pipeline' && <PipelineDashboard />}
-      {tab === 'cvScored' && <CVScoredTab />}
+      <div className={tab === 'recruitment' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'recruitment'}>
+        <RecruitmentPanel />
+      </div>
+      <div className={tab === 'pipeline' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'pipeline'}>
+        <PipelineDashboard />
+      </div>
+      <div className={tab === 'cvScored' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'cvScored'}>
+        <CVScoredTab />
+      </div>
       {tab === 'lifecycle' && <LifecycleDashboard />}
       {tab === 'payroll' && <PayrollTab />}
       {tab === 'botDrafting' && <BotDraftingTab />}
