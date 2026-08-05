@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { PrivosAppProvider, usePrivosContext, usePrivosApp } from '@privos/app-react';
 import { ThemeProvider, ThemeToggle } from './theme-provider';
-import BArmyHome from './barmy-home';
+import CompanyHome from './company-home';
 import RecruitmentPanel from './recruitment-panel';
 import PipelineDashboard from './pipeline-dashboard';
 import LifecycleDashboard from './lifecycle/LifecycleDashboard';
@@ -102,8 +102,9 @@ function ThemedApp() {
         </nav>
         <ThemeToggle />
       </div>
-
-      {tab === 'home' && <BArmyHome />}
+      <div className={tab === 'home' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'home'}>
+        <CompanyHome />
+      </div>
       {tab === 'recruitment' && <RecruitmentPanel />}
       {tab === 'pipeline' && <PipelineDashboard />}
       {tab === 'lifecycle' && <LifecycleDashboard />}
