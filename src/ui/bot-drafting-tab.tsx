@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { usePrivosApp, usePrivosContext, type McpApp } from '@privos/app-react';
 import {
-  DRAFTING_TEMPLATES,
   DraftingTemplate,
+  IDraftingTemplateProvider,
+  BuiltinTemplateProvider,
   renderDraftingTemplate,
-  buildDraftingAIPrompt
+  buildDraftingAIPrompt,
+  IDocumentDiffService,
+  DocumentDiffService
 } from './drafting-templates';
 import { PipelineService } from './pipeline-service';
 import { MarkdownPathContextBuilder } from './cv-context-builder';
@@ -22,6 +25,8 @@ export interface BotDraftingTabProps {
   onLog?: (msg: string) => void;
   lifecycleService?: ILifecycleService | null;
   pipelineService?: PipelineService | null;
+  templateProvider?: IDraftingTemplateProvider | null;
+  diffService?: IDocumentDiffService | null;
 }
 
 type TemplateCategory = 'all' | 'onboarding' | 'personnel' | 'admin' | 'legal';
@@ -228,13 +233,39 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
     return null;
   }, [props.pipelineService, app, roomId]);
 
+  // Dependency Injection: Template Provider
+  const templateProvider: IDraftingTemplateProvider = useMemo(() => {
+    if (props.templateProvider) {
+      return props.templateProvider;
+    }
+    return new BuiltinTemplateProvider();
+  }, [props.templateProvider]);
+
+  // Dependency Injection: Document Diff Service
+  const diffService: IDocumentDiffService = useMemo(() => {
+    if (props.diffService) {
+      return props.diffService;
+    }
+    return new DocumentDiffService();
+  }, [props.diffService]);
+
   // UI States
-  const [templates] = useState<DraftingTemplate[]>(DRAFTING_TEMPLATES);
+  const [templates, setTemplates] = useState<DraftingTemplate[]>(() => templateProvider.getTemplates());
+
+  useEffect(() => {
+    setTemplates(templateProvider.getTemplates());
+  }, [templateProvider]);
+
   const [selectedCategory, setSelectedCategory] = useState<TemplateCategory>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(templates[0].id);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(() => {
+    const list = templateProvider.getTemplates();
+    return list.length > 0 ? list[0].id : 'implementation-plan';
+  });
+  const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState<boolean>(false);
   const [sidebarTab, setSidebarTab] = useState<'form' | 'ai'>('form');
   const [zoomLevel, setZoomLevel] = useState<number>(100);
+  const [previewCompareMode, setPreviewCompareMode] = useState<'current' | 'diff' | 'original'>('current');
 
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [documentContent, setDocumentContent] = useState<string>('');
@@ -256,6 +287,32 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
   );
 
   const isPersonnel = useMemo(() => isPersonnelTemplate(currentTemplate), [currentTemplate]);
+
+  // Baseline template content
+  const initialRenderedText = useMemo(() => {
+    return renderDraftingTemplate(currentTemplate.templateText, currentTemplate.defaultData);
+  }, [currentTemplate]);
+
+  // Dirty detection: checks whether document or formData differs from pristine template default
+  const isDirty = useMemo(() => {
+    if (isAiModified || selectedProfileId !== '') return true;
+    if (documentContent.trim() !== initialRenderedText.trim()) return true;
+    return JSON.stringify(formData) !== JSON.stringify(currentTemplate.defaultData);
+  }, [isAiModified, selectedProfileId, documentContent, initialRenderedText, formData, currentTemplate]);
+
+  // Count of differences compared to baseline template
+  const diffCount = useMemo(() => {
+    if (!diffService) return 0;
+    return diffService.countDifferences(initialRenderedText, documentContent);
+  }, [diffService, initialRenderedText, documentContent]);
+
+  // Group templates by category for quick select dropdown
+  const templatesByCategory = useMemo(() => {
+    return CATEGORIES.filter(cat => cat.id !== 'all').map(cat => ({
+      category: cat,
+      items: templates.filter(t => t.category === cat.id)
+    })).filter(group => group.items.length > 0);
+  }, [templates]);
 
   // Filter templates by category and search
   const filteredTemplates = useMemo(() => {
@@ -315,6 +372,7 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
   useEffect(() => {
     setSelectedProfileId('');
     setIsAiModified(false);
+    setPreviewCompareMode('current');
     setFormData({ ...currentTemplate.defaultData });
     const initialText = renderDraftingTemplate(currentTemplate.templateText, currentTemplate.defaultData);
     setDocumentContent(initialText);
@@ -363,7 +421,7 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
     showToast(`Đã tự động nạp hồ sơ nhân sự "${profile.name}" vào văn bản!`);
   };
 
-  // Restore Default Template (Discards AI modifications)
+  // Restore Default Template (Discards all manual and AI modifications)
   const handleResetTemplate = () => {
     setSelectedProfileId('');
     setIsAiModified(false);
@@ -373,7 +431,7 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
     showToast('Đã khôi phục văn bản về mẫu chuẩn ban đầu!');
   };
 
-  // AI Pipeline Execution with Real-Time Polling Status
+  // AI Pipeline Execution with Real-Time Polling Status & Guaranteed Completion
   const handleAiAction = async (
     actionType: 'full_generation' | 'make_formal' | 'make_concise' | 'add_nda' | 'bilingual_summary' | 'custom'
   ) => {
@@ -398,7 +456,7 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
       );
 
       const aiResponse = await pipelineService.askAI(prompt, undefined, undefined, onLog);
-      let text = aiResponse.text;
+      let text = aiResponse?.text ?? '';
 
       // Extract content from <drafting_content> tag if present
       const contentMatch = text.match(/<drafting_content>\s*([\s\S]*?)\s*<\/drafting_content>/i);
@@ -407,11 +465,15 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
       // Clean AI artifacts (em dash, colon in headings)
       finalMarkdown = finalMarkdown.replace(/—/g, ' - ');
 
-      setDocumentContent(finalMarkdown);
-      setIsAiModified(true);
-      setPollingStatus('Hoàn tất!');
-      showToast('AI đã hoàn tất soạn thảo văn bản!');
-      if (actionType === 'custom') setAiCustomPrompt('');
+      if (finalMarkdown) {
+        setDocumentContent(finalMarkdown);
+        setIsAiModified(true);
+        setPollingStatus('Hoàn tất!');
+        showToast('AI đã hoàn tất soạn thảo văn bản!');
+      } else {
+        setPollingStatus('Không nhận được nội dung từ AI');
+        showToast('AI không trả về nội dung hợp lệ.');
+      }
     } catch (err: any) {
       console.error('Lỗi khi gọi AI soạn thảo:', err);
       onLog(`[LỖI] ${err.message || err}`);
@@ -434,21 +496,22 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
   };
 
   const handleDownloadMd = () => {
+    const filename = diffService.generateVietnameseDocFilename(currentTemplate.title, formData, 'md');
     const blob = new Blob([documentContent], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${currentTemplate.id}_${new Date().toISOString().slice(0, 10)}.md`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
-    showToast('Đã tải xuống file .md thành công!');
+    showToast(`Đã tải xuống file "${filename}" thành công!`);
   };
 
   const handleDownloadDocx = async () => {
     try {
-      const filename = `${currentTemplate.id}_${new Date().toISOString().slice(0, 10)}.docx`;
+      const filename = diffService.generateVietnameseDocFilename(currentTemplate.title, formData, 'docx');
       await DocxExportService.downloadDocx(filename, documentContent);
-      showToast('Đã xuất file Word (.docx) chuẩn Nghị định 30 thành công!');
+      showToast(`Đã xuất file Word "${filename}" chuẩn Nghị định 30 thành công!`);
     } catch (err: any) {
       console.error('Lỗi khi xuất Word .docx:', err);
       showToast(`Lỗi khi tạo file Word: ${err.message || err}`);
@@ -462,7 +525,7 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
     }
 
     try {
-      const filename = `${currentTemplate.id}_${new Date().toISOString().slice(0, 10)}.md`;
+      const filename = diffService.generateVietnameseDocFilename(currentTemplate.title, formData, 'md');
       const targetPath = `${roomId}/hr-miniapp/van-ban/${filename}`;
       await createOrUpdateFile(app, targetPath, documentContent);
       showToast(`Đã lưu tài liệu vào Room PrivOS: ${targetPath}`);
@@ -522,6 +585,12 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
     const elements: React.ReactNode[] = [];
     let tableBuffer: string[] = [];
 
+    const formatInline = (text: string): string => {
+      return text
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>');
+    };
+
     const flushTable = (keyPrefix: string) => {
       if (tableBuffer.length === 0) return;
       const rows = tableBuffer.map(r =>
@@ -540,9 +609,7 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
               <div
                 className="a4-org-block"
                 dangerouslySetInnerHTML={{
-                  __html: leftCell
-                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                  __html: formatInline(leftCell)
                 }}
               />
               <div className="a4-line-dec a4-line-org" />
@@ -551,9 +618,7 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
               <div
                 className="a4-motto-block"
                 dangerouslySetInnerHTML={{
-                  __html: rightCell
-                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                  __html: formatInline(rightCell)
                 }}
               />
               <div className="a4-line-dec a4-line-motto" />
@@ -574,9 +639,7 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
                         key={`td-${cIdx}`}
                         className={isHead ? 'a4-th' : 'a4-td'}
                         dangerouslySetInnerHTML={{
-                          __html: cell
-                            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                          __html: formatInline(cell)
                         }}
                       />
                     ))}
@@ -610,10 +673,15 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
       }
 
       if (trimmed.startsWith('# ')) {
+        const headingText = trimmed.replace('# ', '');
         elements.push(
-          <h1 key={`h1-${i}`} className="a4-heading-1">
-            {trimmed.replace('# ', '')}
-          </h1>
+          <h1
+            key={`h1-${i}`}
+            className="a4-heading-1"
+            dangerouslySetInnerHTML={{
+              __html: formatInline(headingText)
+            }}
+          />
         );
         i++;
       } else if (trimmed.startsWith('### ') || trimmed.startsWith('## ')) {
@@ -621,9 +689,12 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
         const isSubject = DocxExportService.isSubjectLine(subText);
         elements.push(
           <React.Fragment key={`sub-${i}`}>
-            <h3 className={isSubject ? 'a4-subject-heading' : 'a4-heading-3'}>
-              {subText}
-            </h3>
+            <h3
+              className={isSubject ? 'a4-subject-heading' : 'a4-heading-3'}
+              dangerouslySetInnerHTML={{
+                __html: formatInline(subText)
+              }}
+            />
             {isSubject && <div className="a4-line-dec a4-line-subject" />}
           </React.Fragment>
         );
@@ -643,7 +714,11 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
         normalizedLegalLines.forEach((legalText, lIdx) => {
           elements.push(
             <p key={`legal-${startIndex}-${lIdx}`} className="a4-legal-basis">
-              <em>{legalText}</em>
+              <em
+                dangerouslySetInnerHTML={{
+                  __html: formatInline(legalText)
+                }}
+              />
             </p>
           );
         });
@@ -653,18 +728,19 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
             key={`sec-${i}`}
             className="a4-sub-section"
             dangerouslySetInnerHTML={{
-              __html: trimmed.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>')
+              __html: formatInline(trimmed)
             }}
           />
         );
         i++;
       } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+        const bulletContent = trimmed.replace(/^[-*]\s+/, '');
         elements.push(
           <p
             key={`bullet-${i}`}
             className="a4-bullet-item"
             dangerouslySetInnerHTML={{
-              __html: `• ${trimmed.replace(/^[-*]\s+/, '').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>')}`
+              __html: `• ${formatInline(bulletContent)}`
             }}
           />
         );
@@ -682,7 +758,7 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
             key={`p-${i}`}
             className="a4-paragraph"
             dangerouslySetInnerHTML={{
-              __html: trimmed.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>')
+              __html: formatInline(trimmed)
             }}
           />
         );
@@ -789,62 +865,155 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
         </div>
       </section>
 
-      {/* Category Filter Bar */}
-      <nav className="bot-category-bar" aria-label="Phân loại biểu mẫu">
-        {CATEGORIES.map(cat => {
-          const isActive = selectedCategory === cat.id;
-          const count = cat.id === 'all'
-            ? templates.length
-            : templates.filter(t => t.category === cat.id).length;
-
-          return (
-            <button
-              key={cat.id}
-              type="button"
-              className={`bot-cat-pill ${isActive ? 'active' : ''}`}
-              onClick={() => setSelectedCategory(cat.id)}
-            >
-              <span>{cat.icon}</span>
-              <span>{cat.label}</span>
-              <span style={{ opacity: 0.8, fontSize: '0.72rem' }}>({count})</span>
-            </button>
-          );
-        })}
-      </nav>
-
-      {/* Template Grid Selector */}
-      <section className="bot-template-grid" aria-label="Danh sách mẫu văn bản">
-        {filteredTemplates.map(tpl => {
-          const isActive = tpl.id === selectedTemplateId;
-          const isND30 = tpl.track === 'nd30_administrative';
-
-          return (
-            <div
-              key={tpl.id}
-              className={`bot-template-card ${isActive ? 'active' : ''}`}
-              onClick={() => setSelectedTemplateId(tpl.id)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  setSelectedTemplateId(tpl.id);
-                }
-              }}
-            >
-              <div className="bot-tpl-icon">{tpl.icon}</div>
-              <div className="bot-tpl-meta">
-                <div className="bot-tpl-title" title={tpl.title}>{tpl.title}</div>
-                <div className="bot-tpl-desc">{tpl.description}</div>
-                <div>
-                  <span className={`bot-track-badge ${isND30 ? 'bot-track-nd30' : 'bot-track-modern'}`}>
-                    {isND30 ? 'Nghị định 30' : 'Doanh nghiệp'}
-                  </span>
-                </div>
-              </div>
+      {/* Active Document Bar & Quick Template Switcher */}
+      <section className="bot-active-doc-bar">
+        <div className="bot-active-doc-info">
+          <span className="bot-active-doc-icon">{currentTemplate.icon}</span>
+          <div className="bot-active-doc-titles">
+            <div className="bot-active-doc-label">Mẫu văn bản đang chọn:</div>
+            <div className="bot-active-doc-name" title={currentTemplate.title}>
+              {currentTemplate.title}
+              <span className={`bot-track-badge ${currentTemplate.track === 'nd30_administrative' ? 'bot-track-nd30' : 'bot-track-modern'}`}>
+                {currentTemplate.track === 'nd30_administrative' ? 'Nghị định 30' : 'Doanh nghiệp'}
+              </span>
             </div>
-          );
-        })}
+          </div>
+        </div>
+
+        <div className="bot-active-doc-actions">
+          {/* Quick Select Dropdown */}
+          <div className="bot-quick-select-wrapper">
+            <label htmlFor="quick-template-select" className="bot-quick-select-label">Đổi mẫu:</label>
+            <select
+              id="quick-template-select"
+              className="bot-quick-select"
+              value={selectedTemplateId}
+              onChange={(e) => setSelectedTemplateId(e.target.value)}
+              aria-label="Chọn nhanh mẫu văn bản"
+            >
+              {templatesByCategory.map(group => (
+                <optgroup key={group.category.id} label={`${group.category.icon} ${group.category.label}`}>
+                  {group.items.map(tpl => (
+                    <option key={tpl.id} value={tpl.id}>
+                      {tpl.icon} {tpl.title}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+
+          {/* Toggle Full Visual Catalog Drawer */}
+          <button
+            type="button"
+            className={`bot-catalog-toggle-btn ${isTemplatePickerOpen ? 'active' : ''}`}
+            onClick={() => setIsTemplatePickerOpen(prev => !prev)}
+            aria-expanded={isTemplatePickerOpen}
+            aria-controls="bot-template-drawer"
+          >
+            <span>📑</span>
+            <span>{isTemplatePickerOpen ? 'Thu gọn kho mẫu' : `Kho biểu mẫu (${templates.length})`}</span>
+            <span className="bot-toggle-arrow">{isTemplatePickerOpen ? '▲' : '▼'}</span>
+          </button>
+        </div>
       </section>
+
+      {/* Collapsible Template Catalog Drawer */}
+      {isTemplatePickerOpen && (
+        <section id="bot-template-drawer" className="bot-template-drawer" aria-label="Kho biểu mẫu chi tiết">
+          <div className="bot-drawer-toolbar">
+            {/* Search Input */}
+            <div className="bot-drawer-search">
+              <span className="bot-search-icon">🔍</span>
+              <input
+                type="text"
+                placeholder="Tìm kiếm mẫu văn bản theo tên hoặc từ khóa..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                aria-label="Tìm kiếm biểu mẫu"
+                autoFocus
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  className="bot-search-clear-btn"
+                  onClick={() => setSearchQuery('')}
+                  title="Xóa tìm kiếm"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Category Filter Bar */}
+            <nav className="bot-category-bar" aria-label="Phân loại biểu mẫu">
+              {CATEGORIES.map(cat => {
+                const isActive = selectedCategory === cat.id;
+                const count = cat.id === 'all'
+                  ? templates.length
+                  : templates.filter(t => t.category === cat.id).length;
+
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    className={`bot-cat-pill ${isActive ? 'active' : ''}`}
+                    onClick={() => setSelectedCategory(cat.id)}
+                  >
+                    <span>{cat.icon}</span>
+                    <span>{cat.label}</span>
+                    <span style={{ opacity: 0.8, fontSize: '0.72rem' }}>({count})</span>
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+
+          {/* Template Grid Selector */}
+          <div className="bot-template-grid" aria-label="Danh sách mẫu văn bản">
+            {filteredTemplates.length === 0 ? (
+              <div className="bot-template-empty">
+                <span>🔍</span> Không tìm thấy mẫu văn bản phù hợp với từ khóa "{searchQuery}"
+              </div>
+            ) : (
+              filteredTemplates.map(tpl => {
+                const isActive = tpl.id === selectedTemplateId;
+                const isND30 = tpl.track === 'nd30_administrative';
+
+                return (
+                  <div
+                    key={tpl.id}
+                    className={`bot-template-card ${isActive ? 'active' : ''}`}
+                    onClick={() => {
+                      setSelectedTemplateId(tpl.id);
+                      setIsTemplatePickerOpen(false);
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        setSelectedTemplateId(tpl.id);
+                        setIsTemplatePickerOpen(false);
+                      }
+                    }}
+                  >
+                    <div className="bot-tpl-icon">{tpl.icon}</div>
+                    <div className="bot-tpl-meta">
+                      <div className="bot-tpl-title" title={tpl.title}>{tpl.title}</div>
+                      <div className="bot-tpl-desc">{tpl.description}</div>
+                      <div>
+                        <span className={`bot-track-badge ${isND30 ? 'bot-track-nd30' : 'bot-track-modern'}`}>
+                          {isND30 ? 'Nghị định 30' : 'Doanh nghiệp'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Split Workspace: Left Studio Controls / Right A4 Canvas */}
       <div className="bot-drafting-split">
@@ -948,6 +1117,19 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
                   </div>
                 </section>
               ))}
+
+              {isDirty && (
+                <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px dashed var(--border-color)' }}>
+                  <button
+                    type="button"
+                    className="bot-action-btn bot-btn-reset"
+                    style={{ width: '100%', justifyContent: 'center' }}
+                    onClick={handleResetTemplate}
+                  >
+                    <span>↺</span> Khôi phục tất cả về mẫu gốc
+                  </button>
+                </div>
+              )}
             </>
           ) : (
             /* AI Assistant Studio */
@@ -972,6 +1154,24 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
                   value={aiCustomPrompt}
                   onChange={(e) => setAiCustomPrompt(e.target.value)}
                 />
+                {aiCustomPrompt && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
+                    <button
+                      type="button"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--text-muted)',
+                        fontSize: '0.72rem',
+                        cursor: 'pointer',
+                        textDecoration: 'underline'
+                      }}
+                      onClick={() => setAiCustomPrompt('')}
+                    >
+                      Xóa trắng yêu cầu
+                    </button>
+                  </div>
+                )}
               </div>
 
               <button
@@ -983,7 +1183,7 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
                 {isGenerating ? 'AI đang thực hiện...' : '✨ Thực hiện yêu cầu tùy biến'}
               </button>
 
-              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', marginTop: '6px' }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', marginTop: '10px' }}>
                 Hành động thông minh một chạm:
               </div>
 
@@ -1105,16 +1305,49 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
 
             {/* Action Buttons */}
             <div className="bot-action-buttons">
-              {isAiModified && (
+              {/* 3-State Preview Modes Switcher */}
+              {viewMode === 'a4' && (
+                <div className="bot-preview-modes-group">
+                  <button
+                    type="button"
+                    className={`bot-mode-segment-btn ${previewCompareMode === 'current' ? 'active' : ''}`}
+                    onClick={() => setPreviewCompareMode('current')}
+                    title="Xem văn bản đang soạn thảo"
+                  >
+                    📄 Hiện tại
+                  </button>
+                  <button
+                    type="button"
+                    className={`bot-mode-segment-btn ${previewCompareMode === 'diff' ? 'active active-diff' : ''}`}
+                    onClick={() => setPreviewCompareMode(prev => prev === 'diff' ? 'current' : 'diff')}
+                    title="Đối chiếu các phần đã thay đổi so với mẫu gốc ban đầu"
+                  >
+                    🔍 Đối chiếu thay đổi
+                    {diffCount > 0 && <span className="bot-diff-count-badge">{diffCount}</span>}
+                  </button>
+                  <button
+                    type="button"
+                    className={`bot-mode-segment-btn ${previewCompareMode === 'original' ? 'active' : ''}`}
+                    onClick={() => setPreviewCompareMode('original')}
+                    title="Xem lại nguyên văn mẫu chuẩn ban đầu"
+                  >
+                    📋 Mẫu gốc
+                  </button>
+                </div>
+              )}
+
+              {/* Reset to Default Template Button */}
+              {isDirty && (
                 <button
                   type="button"
                   className="bot-action-btn bot-btn-reset"
                   onClick={handleResetTemplate}
-                  title="Khôi phục về mẫu chuẩn ban đầu (bỏ các thay đổi của AI)"
+                  title="Khôi phục về mẫu chuẩn ban đầu (bỏ mọi thay đổi của người dùng hoặc AI)"
                 >
                   <span>↺</span> Khôi phục mẫu
                 </button>
               )}
+
               <button
                 type="button"
                 className="bot-action-btn bot-btn-docx-primary"
@@ -1153,7 +1386,13 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
                   transformOrigin: 'top center'
                 }}
               >
-                {renderFormattedA4(documentContent)}
+                {renderFormattedA4(
+                  previewCompareMode === 'diff'
+                    ? diffService.generateDiffMarkdown(initialRenderedText, documentContent)
+                    : previewCompareMode === 'original'
+                    ? initialRenderedText
+                    : documentContent
+                )}
               </article>
             </div>
           ) : (

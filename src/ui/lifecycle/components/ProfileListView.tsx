@@ -102,10 +102,12 @@ export function ProfileListView({ profiles, isLoading, onMoveProfile }: ProfileL
                         className={
                           timeline.type === 'probation' 
                             ? `badge-probation ${timeline.isUrgent ? 'badge-probation-warning' : ''}`
+                            : timeline.type === 'resigned'
+                            ? 'badge-resigned'
                             : 'badge-tenure'
                         }
                       >
-                        {timeline.type === 'probation' ? (timeline.isUrgent ? '⚠️ ' : '⏳ ') : '🎖️ '}
+                        {timeline.type === 'probation' ? (timeline.isUrgent ? '⚠️ ' : '⏳ ') : timeline.type === 'resigned' ? '🛑 ' : '🎖️ '}
                         {timeline.text}
                       </span>
                     )}

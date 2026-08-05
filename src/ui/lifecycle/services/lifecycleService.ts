@@ -6,6 +6,7 @@ export function getMockProfiles(): EmployeeProfile[] {
     { _id: 'sample-1', name: 'Nguyễn Văn A', status: 'Mới nhận việc' },
     { _id: 'sample-2', name: 'Lê Thị B', status: 'Đang thử việc' },
     { _id: 'sample-3', name: 'Trần Văn C', status: 'Chính thức' },
+    { _id: 'sample-4', name: 'Phạm Thị D', status: 'Nghỉ việc' },
   ];
 }
 

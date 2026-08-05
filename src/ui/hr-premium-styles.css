@@ -18,6 +18,14 @@
   min-height: 100%;
   box-sizing: border-box;
   overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.hr-terminal-ui::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 /* Header Section */
@@ -218,24 +226,14 @@
   align-items: flex-start;
   width: 100%;
   box-sizing: border-box;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .hr-kanban-container::-webkit-scrollbar {
-  height: 8px;
-}
-
-.hr-kanban-container::-webkit-scrollbar-track {
-  background: var(--bg, #F7F8FA);
-  border-radius: 4px;
-}
-
-.hr-kanban-container::-webkit-scrollbar-thumb {
-  background: var(--border, #E4E7EA);
-  border-radius: 4px;
-}
-
-.hr-kanban-container::-webkit-scrollbar-thumb:hover {
-  background: var(--text-faint, #9EA2A8);
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .hr-kanban-col {
@@ -291,6 +289,14 @@
   gap: 10px;
   min-height: 150px;
   overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.hr-kanban-content::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .empty-state {
@@ -807,6 +813,18 @@
   border-radius: 4px;
   background: rgba(16, 185, 129, 0.1);
   color: #10B981;
+}
+
+.badge-resigned {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.725rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(239, 68, 68, 0.1);
+  color: #EF4444;
 }
 
 /* 1-Click Action Group & Copy Buttons */

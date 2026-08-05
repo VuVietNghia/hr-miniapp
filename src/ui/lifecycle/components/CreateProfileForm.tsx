@@ -138,7 +138,7 @@ export function CreateProfileForm({
           borderRadius: 8
         }}>
           <label className="hr-label" style={{ color: '#2563EB', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span>✨</span> Chọn nhanh từ ứng viên đã đạt sơ loại tuyển dụng ({passedCandidates.length} ứng viên)
+            <span>✨</span> Chọn nhanh từ ứng viên phỏng vấn / nhận việc (Stage 05+) ({passedCandidates.length} ứng viên)
           </label>
           <select
             className="hr-input"
@@ -147,7 +147,7 @@ export function CreateProfileForm({
             disabled={isSubmitting || isLoadingCandidates}
             style={{ marginTop: 6 }}
           >
-            <option value="">-- Chọn ứng viên trúng tuyển để tự động điền --</option>
+            <option value="">-- Chọn ứng viên từ vòng phỏng vấn (05_Moi_Phong_Van trở đi) --</option>
             {passedCandidates.map((c) => (
               <option key={c._id} value={c._id}>
                 👤 {c.name} {c.score !== undefined ? `(${c.score}đ)` : ''} — Đợt: {c.listName} {c.position ? `[${c.position}]` : ''}

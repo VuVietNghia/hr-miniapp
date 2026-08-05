@@ -30,18 +30,33 @@ export class PrivOSLifecycleService implements ILifecycleService {
     try {
       const allLists = await this.fetchAllLists(roomId);
       const screeningLists = allLists.filter(list => this.isScreeningList(list));
+      
+      console.log(`[PrivOSLifecycleService] Found ${allLists.length} lists in room, ${screeningLists.length} candidate lists:`, 
+        screeningLists.map(l => l.name)
+      );
+
       if (screeningLists.length === 0) return [];
 
       const candidatesPromises = screeningLists.map(async (list) => {
-        const items = await this.fetchListItems(list._id || list.id);
+        const listId = list._id || list.id;
+        let stages = list.stages;
+        if (!Array.isArray(stages) || stages.length === 0) {
+          stages = await this.fetchListStages(listId);
+        }
+
+        const items = await this.fetchListItems(listId);
         const validItems = items.filter(item => !this.isSystemConfigItem(item));
-        return validItems
-          .filter(item => this.isPassedCandidateItem(item, list.stages))
-          .map(item => this.mapItemToPassedCandidate(item, list));
+        const passedItems = validItems.filter(item => this.isPassedCandidateItem(item, stages));
+
+        console.log(`[PrivOSLifecycleService] List "${list.name}" (${listId}): ${validItems.length} total items, ${passedItems.length} stage 05+ candidates`);
+
+        return passedItems.map(item => this.mapItemToPassedCandidate(item, { ...list, stages }));
       });
 
       const candidatesNested = await Promise.all(candidatesPromises);
       const allCandidates = candidatesNested.flat();
+
+      console.log(`[PrivOSLifecycleService] Total loaded passed candidates (Stage 05+): ${allCandidates.length}`);
 
       // Sort by score descending (highest score first)
       return allCandidates.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
@@ -268,7 +283,7 @@ export class PrivOSLifecycleService implements ILifecycleService {
   private async fetchListItems(listId: string): Promise<any[]> {
     const res: any = await this.app.callServerTool({
       name: 'privos.lists.getItems',
-      arguments: { listId }
+      arguments: { listId, count: 100 }
     });
 
     const text = res?.content?.[0]?.text;
@@ -303,14 +318,17 @@ export class PrivOSLifecycleService implements ILifecycleService {
   }
 
   private getStageName(item: any, stages: any[]): string {
-    let statusName = item.stage || item.status || PrivOSLifecycleService.DEFAULT_STAGE;
-    if (item.stageId && Array.isArray(stages)) {
-      const matchedStage = stages.find((s: any) => s._id === item.stageId || s.id === item.stageId);
+    const stageId = item.stageId || item.stage_id || item.stage?._id || item.stage?.id;
+    if (stageId && Array.isArray(stages) && stages.length > 0) {
+      const matchedStage = stages.find((s: any) => s._id === stageId || s.id === stageId);
       if (matchedStage) {
-        statusName = matchedStage.name;
+        return matchedStage.name;
       }
     }
-    return statusName;
+    if (typeof item.stage === 'string') return item.stage;
+    if (typeof item.status === 'string') return item.status;
+    if (item.stage?.name) return item.stage.name;
+    return PrivOSLifecycleService.DEFAULT_STAGE;
   }
 
   private extractCustomFields(profile: any, customFieldsData: any, fieldDefMap: Map<string, any>): void {
@@ -395,37 +413,92 @@ export class PrivOSLifecycleService implements ILifecycleService {
     return Array.isArray(parsed) ? parsed : (parsed?.lists || []);
   }
 
+  private async fetchListStages(listId: string): Promise<any[]> {
+    // 1. Try MCP tool privos.stages.getByList
+    try {
+      const res: any = await this.app.callServerTool({
+        name: 'privos.stages.getByList',
+        arguments: { listId }
+      });
+      const text = res?.content?.[0]?.text;
+      if (text) {
+        const parsed = JSON.parse(text);
+        const stages = Array.isArray(parsed) ? parsed : (parsed?.stages || []);
+        if (stages.length > 0) return stages;
+      }
+    } catch (err) {
+      console.warn(`[PrivOSLifecycleService] Could not fetch stages via tool for list ${listId}:`, err);
+    }
+
+    // 2. Fallback via restCall lists.info if available
+    try {
+      if (this.app?.rest) {
+        const res: any = await this.app.rest({
+          method: 'GET',
+          path: 'lists.info',
+          query: { listId }
+        });
+        const body: any = res?.body ?? res;
+        if (Array.isArray(body?.stages) && body.stages.length > 0) {
+          return body.stages;
+        }
+      }
+    } catch (err) {
+      console.warn(`[PrivOSLifecycleService] Could not fetch stages via REST for list ${listId}:`, err);
+    }
+
+    return [];
+  }
+
+  private normalizeText(str: string): string {
+    return (str || '')
+      .toUpperCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/Đ/g, 'D')
+      .trim();
+  }
+
   private isScreeningList(list: any): boolean {
-    const name = (list.name || '').toUpperCase();
-    return name.includes('SCREENING') || name.includes('CHẤM CV') || name.includes('CHAM CV');
+    const rawName = (list.name || '').toUpperCase();
+    const normalizedName = this.normalizeText(rawName);
+
+    // Explicitly exclude HR lifecycle lists
+    const isHrLifecycle = 
+      normalizedName.includes('HO SO NHAN SU') ||
+      normalizedName.includes('NHAN SU') ||
+      normalizedName.includes('LIFECYCLE') ||
+      normalizedName.includes('EMPLOYEE');
+
+    // In a recruitment room, all other lists are candidate screening/recruitment lists
+    return !isHrLifecycle;
   }
 
   private isPassedCandidateItem(item: any, stages?: any[]): boolean {
-    const stageName = this.getStageName(item, stages || []).toUpperCase();
-    const customFields = item.customFields;
+    const rawStageName = this.getStageName(item, stages || []);
+    const stageName = this.normalizeText(rawStageName);
     
-    // Explicit fail stages
-    if (stageName.includes('LOAI_CV') || stageName.includes('LOAI_SAU_PV') || stageName.includes('KHONG DAT')) {
-      return false;
-    }
+    // Explicit exclude stages: 01_Dau_Vao, 02_Loai_CV, 03_Tiem_Nang, 04_Phone_Screening, 09_Loai_Sau_PV
+    const isExcludedStage = 
+      stageName.includes('01_') || stageName.includes('DAU VAO') || stageName.includes('DAU_VAO') ||
+      stageName.includes('02_') || stageName.includes('LOAI CV') || stageName.includes('LOAI_CV') ||
+      stageName.includes('03_') || stageName.includes('TIEM NANG') || stageName.includes('TIEM_NANG') ||
+      stageName.includes('04_') || stageName.includes('PHONE') ||
+      stageName.includes('09_') || stageName.includes('LOAI SAU PV') || stageName.includes('LOAI_SAU_PV') ||
+      stageName.includes('KHONG DAT') || stageName.includes('KHONG TUYEN');
 
-    // Category / Classification check
-    const category = String(this.extractFieldValue(customFields, ['phan_loai', 'loại', 'category', 'ket_qua']) || '').toUpperCase();
-    if (category.includes('KHONG DAT') || category.includes('KHONG TUYEN')) {
-      return false;
-    }
+    if (isExcludedStage) return false;
 
-    // Explicit pass stages or pass categories
-    const isPassStage = stageName.includes('TIEM_NANG') || 
-                        stageName.includes('PHONE_SCREENING') || 
-                        stageName.includes('PHONG_VAN') || 
-                        stageName.includes('GUI_OFFER') || 
-                        stageName.includes('NHAN_VIEC') || 
-                        stageName.includes('DAU');
+    // Only allow candidates from Stage 05 (Mời phỏng vấn) onwards:
+    // 05_Moi_Phong_Van, 06_Cho_Ket_Qua, 07_Gui_Offer, 08_Dau_Nhan_Viec
+    const allowedStagePatterns = [
+      '05_', '05', 'MOI PHONG VAN', 'MOI_PHONG_VAN', 'PHONG VAN',
+      '06_', '06', 'CHO KET QUA', 'CHO_KET_QUA',
+      '07_', '07', 'GUI OFFER', 'GUI_OFFER', 'OFFER',
+      '08_', '08', 'DAU NHAN VIEC', 'DAU_NHAN_VIEC', 'NHAN VIEC'
+    ];
 
-    const isPassCategory = category.includes('DAT') || category.includes('ĐẠT') || category.includes('CAN NHAC') || category.includes('CÂN NHẮC');
-
-    return isPassStage || isPassCategory;
+    return allowedStagePatterns.some(pattern => stageName.includes(pattern));
   }
 
   private mapItemToPassedCandidate(item: any, list: any): PassedCandidate {
