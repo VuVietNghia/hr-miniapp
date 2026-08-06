@@ -115,7 +115,7 @@ export default function RecruitmentPanel() {
         ];
 
         for (const jd of jds) {
-          if (!jd.name.startsWith('JD_')) continue;
+          if (!jd.name.startsWith('JD_') || jd.name.startsWith('JD_AI_')) continue;
           
           let content = '';
           try {
