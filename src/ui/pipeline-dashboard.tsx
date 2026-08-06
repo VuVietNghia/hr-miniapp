@@ -431,9 +431,9 @@ ${jdPrompt}
 
 REQUIRED:
 1. Save a .md file into RoomFiles/${roomId}/hr-miniapp/jds/ (TUYỆT ĐỐI KHÔNG lưu vào sandbox container).
-2. If the filename already exists, append a number suffix (VD: JD_DataAnalyst_1.md).
+2. The filename MUST start with "JD_AI_" (VD: JD_AI_DataAnalyst.md). If it exists, append a number suffix (VD: JD_AI_DataAnalyst_1.md).
 3. Only report completion after the file has been saved.
-4. Return the saved path in <saved_file>JD_TenViTri.md</saved_file>.
+4. Return the saved path in <saved_file>JD_AI_TenViTri.md</saved_file>.
 5. Return full JD markdown content in <jd_content>...</jd_content>.`;
 
       addLog(`\u0110\u00e3 g\u1eedi y\u00eau c\u1ea7u. \u0110ang ch\u1edd AI ph\u00e2n t\u00edch v\u00e0 t\u1ea1o JD (c\u00f3 th\u1ec3 m\u1ea5t 30-60s)...`);
@@ -473,8 +473,25 @@ REQUIRED:
             jdFileName = fileMatch[1].trim().split('/').pop() || '';
           }
           if (!jdFileName || !jdFileName.endsWith('.md')) {
-            const cleanTitle = jdPrompt.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '');
-            jdFileName = `JD_${cleanTitle || 'NewPosition'}.md`;
+            let positionName = jdForm.position;
+            if (!positionName || positionName.trim() === '') {
+              const match = jdPrompt.match(/- V\u1ecb tr\u00ed:\s*([^\n]+)/i);
+              if (match && match[1] && match[1].trim() !== 'Kh\u00f4ng x\u00e1c \u0111\u1ecbnh') {
+                positionName = match[1].trim();
+              }
+            }
+            if (!positionName || positionName.trim() === '') {
+              positionName = 'NewPosition';
+            }
+            
+            // Normalize Vietnamese and remove special characters
+            let cleanTitle = positionName
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+              .replace(/đ/g, 'd').replace(/Đ/g, 'D')
+              .replace(/[^a-zA-Z0-9]/g, '');
+              
+            jdFileName = `JD_AI_${cleanTitle || 'NewPosition'}.md`;
           }
 
           if (extractedJD && app) {
@@ -561,8 +578,8 @@ REQUIRED:
 
 
   const resultList = Object.values(statuses);
-  const defaultJDs = availableJDs.filter(jd => jd.name.startsWith('JD_'));
-  const aiGeneratedJDs = availableJDs.filter(jd => !jd.name.startsWith('JD_'));
+  const defaultJDs = availableJDs.filter(jd => jd.name.startsWith('JD_') && !jd.name.startsWith('JD_AI_'));
+  const aiGeneratedJDs = availableJDs.filter(jd => !jd.name.startsWith('JD_') || jd.name.startsWith('JD_AI_'));
   const selectedJD = availableJDs.find(jd => jd.name === jdName);
   const jdDropdownLabel = jdLoading ? "Vui l\u00f2ng ch\u1edd JD \u0111ang t\u1ea3i l\u00ean" : selectedJD?.name || "Ch\u1ecdn JD";
   const isJDFormReady = hasJDFormValue(jdForm);
@@ -578,8 +595,11 @@ REQUIRED:
     label: string,
     placeholder: string,
     multiline = false,
-    wide = false
-  ) => (
+    wide = false,
+    options?: string[]
+  ) => {
+    const listId = options ? `list-${field}` : undefined;
+    return (
     <label className={`pl-form-field${wide ? ' pl-span-2' : ''}`}>
       <span>{label}</span>
       {multiline ? (
@@ -591,15 +611,26 @@ REQUIRED:
           rows={3}
         />
       ) : (
-        <input
-          className="pl-input"
-          value={jdForm[field]}
-          onChange={(e) => updateJDFormField(field, e.target.value)}
-          placeholder={placeholder}
-        />
+        <>
+          <input
+            className="pl-input"
+            value={jdForm[field]}
+            onChange={(e) => updateJDFormField(field, e.target.value)}
+            placeholder={placeholder}
+            list={listId}
+          />
+          {options && (
+            <datalist id={listId}>
+              {options.map((opt, i) => (
+                <option key={i} value={opt} />
+              ))}
+            </datalist>
+          )}
+        </>
       )}
     </label>
-  );
+    );
+  };
 
   return (
     <>
@@ -986,22 +1017,22 @@ REQUIRED:
 
               <div className="pl-form-grid">
                 <p className="pl-label pl-span-2" style={{ margin: '2px 0 0' }}>{"Th\u00f4ng tin chung"}</p>
-                {renderJDFormField('position', 'V\u1ecb tr\u00ed', 'VD: L\u1eadp tr\u00ecnh vi\u00ean Mini App')}
-                {renderJDFormField('department', 'Ph\u00f2ng ban', 'VD: Khoa h\u1ecdc D\u1eef li\u1ec7u & HTTT')}
-                {renderJDFormField('location', '\u0110\u1ecba \u0111i\u1ec3m l\u00e0m vi\u1ec7c', 'VD: H\u00e0 N\u1ed9i / Remote / Hybrid')}
-                {renderJDFormField('workTime', 'Th\u1eddi gian l\u00e0m vi\u1ec7c', 'VD: Full-time ho\u1eb7c Part-time')}
+                {renderJDFormField('position', 'V\u1ecb tr\u00ed', 'VD: L\u1eadp tr\u00ecnh vi\u00ean Mini App', false, false, ['L\u1eadp tr\u00ecnh vi\u00ean Front-end', 'L\u1eadp tr\u00ecnh vi\u00ean Back-end', 'L\u1eadp tr\u00ecnh vi\u00ean Mobile', 'Data Analyst', 'Chuy\u00ean vi\u00ean Nh\u00e2n s\u1ef1', 'Chuy\u00ean vi\u00ean Marketing'])}
+                {renderJDFormField('department', 'Ph\u00f2ng ban', 'VD: Khoa h\u1ecdc D\u1eef li\u1ec7u & HTTT', false, false, ['Kh\u1ed1i C\u00f4ng ngh\u1ec7', 'Kh\u1ed1i Kinh doanh', 'Ph\u00f2ng Marketing', 'Ph\u00f2ng Nh\u00e2n s\u1ef1', 'Ph\u00f2ng K\u1ebf to\u00e1n'])}
+                {renderJDFormField('location', '\u0110\u1ecba \u0111i\u1ec3m l\u00e0m vi\u1ec7c', 'VD: H\u00e0 N\u1ed9i / Remote / Hybrid', false, false, ['H\u00e0 N\u1ed9i', 'TP. H\u1ed3 Ch\u00ed Minh', '\u0110\u00e0 N\u1eb5ng', 'Remote', 'Hybrid'])}
+                {renderJDFormField('workTime', 'Th\u1eddi gian l\u00e0m vi\u1ec7c', 'VD: Full-time ho\u1eb7c Part-time', false, false, ['Full-time', 'Part-time', 'Th\u1ef1c t\u1eadp sinh (Intern)', 'C\u1ed9ng t\u00e1c vi\u00ean (CTV)'])}
 
                 <p className="pl-label pl-span-2" style={{ margin: '4px 0 0' }}>{"M\u00f4 t\u1ea3 c\u00f4ng vi\u1ec7c"}</p>
                 {renderJDFormField('jobDescription', 'M\u00f4 t\u1ea3 c\u00f4ng vi\u1ec7c', 'Nh\u1eadp c\u00e1c \u0111\u1ea7u vi\u1ec7c ch\u00ednh, m\u1ed7i d\u00f2ng m\u1ed9t \u00fd...', true, true)}
 
                 <p className="pl-label pl-span-2" style={{ margin: '4px 0 0' }}>{"Y\u00eau c\u1ea7u \u1ee9ng vi\u00ean"}</p>
-                {renderJDFormField('experience', 'Kinh nghi\u1ec7m', 'VD: 01 n\u0103m kinh nghi\u1ec7m')}
-                {renderJDFormField('education', 'H\u1ecdc v\u1ea5n', 'VD: T\u1ed1t nghi\u1ec7p ng\u00e0nh CNTT')}
+                {renderJDFormField('experience', 'Kinh nghi\u1ec7m', 'VD: 01 n\u0103m kinh nghi\u1ec7m', false, false, ['Kh\u00f4ng y\u00eau c\u1ea7u kinh nghi\u1ec7m', 'D\u01b0\u1edbi 1 n\u0103m kinh nghi\u1ec7m', '1-2 n\u0103m kinh nghi\u1ec7m', '3-5 n\u0103m kinh nghi\u1ec7m', 'Tr\u00ean 5 n\u0103m kinh nghi\u1ec7m'])}
+                {renderJDFormField('education', 'H\u1ecdc v\u1ea5n', 'VD: T\u1ed1t nghi\u1ec7p ng\u00e0nh CNTT', false, false, ['Kh\u00f4ng y\u00eau c\u1ea7u b\u1eb1ng c\u1ea5p', 'T\u1ed1t nghi\u1ec7p Cao \u0111\u1eb3ng tr\u1edf l\u00ean', 'T\u1ed1t nghi\u1ec7p \u0110\u1ea1i h\u1ecdc tr\u1edf l\u00ean', 'T\u1ed1t nghi\u1ec7p \u0110\u1ea1i h\u1ecdc chuy\u00ean ng\u00e0nh CNTT', '\u0110ang l\u00e0 sinh vi\u00ean n\u0103m 3, n\u0103m 4'])}
                 {renderJDFormField('technicalSkills', 'K\u1ef9 n\u0103ng chuy\u00ean m\u00f4n', 'VD: React, TypeScript, Mini App...', true, true)}
                 {renderJDFormField('softSkills', 'K\u1ef9 n\u0103ng m\u1ec1m', 'VD: Ch\u1ee7 \u0111\u1ed9ng, giao ti\u1ebfp t\u1ed1t...', true, true)}
 
                 <p className="pl-label pl-span-2" style={{ margin: '4px 0 0' }}>{"Quy\u1ec1n l\u1ee3i"}</p>
-                {renderJDFormField('salary', 'M\u1ee9c l\u01b0\u01a1ng', 'VD: 15.000.000 VN\u0110/th\u00e1ng')}
+                {renderJDFormField('salary', 'M\u1ee9c l\u01b0\u01a1ng', 'VD: 15.000.000 VN\u0110/th\u00e1ng', false, false, ['Th\u1ecfa thu\u1eadn theo n\u0103ng l\u1ef1c', '10.000.000 - 15.000.000 VN\u0110', '15.000.000 - 20.000.000 VN\u0110', '20.000.000 - 30.000.000 VN\u0110', 'C\u1ea1nh tranh tr\u00ean th\u1ecb tr\u01b0\u1eddng'])}
                 {renderJDFormField('benefits', 'Ph\u00fac l\u1ee3i', 'VD: Th\u01b0\u1edfng d\u1ef1 \u00e1n, BHXH...', true)}
                 {renderJDFormField('workEnvironment', 'M\u00f4i tr\u01b0\u1eddng l\u00e0m vi\u1ec7c', 'VD: Tr\u1ebb, linh ho\u1ea1t, s\u1ea3n ph\u1ea9m th\u1ef1c t\u1ebf...', true, true)}
 
