@@ -42,7 +42,7 @@ export async function ensureTemplatesExistGlobal(app: McpApp, roomId: string, fo
   const sangLocPath = `${baseFolder}/sang_loc_cv.md`;
   const evaluatorSkillPath = `${baseFolder}/cv-evaluator-skill.md`;
   const jdTemplatePath = `${baseFolder}/jd_template.md`;
-  const jdGeneratorSkillPath = `${baseFolder}/jd-generator.md`;
+  const jdGeneratorSkillPath = `${baseFolder}/jd-generator-skill.md`;
 
   const checkAndUpload = async (path: string, rawContent: string, isGuideline: boolean) => {
     if (!forceReset) {
@@ -391,48 +391,81 @@ export class PipelineService {
       const currentMonth = new Date().toISOString().slice(0, 7);
       const currentDate = new Date().toISOString().split('T')[0];
       const jdNameClean = jdName.replace(/[^a-zA-Z0-9]/g, '');
-      const processorPrompt = `
-        Hãy dùng skill cv-evaluator để chấm CV sau đây: @Files:${this.roomId}/${cv.name}
+      const processorPrompt = `@Files:${this.roomId}/hr-miniapp/skills/cv-evaluator-skill.md
+Hãy dùng skill cv-evaluator ở trên để chấm CV sau đây: @Files:${this.roomId}/${cv.name}
 
-        THÔNG TIN HỆ THỐNG HIỆN TẠI:
-        - Tháng hiện tại: ${currentMonth}
-        - Ngày hiện tại: ${currentDate}
-        - Tên báo cáo CSV cũ (đã bỏ, không dùng nữa).
-        
-        NHIỆM VỤ CỐT LÕI (BẮT BUỘC BẰNG MỌI GIÁ):
-        1. Đổi tên chuẩn và COPY file gốc vào thư mục hr-miniapp/raws-cv/${currentMonth}/.
-        2. Chấm điểm dựa trên JD bên dưới.
-        3. Sinh và lưu file kết quả Markdown vào đúng thư mục trong outputs-cv.
-        
-        JD đối chiếu:
-        <jd_content>
-        ${jdContent}
-        </jd_content>
+THÔNG TIN HỆ THỐNG HIỆN TẠI:
+- Room ID: ${this.roomId}
+- Tháng hiện tại: ${currentMonth}
+- Ngày hiện tại: ${currentDate}
 
-        KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ KẾT QUẢ VỚI ĐỊNH DẠNG JSON SAU ĐÂY CHO HỆ THỐNG UI CẬP NHẬT:
-        \`\`\`json
-        {
-          "saved_file": "Tên-File-Da-Luu.md",
-          "score": 10,
-          "category": "ĐẠT" | "CÂN NHẮC" | "KHÔNG ĐẠT" | "KHÔNG TUYỂN VỊ TRÍ NÀY",
-          "reason": "[lý do ngắn gọn]",
-          "extracted_evidence": ["[trích dẫn 1]", "[trích dẫn 2]"]
-        }
-        \`\`\`
-      `;
+QUY TẮC LƯU TRỮ BẮT BUỘC VÀO ROOM FILES (TUYỆT ĐỐI KHÔNG LƯU SANDBOX CONTAINER):
+1. File CV gốc: Đổi tên theo chuẩn và lưu/copy vào:
+   RoomFiles/${this.roomId}/hr-miniapp/raws-cv/${currentMonth}/
+2. File kết quả Markdown: Lưu theo phân loại:
+   - Nếu ĐẠT hoặc CÂN NHẮC: RoomFiles/${this.roomId}/hr-miniapp/outputs-cv/${currentMonth}/02-passed_screening/
+   - Nếu KHÔNG ĐẠT hoặc KHÔNG TUYỂN: RoomFiles/${this.roomId}/hr-miniapp/outputs-cv/${currentMonth}/01-failed/
+   - Nếu ĐÁNH GIÁ CHUYÊN SÂU: RoomFiles/${this.roomId}/hr-miniapp/outputs-cv/${currentMonth}/03-deep_reviewed/
+
+JD đối chiếu:
+<jd_content>
+${jdContent}
+</jd_content>
+
+KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ:
+1. Thẻ báo tên file đã lưu:
+<saved_file>[Tên-File-Da-Luu.md]</saved_file>
+
+2. Toàn bộ nội dung Markdown kết quả trong thẻ:
+<markdown_content>
+[Toàn bộ nội dung file MD theo chuẩn cv_md_template.md]
+</markdown_content>
+
+3. Khối JSON kết quả cho hệ thống UI:
+\`\`\`json
+{
+  "saved_file": "Tên-File-Da-Luu.md",
+  "score": 10,
+  "category": "ĐẠT" | "CÂN NHẮC" | "KHÔNG ĐẠT" | "KHÔNG TUYỂN VỊ TRÍ NÀY",
+  "reason": "[lý do ngắn gọn]",
+  "extracted_evidence": ["[trích dẫn 1]", "[trích dẫn 2]"]
+}
+\`\`\`
+`;
 
       const aiProcessRes = await this.askAI(processorPrompt, cv.name, cv._id, onLog);
 
       // Parse JSON from the response
       if (onLog) onLog(`[Đọc Kết Quả] Đang parse JSON để cập nhật UI...`);
 
+      // Lấy nội dung markdown trực tiếp từ AI response (In-memory approach)
+      let extractedMarkdown = '';
+      const mdMatch = aiProcessRes.text.match(/<markdown_content>\s*([\s\S]*?)\s*<\/markdown_content>/i);
+      if (mdMatch && mdMatch[1]) {
+        extractedMarkdown = mdMatch[1].trim();
+        if (onLog) onLog(`[Email Debug] Đã trích xuất thành công nội dung Markdown trực tiếp từ AI response (${extractedMarkdown.length} ký tự).`);
+      } else {
+        if (onLog) onLog(`[Email Debug] ⚠ AI không trả về tag <markdown_content>! Sẽ phải fallback đọc từ đĩa.`);
+      }
+
       let result: any = { category: 'KHÔNG XÁC ĐỊNH', score: 0, reason: '' };
       const parsedScore = this.parseAIResponse(aiProcessRes.text);
       if (parsedScore) {
         result = { ...result, ...parsedScore };
-      } else {
-        result.reason = 'AI response could not be parsed as JSON.';
-        if (onLog) onLog(`[DEBUG] RAW AI SCORE RESPONSE:\n${aiProcessRes.text.substring(0, 500)}...`);
+      }
+
+      // Fallback 1: Nếu chưa có điểm hoặc phân loại từ JSON, bóc tách trực tiếp từ Markdown report
+      if ((!result.score || result.category === 'KHÔNG XÁC ĐỊNH') && extractedMarkdown) {
+        const mdScore = this.extractScoreFromMarkdown(extractedMarkdown);
+        if (mdScore) {
+          result = {
+            ...result,
+            score: result.score || mdScore.score,
+            category: result.category !== 'KHÔNG XÁC ĐỊNH' ? result.category : mdScore.category,
+            reason: result.reason || mdScore.reason
+          };
+          if (onLog) onLog(`[Fallback] Đã bóc tách thành công điểm & kết quả từ Markdown: ${result.category} (${result.score}đ)`);
+        }
       }
 
       // Parse <saved_file> or saved_file from JSON
@@ -448,21 +481,28 @@ export class PipelineService {
           if (fallbackMatch && fallbackMatch[1]) {
             newMdName = fallbackMatch[1].trim();
           } else {
-            throw new Error("AI không trả về tên file saved_file. Response: " + aiProcessRes.text.substring(0, 100));
+            // Tự động tạo tên file fallback an toàn nếu AI không xuất tag
+            const cleanCvName = cv.name.replace(/[^a-zA-Z0-9]/g, '_');
+            newMdName = `${currentDate}_CV_${cleanCvName}.md`;
+            if (onLog) onLog(`[Fallback] Tự động tạo tên file MD chuẩn: ${newMdName}`);
           }
         }
       }
 
       if (onLog) onLog(`[Giữ nguyên File Gốc] AI đã tạo file MD: ${newMdName}`);
 
-      // Lấy nội dung markdown trực tiếp từ AI response (In-memory approach)
-      let extractedMarkdown = '';
-      const mdMatch = aiProcessRes.text.match(/<markdown_content>\s*([\s\S]*?)\s*<\/markdown_content>/i);
-      if (mdMatch && mdMatch[1]) {
-        extractedMarkdown = mdMatch[1].trim();
-        if (onLog) onLog(`[Email Debug] Đã trích xuất thành công nội dung Markdown trực tiếp từ AI response (${extractedMarkdown.length} ký tự).`);
-      } else {
-        if (onLog) onLog(`[Email Debug] ⚠ AI không trả về tag <markdown_content>! Sẽ phải fallback đọc từ đĩa.`);
+      // Self-healing: Đảm bảo file Markdown chắc chắn được lưu vào Room Files để người dùng tương tác được
+      if (extractedMarkdown && newMdName) {
+        const subFolder = (result.category === 'ĐẠT' || result.category === 'CÂN NHẮC')
+          ? '02-passed_screening'
+          : (result.category === 'DEEP_REVIEW' ? '03-deep_reviewed' : '01-failed');
+        const targetRoomFilePath = `${this.roomId}/hr-miniapp/outputs-cv/${currentMonth}/${subFolder}/${newMdName}`;
+        try {
+          await createOrUpdateFile(this.app, targetRoomFilePath, extractedMarkdown);
+          if (onLog) onLog(`[Room Files] Đã xác nhận lưu file kết quả vào: ${targetRoomFilePath}`);
+        } catch (fileSaveErr: any) {
+          console.warn('[Room Files] Lỗi lưu fallback file MD:', fileSaveErr);
+        }
       }
 
       updateStatus({
@@ -471,7 +511,7 @@ export class PipelineService {
         status: 'scoring'
       }); // Vẫn giữ status scoring để UI hiện mượt
 
-      let finalReason = result.reason || 'Processed successfully';
+      let finalReason = result.reason || 'Đã hoàn tất đánh giá CV';
 
       if (result.extracted_evidence && Array.isArray(result.extracted_evidence)) {
         finalReason += '\n\n[BẰNG CHỨNG TỪ CV]\n- ' + result.extracted_evidence.join('\n- ');
@@ -516,23 +556,112 @@ export class PipelineService {
   }
 
   private parseAIResponse(text: string): any {
-    try {
-      const jsonBlocks = [...text.matchAll(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/gi)];
-      if (jsonBlocks.length > 0) {
-        for (let i = jsonBlocks.length - 1; i >= 0; i--) {
+    if (!text) return null;
+
+    const sanitizeJsonStr = (str: string) => {
+      return str
+        .trim()
+        .replace(/,\s*([\]}])/g, '$1') // Xóa trailing commas
+        .replace(/[\u201C\u201D]/g, '"'); // Chuẩn hóa smart quotes
+    };
+
+    // 1. Thử bóc tách từ code block ```json ... ```
+    const codeBlockMatches = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/gi)];
+    for (let i = codeBlockMatches.length - 1; i >= 0; i--) {
+      const block = codeBlockMatches[i][1];
+      try {
+        return JSON.parse(sanitizeJsonStr(block));
+      } catch (e) {
+        // Thử tìm JSON object bên trong code block nếu có text thừa
+        const firstBrace = block.indexOf('{');
+        const lastBrace = block.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace > firstBrace) {
           try {
-            return JSON.parse(jsonBlocks[i][1]);
-          } catch (e) { }
+            return JSON.parse(sanitizeJsonStr(block.substring(firstBrace, lastBrace + 1)));
+          } catch (e2) {}
         }
       }
-      const objectBlocks = [...text.matchAll(/\{[\s\S]*?\}/g)];
-      for (let i = objectBlocks.length - 1; i >= 0; i--) {
-        try {
-          return JSON.parse(objectBlocks[i][0]);
-        } catch (e) { }
+    }
+
+    // 2. Tìm khối JSON bằng Balanced Bracket Parser trong toàn bộ text
+    const objects: string[] = [];
+    let depth = 0;
+    let startIdx = -1;
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === '{') {
+        if (depth === 0) startIdx = i;
+        depth++;
+      } else if (text[i] === '}') {
+        depth--;
+        if (depth === 0 && startIdx !== -1) {
+          objects.push(text.substring(startIdx, i + 1));
+          startIdx = -1;
+        }
       }
-    } catch (e) { }
+    }
+
+    for (let i = objects.length - 1; i >= 0; i--) {
+      try {
+        const parsed = JSON.parse(sanitizeJsonStr(objects[i]));
+        if (parsed && typeof parsed === 'object') {
+          return parsed;
+        }
+      } catch (e) {}
+    }
+
+    // 3. Fallback Regex từng trường độc lập từ text
+    const scoreMatch = text.match(/"score"\s*:\s*(\d+(?:\.\d+)?)/i) || 
+                       text.match(/(?:Tổng điểm|Điểm số|Score)[:\s*]+(\d+(?:\.\d+)?)/i);
+    const catMatch = text.match(/"category"\s*:\s*"([^"]+)"/i) || 
+                     text.match(/(?:Kết quả|Phân loại|Xếp loại)[:\s*]*(ĐẠT|CÂN NHẮC|KHÔNG ĐẠT|KHÔNG TUYỂN VỊ TRÍ NÀY|DEEP_REVIEW)/i);
+    const reasonMatch = text.match(/"reason"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/i) ||
+                        text.match(/(?:Lý do|Nhận xét)[:\s*]+([^\n\r]+)/i);
+    const savedFileMatch = text.match(/"saved_file"\s*:\s*"([^"]+)"/i) ||
+                           text.match(/<saved_file>\s*([^<\s]+)\s*<\/saved_file>/i);
+
+    if (scoreMatch || catMatch || savedFileMatch) {
+      return {
+        score: scoreMatch ? Number(scoreMatch[1]) : 0,
+        category: catMatch ? catMatch[1] : 'KHÔNG XÁC ĐỊNH',
+        reason: reasonMatch ? reasonMatch[1] : 'Được trích xuất từ dữ liệu AI',
+        saved_file: savedFileMatch ? savedFileMatch[1] : undefined
+      };
+    }
+
     return null;
+  }
+
+  private extractScoreFromMarkdown(markdown: string): { score: number; category: string; reason?: string } | null {
+    if (!markdown) return null;
+
+    let category = 'KHÔNG XÁC ĐỊNH';
+    let score = 0;
+    let reason = '';
+
+    // Check category
+    if (/✅|ĐẠT(?!\s*KHÔNG)/i.test(markdown) && !/KHÔNG ĐẠT/i.test(markdown)) {
+      category = 'ĐẠT';
+    } else if (/🟡|CÂN NHẮC/i.test(markdown)) {
+      category = 'CÂN NHẮC';
+    } else if (/⛔|KHÔNG TUYỂN/i.test(markdown)) {
+      category = 'KHÔNG TUYỂN VỊ TRÍ NÀY';
+    } else if (/❌|KHÔNG ĐẠT/i.test(markdown)) {
+      category = 'KHÔNG ĐẠT';
+    }
+
+    // Check total score
+    const scoreMatch = markdown.match(/(?:Tổng điểm|Tổng Điểm|Score|Điểm)[:\s*]+([0-9]+(?:\.[0-9]+)?)/i);
+    if (scoreMatch && scoreMatch[1]) {
+      score = Number(scoreMatch[1]);
+    }
+
+    // Check reason
+    const reasonMatch = markdown.match(/(?:Kết luận|Lý do|Nhận xét chung|Tóm tắt)[:\s*]+([^\n\r]+)/i);
+    if (reasonMatch && reasonMatch[1]) {
+      reason = reasonMatch[1].trim();
+    }
+
+    return { category, score, reason };
   }
 
   async askAI(content: string, fileName?: string, fileId?: string, onLog?: (msg: string) => void): Promise<{ text: string }> {
@@ -576,8 +705,8 @@ ${content}
       await restCall(this.app, 'POST', 'ai-messages.startGeneration', { body: { messageId: aiMessageId } });
     }
 
-    // Tăng số lần lặp và thời gian chờ để đảm bảo AI có đủ thời gian đọc và xuất MD
-    for (let i = 0; i < 150; i++) {
+    // Tăng số lần lặp lên 300 (300 x 2s = 600s = 10 phút) để đảm bảo AI có đủ thời gian đọc và xuất MD
+    for (let i = 0; i < 300; i++) {
       await new Promise(r => setTimeout(r, 2000));
 
       let res;
@@ -602,7 +731,7 @@ ${content}
       }
     }
 
-    throw new Error('AI polling timeout');
+    throw new Error('AI polling timeout sau 10 phút');
   }
 
   async getMarkdownContent(normalizedName: string): Promise<string> {

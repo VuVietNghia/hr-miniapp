@@ -27,9 +27,11 @@ Dựa trên yêu cầu của người dùng (Sơ loại hay Deep Review), hãy �
 - Nếu yêu cầu là sơ loại (Screening): Mục tiêu là quyết định ĐẠT / CÂN NHẮC / KHÔNG ĐẠT. File kết quả sẽ được lưu vào `02-passed_screening/` hoặc `01-failed/` tương ứng.
 - Nếu yêu cầu là đánh giá chuyên sâu (Deep Review): Mục tiêu là phân tích chi tiết kỹ năng, tính cách, kinh nghiệm (dựa trên các câu hỏi phỏng vấn, bài test...). File kết quả BẮT BUỘC lưu vào thư mục `03-deep_reviewed/`.
 
-### Phase 2: Lưu trữ File Gốc (BẮT BUỘC)
-- :warning: **SYSTEM DIRECTIVE:** BẠN BẮT BUỘC PHẢI THỰC HIỆN "BƯỚC 1" TRONG FILE GUIDELINES TRƯỚC TIÊN.
-- Đổi tên tất cả các CV gốc theo chuẩn và copy toàn bộ vào thư mục `hr-miniapp/raws-cv/[YYYY-MM]/`. 
+### Phase 2: Lưu trữ File Gốc (BẮT BUỘC VÀO ROOM FILES)
+- ⚠️ **SYSTEM DIRECTIVE - NO SANDBOX:** BẠN BẮT BUỘC PHẢI THỰC HIỆN "BƯỚC 1" TRONG FILE GUIDELINES TRƯỚC TIÊN.
+- Đổi tên CV gốc theo chuẩn và dùng PrivOS File Tool để lưu vào Room Files:
+  `RoomFiles/[ROOM_ID]/hr-miniapp/raws-cv/[YYYY-MM]/[Tên_file_chuẩn]`
+- Tuyệt đối KHÔNG lưu file vào container sandbox nội bộ.
 - Tuyệt đối không được bỏ sót bất kỳ file CV nào do người dùng tải lên.
 
 ### Phase 3: Đọc dữ liệu & Phân tích
@@ -38,14 +40,37 @@ Dựa trên yêu cầu của người dùng (Sơ loại hay Deep Review), hãy �
 - So khớp kỹ năng, kinh nghiệm trong CV với JD. Đưa ra điểm số (Ví dụ: 85/100).
 - Lập bảng phân tích ưu/nhược điểm khách quan, không bịa đặt (No Hallucination).
 
-### Phase 4: Lưu trữ Kết Quả (BẮT BUỘC)
-> **LƯU Ý QUAN TRỌNG:** Việc tạo/cập nhật Bảng Kanban (privos.lists) **KHÔNG** được thực hiện ở đây. Hệ thống UI sẽ tự động tạo List và lưu toàn bộ CV vào các stage sau khi chấm điểm xong TẤT CẢ các CV trong đợt. Nhiệm vụ của kỹ năng này chỉ là chấm điểm và lưu file Markdown.
-1. **Lưu file Markdown**: Sinh ra file Markdown kết quả đúng chuẩn `cv_md_template.md`. Tên file có dạng `[YYYY-MM-DD]_CV_[TenKhongDau]_[ViTriKhongDau].md`. 
-   - Đảm bảo lưu đúng thư mục (VD: `outputs-cv/[YYYY-MM]/03-deep_reviewed/` cho Deep Review).
-   - Nếu file đã tồn tại, tự động thêm hậu tố `_1`, `_2` để chống ghi đè.
-2. **Trả về kết quả**: Hoàn tất bằng cách báo cho người dùng đường dẫn file Markdown đã lưu dưới dạng `<saved_file>đường_dẫn</saved_file>`. Không in toàn bộ Markdown ra màn hình chat để tiết kiệm token.
+### Phase 4: Lưu trữ Kết Quả (BẮT BUỘC VÀO ROOM FILES)
+> **LƯU Ý QUAN TRỌNG:** Việc tạo/cập nhật Bảng Kanban (privos.lists) **KHÔNG** được thực hiện ở đây. Hệ thống UI sẽ tự động tạo List và lưu toàn bộ CV vào các stage sau khi chấm điểm xong TẤT CẢ các CV trong đợt. Nhiệm vụ của kỹ năng này chỉ là chấm điểm và lưu file Markdown vào Room Files.
+
+1. **Lưu file Markdown vào đúng thư mục Room Files:**
+   - Tên file chuẩn: `[YYYY-MM-DD]_CV_[TenKhongDau]_[ViTriKhongDau].md` (Nếu trùng thì thêm `_1.md`, `_2.md`...).
+   - **Bảng phân loại thư mục lưu trữ Room Files:**
+
+| Kết quả đánh giá | Thư mục lưu trữ (Room Files) |
+| :--- | :--- |
+| ✅ **ĐẠT** hoặc 🟡 **CÂN NHẮC** | `RoomFiles/[ROOM_ID]/hr-miniapp/outputs-cv/[YYYY-MM]/02-passed_screening/` |
+| ❌ **KHÔNG ĐẠT** hoặc ⛔ **KHÔNG TUYỂN** | `RoomFiles/[ROOM_ID]/hr-miniapp/outputs-cv/[YYYY-MM]/01-failed/` |
+| 🔍 **ĐÁNH GIÁ CHUYÊN SÂU (Deep Review)** | `RoomFiles/[ROOM_ID]/hr-miniapp/outputs-cv/[YYYY-MM]/03-deep_reviewed/` |
+
+2. **Trả về kết quả (Strict Output Format):**
+   - Thẻ báo tên file đã lưu: `<saved_file>[Tên_file_MD_đã_lưu].md</saved_file>`
+   - Thẻ nội dung Markdown kết quả:
+   <markdown_content>
+   [Toàn bộ nội dung file Markdown theo đúng cv_md_template.md]
+   </markdown_content>
+   - JSON kết quả cho UI:
+   ```json
+   {
+     "saved_file": "[Tên-File-Da-Luu.md]",
+     "score": 85,
+     "category": "ĐẠT" | "CÂN NHẮC" | "KHÔNG ĐẠT" | "KHÔNG TUYỂN VỊ TRÍ NÀY",
+     "reason": "[lý do ngắn gọn]",
+     "extracted_evidence": ["[trích dẫn 1]", "[trích dẫn 2]"]
+   }
+   ```
 
 ## 4. Nguyên tắc cốt lõi
 - **Tuyệt đối không bịa thông tin**: Những gì không có trong CV thì ghi "Không đề cập".
 - **Tuân thủ DI (Dependency Injection)**: Mọi tiêu chí chấm điểm phải được nạp từ file JD và Guidelines, không hardcode tiêu chí chấm điểm trong logic của bạn.
-- **Hành động thầm lặng**: Ưu tiên việc tạo/sửa file trực tiếp trên workspace thay vì giải thích dông dài. 
+- **Hành động thầm lặng**: Ưu tiên việc tạo/sửa file trực tiếp trên Room Files workspace thay vì giải thích dông dài. 

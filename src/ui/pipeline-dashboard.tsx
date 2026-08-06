@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { usePrivosApp, usePrivosContext } from '@privos/app-react';
 import { PipelineService, CVFile, ProcessingStatus } from './pipeline-service';
 import { MarkdownPathContextBuilder } from './cv-context-builder';
+import { createOrUpdateFile } from './privos-rest';
 
 // Dependency Injection Interface
 // Swap implementation easily in the future (e.g. mock for testing)
@@ -421,7 +422,7 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
     try {
       // Prompt starts with @Files so askAI will not wrap it in extractor directives.
       // The JD generator skill needs to run as an automation workflow that writes a file.
-      const fullPrompt = `@Files:${roomId}/hr-miniapp/skills/jd-generator.md
+      const fullPrompt = `@Files:${roomId}/hr-miniapp/skills/jd-generator-skill.md
 [SYSTEM AUTOMATION] EXECUTE NOW. DO NOT ASK FOLLOW-UP QUESTIONS.
 Read the skill file above and run the full JD generation workflow.
 
@@ -429,10 +430,11 @@ User JD request:
 ${jdPrompt}
 
 REQUIRED:
-1. Save a .md file into RoomFiles/${roomId}/hr-miniapp/jds/.
-2. If the filename already exists, append a number suffix.
+1. Save a .md file into RoomFiles/${roomId}/hr-miniapp/jds/ (TUYỆT ĐỐI KHÔNG lưu vào sandbox container).
+2. If the filename already exists, append a number suffix (VD: JD_DataAnalyst_1.md).
 3. Only report completion after the file has been saved.
-4. Return the saved path in <saved_file>...</saved_file>.`;
+4. Return the saved path in <saved_file>JD_TenViTri.md</saved_file>.
+5. Return full JD markdown content in <jd_content>...</jd_content>.`;
 
       addLog(`\u0110\u00e3 g\u1eedi y\u00eau c\u1ea7u. \u0110ang ch\u1edd AI ph\u00e2n t\u00edch v\u00e0 t\u1ea1o JD (c\u00f3 th\u1ec3 m\u1ea5t 30-60s)...`);
 
@@ -454,17 +456,52 @@ REQUIRED:
             await new Promise(resolve => window.setTimeout(resolve, 2000));
           }
         }
+        
+        // Self-healing: Nếu AI chưa kịp ghi ra đĩa hoặc lưu vào sandbox, tự động lưu nội dung JD vào Room Files
+        if (!createdJD) {
+          let extractedJD = '';
+          const jdMatch = res.text.match(/<jd_content>\s*([\s\S]*?)\s*<\/jd_content>/i);
+          if (jdMatch && jdMatch[1]) {
+            extractedJD = jdMatch[1].trim();
+          } else if (res.text.includes('# ') && res.text.includes('Mô tả')) {
+            extractedJD = res.text.replace(/<saved_file>[\s\S]*?<\/saved_file>/gi, '').trim();
+          }
+
+          let jdFileName = '';
+          const fileMatch = res.text.match(/<saved_file>\s*([\s\S]*?)\s*<\/saved_file>/i);
+          if (fileMatch && fileMatch[1]) {
+            jdFileName = fileMatch[1].trim().split('/').pop() || '';
+          }
+          if (!jdFileName || !jdFileName.endsWith('.md')) {
+            const cleanTitle = jdPrompt.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '');
+            jdFileName = `JD_${cleanTitle || 'NewPosition'}.md`;
+          }
+
+          if (extractedJD && app) {
+            addLog(`[Self-Healing] Đang tự động lưu file JD vào Room Files: hr-miniapp/jds/${jdFileName}...`);
+            try {
+              await createOrUpdateFile(app, `${roomId}/hr-miniapp/jds/${jdFileName}`, extractedJD);
+              refreshedJDs = await loadJDs();
+              createdJD = refreshedJDs.find(jd => jd.name === jdFileName || !beforeJDNames.has(jd.name));
+              if (createdJD) {
+                addLog(`[Self-Healing] Đã lưu thành công file JD: ${jdFileName}`);
+              }
+            } catch (saveErr: any) {
+              console.warn('[Self-Healing] Lỗi ghi fallback JD file:', saveErr);
+            }
+          }
+        }
 
         if (createdJD) {
-          addLog(`AI \u0111\u00e3 t\u1ea1o JD m\u1edbi: ${createdJD.name}`);
+          addLog(`AI đã tạo JD mới: ${createdJD.name}`);
           setJdPrompt('');
           setJdForm(emptyJDForm);
           setJdFormOpen(false);
           await handleSelectJD(createdJD._id, refreshedJDs);
-          showToast(`AI \u0111\u00e3 t\u1ea1o xong JD m\u1edbi: ${createdJD.name}`);
+          showToast(`AI đã tạo xong JD mới: ${createdJD.name}`);
         } else {
-          addLog(`AI \u0111\u00e3 ph\u1ea3n h\u1ed3i nh\u01b0ng ch\u01b0a th\u1ea5y file JD m\u1edbi trong th\u01b0 m\u1ee5c jds.`);
-          showToast('AI \u0111\u00e3 ph\u1ea3n h\u1ed3i nh\u01b0ng ch\u01b0a th\u1ea5y JD m\u1edbi trong danh s\u00e1ch. Vui l\u00f2ng ki\u1ec3m tra log ho\u1eb7c b\u1ea5m l\u00e0m m\u1edbi JD.', 'error');
+          addLog(`AI đã phản hồi nhưng chưa thấy file JD mới trong thư mục jds.`);
+          showToast('AI đã phản hồi nhưng chưa thấy JD mới trong danh sách. Vui lòng kiểm tra log hoặc bấm làm mới JD.', 'error');
         }
       } else {
         addLog(`AI \u0111\u00e3 x\u1eed l\u00fd nh\u01b0ng kh\u00f4ng nh\u1eadn \u0111\u01b0\u1ee3c k\u1ebft qu\u1ea3 text.`);

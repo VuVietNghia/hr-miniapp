@@ -26,10 +26,18 @@ Sử dụng kỹ năng này khi người dùng yêu cầu: "Tạo JD", "Viết m
 - Đối với phần "Về B.Army", hãy viết tóm tắt ngắn gọn từ những gì bạn đọc được trên website `https://www.b.army/`.
 - Hãy dịch hoặc viết lại cho mạch lạc, thu hút ứng viên nhưng giữ tính trung thực.
 
-### Bước 3: Lưu file JD
+### Bước 3: Lưu file JD (BẮT BUỘC VÀO ROOM FILES)
+- ⚠️ **STRICT DIRECTIVE - NO SANDBOX STORAGE:**
+  - Tuyệt đối KHÔNG ĐƯỢC lưu file vào thư mục container sandbox nội bộ (`/tmp` hoặc `/workspace`).
+  - BẮT BUỘC phải dùng công cụ quản lý Room File của PrivOS để lưu file trực tiếp vào không gian lưu trữ của phòng chat:
+    **Đường dẫn chuẩn:** `RoomFiles/[ROOM_ID]/hr-miniapp/jds/JD_[TênVịTríKhôngDấu].md` (hoặc `[ROOM_ID]/hr-miniapp/jds/JD_[TênVịTríKhôngDấu].md`).
 - Tên file chuẩn: `JD_[TênVịTríKhôngDấu].md` (Ví dụ: `JD_DataAnalyst.md`).
-- Sử dụng công cụ lưu file (Write File) để lưu JD vừa tạo vào thư mục: `[ROOM_ID]/hr-miniapp/jds/`.
-- Nếu file đã tồn tại, tự động thêm số thứ tự vào sau (VD: `JD_DataAnalyst_1.md`).
+- Nếu file đã tồn tại trong thư mục `hr-miniapp/jds/`, tự động thêm số thứ tự vào sau (VD: `JD_DataAnalyst_1.md`).
 
-### Bước 4: Trả kết quả
-- Báo cho người dùng biết file JD đã được tạo thành công kèm theo đường dẫn `<saved_file>đường_dẫn</saved_file>`.
+### Bước 4: Trả kết quả (Strict Output Format)
+- Báo cho người dùng biết file JD đã được tạo thành công kèm theo đường dẫn:
+  `<saved_file>JD_[TênVịTríKhôngDấu].md</saved_file>`
+- Kèm theo toàn bộ nội dung Markdown của JD vừa tạo trong thẻ:
+  <jd_content>
+  [Toàn bộ nội dung JD theo chuẩn template]
+  </jd_content>
