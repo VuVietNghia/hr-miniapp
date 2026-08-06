@@ -35,17 +35,17 @@ _Lưu ý: Nội dung lấy từ file MD này chính là "Nguồn Dữ Liệu G�
 Sử dụng nội dung từ "Nguồn Dữ Liệu Gốc", định dạng lại CV theo cấu trúc sau.
 **Yêu cầu:** Sắp xếp lại nội dung, giữ nguyên văn kỹ năng/kinh nghiệm. Sau đó, dựa vào thông tin trích xuất, thực hiện **ĐÁNH GIÁ SÀNG LỌC** theo 3 tiêu chí dưới đây đối chiếu với JD đính kèm:
 
-### 3 Tiêu Chí Đánh Giá Chính:
+### 3 Tiêu Chí Đánh Giá Chính (Thang điểm 100):
 
 1. **Vị trí ứng tuyển:** Có đúng với danh sách tuyển dụng trong JD hay không?
 2. **Kinh nghiệm & Yêu cầu cốt lõi:** Có đạt yêu cầu tối thiểu của JD không?
 3. **Mức lương mong muốn:** Có nằm trong Budget (nếu JD có đề cập) không?
 
-### Phân Loại Kết Quả Rẽ Nhánh:
+### Phân Loại Kết Quả Rẽ Nhánh & Ngưỡng Điểm Bắt Buộc (Thang 100 điểm):
 
-* ✅ **ĐẠT (Mời phỏng vấn):** Đúng vị trí + Kinh nghiệm đạt yêu cầu + Lương trong budget.
-* 🟡 **CÂN NHẮC (Cần xem thêm):** Đúng vị trí nhưng thiếu 1 tiêu chí (ít kinh nghiệm hơn yêu cầu hoặc lương hơi cao nhưng có thể thương lượng).
-* ❌ **KHÔNG ĐẠT (Từ chối):** Lương vượt budget quá xa HOẶC không đủ yêu cầu cơ bản của JD.
+* ✅ **ĐẠT (Mời phỏng vấn):** Tổng điểm **≥ 80/100** (Đúng vị trí + Kinh nghiệm đạt yêu cầu + Lương trong budget).
+* 🟡 **CÂN NHẮC (Cần xem thêm):** Tổng điểm **50 – 79/100** (Đúng vị trí nhưng thiếu 1 vài kỹ năng phụ hoặc ít kinh nghiệm hơn một chút nhưng có tiềm năng, lương hơi cao có thể thương lượng).
+* ❌ **KHÔNG ĐẠT (Từ chối):** Tổng điểm **< 50/100** HOẶC Lương vượt budget quá xa HOẶC không đủ yêu cầu cơ bản của JD. *(⚠️ TUYỆT ĐỐI KHÔNG XẾP CÂN NHẮC NẾU TỔNG ĐIỂM < 50/100)*.
 * ⛔ **KHÔNG TUYỂN VỊ TRÍ NÀY:** Ứng tuyển vị trí không có trong JD hiện tại.
 
 ### TEMPLATE KẾT QUẢ BẮT BUỘC (Markdown):

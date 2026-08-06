@@ -399,13 +399,15 @@ THÔNG TIN HỆ THỐNG HIỆN TẠI:
 - Tháng hiện tại: ${currentMonth}
 - Ngày hiện tại: ${currentDate}
 
-QUY TẮC LƯU TRỮ BẮT BUỘC VÀO ROOM FILES (TUYỆT ĐỐI KHÔNG LƯU SANDBOX CONTAINER):
-1. File CV gốc: Đổi tên theo chuẩn và lưu/copy vào:
+QUY TẮC PHÂN LOẠI & LƯU TRỮ (BẮT BUỘC THANG ĐIỂM 100):
+1. Thang điểm: Bắt buộc từ 0 đến 100 điểm.
+2. Ngưỡng phân loại bắt buộc:
+   - Tổng điểm >= 80/100: "ĐẠT" -> Lưu vào: RoomFiles/${this.roomId}/hr-miniapp/outputs-cv/${currentMonth}/02-passed_screening/
+   - Tổng điểm 50 - 79/100: "CÂN NHẮC" -> Lưu vào: RoomFiles/${this.roomId}/hr-miniapp/outputs-cv/${currentMonth}/02-passed_screening/
+   - Tổng điểm < 50/100: "KHÔNG ĐẠT" (TUYỆT ĐỐI KHÔNG XẾP CÂN NHẮC NẾU DƯỚI 50 ĐIỂM) -> Lưu vào: RoomFiles/${this.roomId}/hr-miniapp/outputs-cv/${currentMonth}/01-failed/
+   - Vị trí không tuyển trong JD: "KHÔNG TUYỂN VỊ TRÍ NÀY" -> Lưu vào: RoomFiles/${this.roomId}/hr-miniapp/outputs-cv/${currentMonth}/01-failed/
+3. File CV gốc: Đổi tên theo chuẩn và lưu/copy vào:
    RoomFiles/${this.roomId}/hr-miniapp/raws-cv/${currentMonth}/
-2. File kết quả Markdown: Lưu theo phân loại:
-   - Nếu ĐẠT hoặc CÂN NHẮC: RoomFiles/${this.roomId}/hr-miniapp/outputs-cv/${currentMonth}/02-passed_screening/
-   - Nếu KHÔNG ĐẠT hoặc KHÔNG TUYỂN: RoomFiles/${this.roomId}/hr-miniapp/outputs-cv/${currentMonth}/01-failed/
-   - Nếu ĐÁNH GIÁ CHUYÊN SÂU: RoomFiles/${this.roomId}/hr-miniapp/outputs-cv/${currentMonth}/03-deep_reviewed/
 
 JD đối chiếu:
 <jd_content>
@@ -421,11 +423,11 @@ KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ:
 [Toàn bộ nội dung file MD theo chuẩn cv_md_template.md]
 </markdown_content>
 
-3. Khối JSON kết quả cho hệ thống UI:
+3. Khối JSON kết quả cho hệ thống UI (Score phải là số thực tế từ 0-100):
 \`\`\`json
 {
   "saved_file": "Tên-File-Da-Luu.md",
-  "score": 10,
+  "score": 85,
   "category": "ĐẠT" | "CÂN NHẮC" | "KHÔNG ĐẠT" | "KHÔNG TUYỂN VỊ TRÍ NÀY",
   "reason": "[lý do ngắn gọn]",
   "extracted_evidence": ["[trích dẫn 1]", "[trích dẫn 2]"]
@@ -461,10 +463,31 @@ KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ:
           result = {
             ...result,
             score: result.score || mdScore.score,
-            category: result.category !== 'KHÔNG XÁC ĐỊNH' ? result.category : mdScore.category,
+            category: result.category !== 'KHÔNG XÁC ĐẠT' && result.category !== 'KHÔNG XÁC ĐỊNH' ? result.category : mdScore.category,
             reason: result.reason || mdScore.reason
           };
           if (onLog) onLog(`[Fallback] Đã bóc tách thành công điểm & kết quả từ Markdown: ${result.category} (${result.score}đ)`);
+        }
+      }
+
+      // Chuẩn hóa scale: Nếu AI trả về thang điểm 10 (VD: 8.3/10) -> Scale lên thang 100
+      if (result.score > 0 && result.score <= 10) {
+        const originalScore = result.score;
+        result.score = Math.round(result.score * 10 * 10) / 10;
+        if (onLog) onLog(`[Chuẩn hóa điểm] Chuyển đổi thang 10 sang thang 100: ${originalScore} -> ${result.score}/100`);
+      }
+
+      // Guardrail bảo vệ phân loại theo ngưỡng điểm cứng
+      if (result.category !== 'KHÔNG TUYỂN VỊ TRÍ NÀY' && result.category !== 'DEEP_REVIEW') {
+        if (result.score >= 80 && result.category !== 'ĐẠT') {
+          result.category = 'ĐẠT';
+          if (onLog) onLog(`[Guardrail] Điểm ${result.score} >= 80đ -> Chuẩn hóa xếp loại: ĐẠT`);
+        } else if (result.score < 50 && (result.category === 'ĐẠT' || result.category === 'CÂN NHẮC')) {
+          result.category = 'KHÔNG ĐẠT';
+          if (onLog) onLog(`[Guardrail] Điểm ${result.score} < 50đ -> Tự động chuyển xếp loại: KHÔNG ĐẠT`);
+        } else if (result.score >= 50 && result.score < 80 && result.category === 'ĐẠT') {
+          result.category = 'CÂN NHẮC';
+          if (onLog) onLog(`[Guardrail] Điểm ${result.score} (50-79đ) -> Chuẩn hóa xếp loại: CÂN NHẮC`);
         }
       }
 
@@ -638,21 +661,35 @@ KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ:
     let score = 0;
     let reason = '';
 
-    // Check category
-    if (/✅|ĐẠT(?!\s*KHÔNG)/i.test(markdown) && !/KHÔNG ĐẠT/i.test(markdown)) {
-      category = 'ĐẠT';
-    } else if (/🟡|CÂN NHẮC/i.test(markdown)) {
-      category = 'CÂN NHẮC';
-    } else if (/⛔|KHÔNG TUYỂN/i.test(markdown)) {
+    // Check category theo độ ưu tiên chính xác
+    if (/⛔|KHÔNG TUYỂN/i.test(markdown)) {
       category = 'KHÔNG TUYỂN VỊ TRÍ NÀY';
     } else if (/❌|KHÔNG ĐẠT/i.test(markdown)) {
       category = 'KHÔNG ĐẠT';
+    } else if (/🟡|CÂN NHẮC/i.test(markdown)) {
+      category = 'CÂN NHẮC';
+    } else if (/✅|ĐẠT(?!\s*KHÔNG)/i.test(markdown)) {
+      category = 'ĐẠT';
     }
 
     // Check total score
     const scoreMatch = markdown.match(/(?:Tổng điểm|Tổng Điểm|Score|Điểm)[:\s*]+([0-9]+(?:\.[0-9]+)?)/i);
     if (scoreMatch && scoreMatch[1]) {
       score = Number(scoreMatch[1]);
+      if (score > 0 && score <= 10) {
+        score = Math.round(score * 10 * 10) / 10;
+      }
+    }
+
+    // Guardrail kiểm soát phân loại theo điểm số
+    if (category !== 'KHÔNG TUYỂN VỊ TRÍ NÀY') {
+      if (score >= 80) {
+        category = 'ĐẠT';
+      } else if (score >= 50 && score < 80 && category !== 'KHÔNG ĐẠT') {
+        category = 'CÂN NHẮC';
+      } else if (score < 50 && score > 0) {
+        category = 'KHÔNG ĐẠT';
+      }
     }
 
     // Check reason

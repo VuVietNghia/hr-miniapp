@@ -43,17 +43,25 @@ Dựa trên yêu cầu của người dùng (Sơ loại hay Deep Review), hãy �
 ### Phase 4: Lưu trữ Kết Quả (BẮT BUỘC VÀO ROOM FILES)
 > **LƯU Ý QUAN TRỌNG:** Việc tạo/cập nhật Bảng Kanban (privos.lists) **KHÔNG** được thực hiện ở đây. Hệ thống UI sẽ tự động tạo List và lưu toàn bộ CV vào các stage sau khi chấm điểm xong TẤT CẢ các CV trong đợt. Nhiệm vụ của kỹ năng này chỉ là chấm điểm và lưu file Markdown vào Room Files.
 
-1. **Lưu file Markdown vào đúng thư mục Room Files:**
+1. **Quy tắc phân loại theo thang 100 điểm bắt buộc:**
+   - **Tổng điểm ≥ 80:** ✅ `ĐẠT`
+   - **Tổng điểm 50 – 79:** 🟡 `CÂN NHẮC`
+   - **Tổng điểm < 50:** ❌ `KHÔNG ĐẠT` *(Tuyệt đối KHÔNG được xếp CÂN NHẮC nếu điểm dưới 50)*
+   - **Không đúng vị trí trong JD:** ⛔ `KHÔNG TUYỂN VỊ TRÍ NÀY`
+
+2. **Lưu file Markdown vào đúng thư mục Room Files:**
    - Tên file chuẩn: `[YYYY-MM-DD]_CV_[TenKhongDau]_[ViTriKhongDau].md` (Nếu trùng thì thêm `_1.md`, `_2.md`...).
    - **Bảng phân loại thư mục lưu trữ Room Files:**
 
-| Kết quả đánh giá | Thư mục lưu trữ (Room Files) |
-| :--- | :--- |
-| ✅ **ĐẠT** hoặc 🟡 **CÂN NHẮC** | `RoomFiles/[ROOM_ID]/hr-miniapp/outputs-cv/[YYYY-MM]/02-passed_screening/` |
-| ❌ **KHÔNG ĐẠT** hoặc ⛔ **KHÔNG TUYỂN** | `RoomFiles/[ROOM_ID]/hr-miniapp/outputs-cv/[YYYY-MM]/01-failed/` |
-| 🔍 **ĐÁNH GIÁ CHUYÊN SÂU (Deep Review)** | `RoomFiles/[ROOM_ID]/hr-miniapp/outputs-cv/[YYYY-MM]/03-deep_reviewed/` |
+| Kết quả đánh giá | Ngưỡng điểm | Thư mục lưu trữ (Room Files) |
+| :--- | :--- | :--- |
+| ✅ **ĐẠT** | ≥ 80/100 | `RoomFiles/[ROOM_ID]/hr-miniapp/outputs-cv/[YYYY-MM]/02-passed_screening/` |
+| 🟡 **CÂN NHẮC** | 50 – 79/100 | `RoomFiles/[ROOM_ID]/hr-miniapp/outputs-cv/[YYYY-MM]/02-passed_screening/` |
+| ❌ **KHÔNG ĐẠT** | < 50/100 | `RoomFiles/[ROOM_ID]/hr-miniapp/outputs-cv/[YYYY-MM]/01-failed/` |
+| ⛔ **KHÔNG TUYỂN** | Sai vị trí | `RoomFiles/[ROOM_ID]/hr-miniapp/outputs-cv/[YYYY-MM]/01-failed/` |
+| 🔍 **ĐÁNH GIÁ CHUYÊN SÂU** | Deep Review | `RoomFiles/[ROOM_ID]/hr-miniapp/outputs-cv/[YYYY-MM]/03-deep_reviewed/` |
 
-2. **Trả về kết quả (Strict Output Format):**
+3. **Trả về kết quả (Strict Output Format):**
    - Thẻ báo tên file đã lưu: `<saved_file>[Tên_file_MD_đã_lưu].md</saved_file>`
    - Thẻ nội dung Markdown kết quả:
    <markdown_content>
