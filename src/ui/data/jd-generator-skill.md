@@ -30,13 +30,13 @@ Sử dụng kỹ năng này khi người dùng yêu cầu: "Tạo JD", "Viết m
 - ⚠️ **STRICT DIRECTIVE - NO SANDBOX STORAGE:**
   - Tuyệt đối KHÔNG ĐƯỢC lưu file vào thư mục container sandbox nội bộ (`/tmp` hoặc `/workspace`).
   - BẮT BUỘC phải dùng công cụ quản lý Room File của PrivOS để lưu file trực tiếp vào không gian lưu trữ của phòng chat:
-    **Đường dẫn chuẩn:** `RoomFiles/[ROOM_ID]/hr-miniapp/jds/JD_[TênVịTríKhôngDấu].md` (hoặc `[ROOM_ID]/hr-miniapp/jds/JD_[TênVịTríKhôngDấu].md`).
-- Tên file chuẩn: `JD_[TênVịTríKhôngDấu].md` (Ví dụ: `JD_DataAnalyst.md`).
-- Nếu file đã tồn tại trong thư mục `hr-miniapp/jds/`, tự động thêm số thứ tự vào sau (VD: `JD_DataAnalyst_1.md`).
+    **Đường dẫn chuẩn:** `RoomFiles/[ROOM_ID]/hr-miniapp/jds/JD_AI_[TênVịTríKhôngDấu].md` (hoặc `[ROOM_ID]/hr-miniapp/jds/JD_AI_[TênVịTríKhôngDấu].md`).
+- Tên file chuẩn: `JD_AI_[TênVịTríKhôngDấu].md` (Ví dụ: `JD_AI_DataAnalyst.md`).
+- Nếu file đã tồn tại trong thư mục `hr-miniapp/jds/`, tự động thêm số thứ tự vào sau (VD: `JD_AI_DataAnalyst_1.md`).
 
 ### Bước 4: Trả kết quả (Strict Output Format)
 - Báo cho người dùng biết file JD đã được tạo thành công kèm theo đường dẫn:
-  `<saved_file>JD_[TênVịTríKhôngDấu].md</saved_file>`
+  `<saved_file>JD_AI_[TênVịTríKhôngDấu].md</saved_file>`
 - Kèm theo toàn bộ nội dung Markdown của JD vừa tạo trong thẻ:
   <jd_content>
   [Toàn bộ nội dung JD theo chuẩn template]
