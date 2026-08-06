@@ -6,7 +6,23 @@ import { LifecycleServiceProvider, useLifecycleService } from './di/LifecycleCon
 import { KanbanBoard } from './components/KanbanBoard';
 import { ProfileListView } from './components/ProfileListView';
 import { CreateProfileForm } from './components/CreateProfileForm';
+import { usePolling } from '../hooks/usePolling';
 import '../hr-premium-styles.css';
+
+function areCandidatesEqual(prev: PassedCandidate[], next: PassedCandidate[]): boolean {
+  if (prev.length !== next.length) return false;
+  for (let i = 0; i < prev.length; i++) {
+    if (
+      prev[i]._id !== next[i]._id ||
+      prev[i].name !== next[i].name ||
+      prev[i].score !== next[i].score ||
+      prev[i].position !== next[i].position
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
 
 function LifecycleContent() {
   const { roomId } = usePrivosContext();
@@ -23,18 +39,24 @@ function LifecycleContent() {
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
 
-  const refreshCandidates = useCallback(async () => {
+  const refreshCandidates = useCallback(async (isSilent = false) => {
     if (!roomId) return;
-    setIsLoadingCandidates(true);
+    if (!isSilent) setIsLoadingCandidates(true);
     try {
       const candidates = await service.loadPassedCandidates(roomId);
-      setPassedCandidates(candidates);
+      setPassedCandidates((prev) => (areCandidatesEqual(prev, candidates) ? prev : candidates));
     } catch (err) {
       console.error('[LifecycleDashboard] Error loading candidates:', err);
     } finally {
-      setIsLoadingCandidates(false);
+      if (!isSilent) setIsLoadingCandidates(false);
     }
   }, [roomId, service]);
+
+  // Bộ đếm polling 1 giây/lần khi form thêm nhân sự đang mở
+  usePolling(
+    useCallback(() => refreshCandidates(true), [refreshCandidates]),
+    { enabled: isCreating, interval: 1000 }
+  );
 
   useEffect(() => {
     if (roomId) {
