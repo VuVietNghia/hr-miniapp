@@ -850,8 +850,11 @@ ${content}
   ): Promise<void> {
     if (results.length === 0) return;
 
-    const currentDateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '_');
-    const listName = `${currentDateStr}_SCREENING`;
+    const positionMatches = jdName.match(/^JD_(?:AI_)?(.*)\.md$/i);
+    const positionName = positionMatches ? positionMatches[1] : 'UNKNOWN';
+    // Clean up spaces/hyphens to underscore for the list name
+    const cleanPosition = positionName.replace(/[\s-]/g, '_').toUpperCase();
+    const listName = `SCREENING_${cleanPosition}`;
     const fieldDefinitions = [
       { _id: 'tong_diem', name: 'Tổng điểm', type: 'NUMBER' },
       { _id: 'phan_loai', name: 'Phân loại', type: 'TEXT' },
@@ -893,24 +896,61 @@ ${content}
       return '01_Dau_Vao';
     };
 
-    if (onLog) onLog(`[Kanban] Đang tạo List Kanban "${listName}" với ${results.length} CV...`);
+    if (onLog) onLog(`[Kanban] Đang tìm kiếm List Kanban "${listName}"...`);
     try {
-      const createRes = parseToolResponse(await this.app.callServerTool({
-        name: 'privos.lists.create',
-        arguments: {
-          roomId: this.roomId,
-          name: listName,
-          description: `Kết quả chấm CV theo JD: ${jdName || 'Không xác định'}`,
-          fieldDefinitions,
-          stages,
-        }
-      }));
+      let listId: string | undefined;
+      let createdStages: any[] = [];
+      let isNewList = false;
 
-      const listId = createRes?.list?._id || createRes?.listId || createRes?._id;
-      const createdStages = createRes?.stages || createRes?.list?.stages || [];
-      if (!listId) throw new Error('Không lấy được listId sau khi tạo Kanban.');
-      if (!Array.isArray(createdStages) || createdStages.length === 0) {
-        throw new Error('Không lấy được danh sách stage sau khi tạo Kanban.');
+      const allLists = parseToolResponse(await this.app.callServerTool({
+        name: 'privos.lists.getAll',
+        arguments: { roomId: this.roomId }
+      }));
+      
+      if (Array.isArray(allLists)) {
+        const existingList = allLists.find(l => l.name === listName);
+        if (existingList) {
+          listId = existingList._id;
+          if (onLog) onLog(`[Kanban] Tìm thấy List đã tồn tại: ${listId}. Đang tải cấu hình stages...`);
+          
+          try {
+            const searchRes = parseToolResponse(await this.app.callServerTool({
+              name: 'privos.lists.searchItems',
+              arguments: { listId, query: '[Hệ thống] Không xoá' }
+            }));
+            const allItems = Array.isArray(searchRes) ? searchRes : (searchRes?.items || []);
+            const configItem = allItems.find((i: any) => (i.name || i.title || '').includes('[Hệ thống] Không xoá'));
+            if (configItem && configItem.description) {
+              createdStages = JSON.parse(configItem.description);
+            }
+          } catch (e) {
+            console.warn('Failed to load existing stages', e);
+          }
+          
+          if (onLog) onLog(`[Kanban] Đã tải ${createdStages.length} stages. Sẽ thêm ${results.length} CV vào List này.`);
+        }
+      }
+
+      if (!listId) {
+        if (onLog) onLog(`[Kanban] Không tìm thấy List, đang tạo List Kanban mới "${listName}"...`);
+        isNewList = true;
+        const createRes = parseToolResponse(await this.app.callServerTool({
+          name: 'privos.lists.create',
+          arguments: {
+            roomId: this.roomId,
+            name: listName,
+            description: `Kết quả chấm CV theo JD: ${jdName || 'Không xác định'}`,
+            fieldDefinitions,
+            stages,
+          }
+        }));
+
+        listId = createRes?.list?._id || createRes?.listId || createRes?._id;
+        createdStages = createRes?.stages || createRes?.list?.stages || [];
+        if (!listId) throw new Error('Không lấy được listId sau khi tạo Kanban.');
+        if (!Array.isArray(createdStages) || createdStages.length === 0) {
+          throw new Error('Không lấy được danh sách stage sau khi tạo Kanban.');
+        }
       }
 
       const stageIdByName = Object.fromEntries(createdStages.map((stage: any) => [stage.name, stage._id]));
@@ -936,17 +976,19 @@ ${content}
       }));
 
       // Create System Config Item to store stages mapping (so UI can reconstruct stageIds)
-      try {
-        await this.app.callServerTool({
-          name: 'privos.lists.createItem',
-          arguments: {
-            listId,
-            title: '[Hệ thống] Không xoá - Cấu hình Stages',
-            description: JSON.stringify(createdStages)
-          }
-        });
-      } catch (e) {
-        console.warn('Failed to create stages config item', e);
+      if (isNewList) {
+        try {
+          await this.app.callServerTool({
+            name: 'privos.lists.createItem',
+            arguments: {
+              listId,
+              title: '[Hệ thống] Không xoá - Cấu hình Stages',
+              description: JSON.stringify(createdStages)
+            }
+          });
+        } catch (e) {
+          console.warn('Failed to create stages config item', e);
+        }
       }
 
       // Explicitly move items to their correct stages because batchCreateItems places them all in the first column

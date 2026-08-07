@@ -138,16 +138,18 @@ export default function CVScoredTab() {
   const app = usePrivosApp();
   const { roomId } = usePrivosContext();
   
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [searchQuery, setSearchQuery] = useState('');
   const [boards, setBoards] = useState<CVBoardData[]>([]);
   const [loading, setLoading] = useState(false);
+  
+  const requestRef = React.useRef(0);
 
   const loadData = useCallback(async () => {
-    if (!app || !roomId || !date) return;
+    if (!app || !roomId) return;
+    const reqId = ++requestRef.current;
+    
     setLoading(true);
     try {
-      const listName = `${date.replace(/-/g, '_')}_SCREENING`;
-      
       const res: any = await app.callServerTool({
         name: 'privos.lists.getAll',
         arguments: { roomId }
@@ -155,12 +157,12 @@ export default function CVScoredTab() {
       const parsed = JSON.parse(res?.content?.[0]?.text || '{}');
       const allLists = Array.isArray(parsed) ? parsed : (parsed.lists || []);
       
-      // Get all lists for the day and sort newest first by createdAt or _id
+      // Get all screening lists and sort newest updated first
       const targetLists = allLists
-        .filter((l: any) => l.name?.startsWith(listName))
+        .filter((l: any) => (l.name || '').includes('SCREENING'))
         .sort((a: any, b: any) => {
-          const tA = new Date(a.createdAt || a.created_at || 0).getTime();
-          const tB = new Date(b.createdAt || b.created_at || 0).getTime();
+          const tA = new Date(a.updatedAt || a.updated_at || a.createdAt || a.created_at || 0).getTime();
+          const tB = new Date(b.updatedAt || b.updated_at || b.createdAt || b.created_at || 0).getTime();
           if (tA !== tB && tA > 0 && tB > 0) return tB - tA;
           const idA = a._id || a.id || '';
           const idB = b._id || b.id || '';
@@ -272,14 +274,20 @@ export default function CVScoredTab() {
         });
       }
       
-      setBoards(loadedBoards);
+      if (reqId === requestRef.current) {
+        setBoards(loadedBoards);
+      }
     } catch (err) {
       console.error(err);
-      setBoards([]);
+      if (reqId === requestRef.current) {
+        setBoards([]);
+      }
     } finally {
-      setLoading(false);
+      if (reqId === requestRef.current) {
+        setLoading(false);
+      }
     }
-  }, [app, roomId, date]);
+  }, [app, roomId]);
 
   useEffect(() => {
     loadData();
@@ -314,22 +322,34 @@ export default function CVScoredTab() {
     }
   };
 
+  const displayedBoards = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return boards;
+    return boards.filter(b => b.listName.toLowerCase().includes(q));
+  }, [boards, searchQuery]);
+
+  const handleRefresh = () => {
+    setSearchQuery('');
+    loadData();
+  };
+
   return (
     <div className="hr-terminal-ui">
       <header className="hr-header-block">
         <div className="header-content">
           <h2 className="hr-title">CV đã chấm</h2>
-          <p className="hr-subtitle">Kanban hiển thị kết quả lọc CV theo ngày.</p>
+          <p className="hr-subtitle">Kanban hiển thị kết quả lọc CV theo đợt tuyển dụng.</p>
         </div>
         <div className="header-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <input 
-            type="date" 
+            type="text" 
             className="pl-input" 
-            style={{ height: '38px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}
-            value={date} 
-            onChange={e => setDate(e.target.value)} 
+            placeholder="Tìm kiếm List Kanban..."
+            style={{ height: '38px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', minWidth: '220px' }}
+            value={searchQuery} 
+            onChange={e => setSearchQuery(e.target.value)} 
           />
-          <button className="hr-btn" onClick={loadData} disabled={loading} style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+          <button className="hr-btn" onClick={handleRefresh} disabled={loading} style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
             </svg>
@@ -343,13 +363,13 @@ export default function CVScoredTab() {
           <div className="spinner"></div>
           <p>Đang tải dữ liệu CV...</p>
         </div>
-      ) : boards.length === 0 ? (
+      ) : displayedBoards.length === 0 ? (
         <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-          Không tìm thấy danh sách chấm điểm cho ngày {date}.
+          Không tìm thấy danh sách chấm điểm nào{searchQuery ? ` phù hợp với "${searchQuery}"` : ''}.
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {boards.map(board => (
+          {displayedBoards.map(board => (
             <CVBoard key={board.listId} board={board} onMove={handleMove} />
           ))}
         </div>
