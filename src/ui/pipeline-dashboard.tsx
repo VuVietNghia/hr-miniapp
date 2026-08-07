@@ -430,7 +430,7 @@ User JD request:
 ${jdPrompt}
 
 REQUIRED:
-1. Save a .md file into RoomFiles/${roomId}/hr-miniapp/jds/ (TUYỆT ĐỐI KHÔNG lưu vào sandbox container).
+1. Save a .md file directly into Room Files path "hr-miniapp/jds/" (TUYỆT ĐỐI KHÔNG lưu vào sandbox container, KHÔNG thêm tiền tố RoomFiles/ hay room ID vào đường dẫn).
 2. The filename MUST start with "JD_AI_" (VD: JD_AI_DataAnalyst.md). If it exists, append a number suffix (VD: JD_AI_DataAnalyst_1.md).
 3. Only report completion after the file has been saved.
 4. Return the saved path in <saved_file>JD_AI_TenViTri.md</saved_file>.

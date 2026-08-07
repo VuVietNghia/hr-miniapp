@@ -90,13 +90,13 @@ export async function ensureTemplatesExistGlobal(app: McpApp, roomId: string, fo
     try {
       await ensureFolderPath(app, roomId, ['hr-miniapp', 'raws-cv']);
       console.log(`[DEBUG] Đã đảm bảo tồn tại thư mục raws-cv`);
-      
+
       await ensureFolderPath(app, roomId, ['hr-miniapp', 'outputs-cv']);
       console.log(`[DEBUG] Đã đảm bảo tồn tại thư mục outputs-cv`);
-      
+
       await ensureFolderPath(app, roomId, ['hr-miniapp', 'skills']);
       console.log(`[DEBUG] Đã đảm bảo tồn tại thư mục skills`);
-      
+
       await ensureFolderPath(app, roomId, ['hr-miniapp', 'jds']);
       console.log(`[DEBUG] Đã đảm bảo tồn tại thư mục jds`);
     } catch (e) {
@@ -116,7 +116,7 @@ export class PipelineService {
   private app: McpApp;
   private roomId: string;
   private contextBuilder: ICvContextBuilder;
-  
+
   // Cache the folder ID to avoid repeated tool calls
   private cachedSkillsFolderId: string | null | undefined = undefined;
   private cachedJdsFolderId: string | null | undefined = undefined;
@@ -214,7 +214,7 @@ export class PipelineService {
     const MAX_TIMEOUT = 30000;
     const POLL_INTERVAL = 3000;
     const sinceTimeMs = new Date(sinceTs).getTime();
-    
+
     let retries = 1; // single-retry theo chuẩn rule
     let currentStartTime = startTimeMs;
 
@@ -226,21 +226,21 @@ export class PipelineService {
             name: 'privos.messages.getRecent',
             arguments: { roomId: this.roomId, limit: 10 }
           });
-          
+
           let messages: any[] = [];
           const text = msgsResponse?.content?.[0]?.text;
           if (text) {
-             const parsed = JSON.parse(text);
-             messages = Array.isArray(parsed) ? parsed : [];
+            const parsed = JSON.parse(text);
+            messages = Array.isArray(parsed) ? parsed : [];
           }
-          
+
           // Kiểm tra xem có bot trả lời không (tên có 'bot' hoặc 'privos')
           const botMsg = messages.find(m => {
             const msgTime = new Date(m.ts).getTime();
             const isBot = m.u?.username?.toLowerCase().includes('bot') || m.u?.username?.toLowerCase().includes('privos');
             return isBot && msgTime > sinceTimeMs;
           });
-          
+
           if (botMsg) {
             return true; // Có phản hồi
           }
@@ -248,7 +248,7 @@ export class PipelineService {
           console.warn('Lỗi khi poll tin nhắn:', err);
         }
       }
-      
+
       retries--;
       if (retries >= 0) {
         if (onLog) onLog(`[CẢNH BÁO] AI chưa phản hồi sau 30s. Đang thử chờ thêm lần cuối...`);
@@ -296,7 +296,7 @@ export class PipelineService {
     );
 
     const res: any = await Promise.race([uploadPromise, timeoutPromise]);
-    
+
     return {
       _id: res?.file?._id || res?.file?.id || res?._id || res?.id,
       name: finalName
@@ -401,13 +401,16 @@ THÔNG TIN HỆ THỐNG HIỆN TẠI:
 
 QUY TẮC PHÂN LOẠI & LƯU TRỮ (BẮT BUỘC THANG ĐIỂM 100):
 1. Thang điểm: Bắt buộc từ 0 đến 100 điểm.
-2. Ngưỡng phân loại bắt buộc:
-   - Tổng điểm >= 80/100: "ĐẠT" -> Lưu vào: RoomFiles/${this.roomId}/hr-miniapp/outputs-cv/${currentMonth}/02-passed_screening/
-   - Tổng điểm 50 - 79/100: "CÂN NHẮC" -> Lưu vào: RoomFiles/${this.roomId}/hr-miniapp/outputs-cv/${currentMonth}/02-passed_screening/
-   - Tổng điểm < 50/100: "KHÔNG ĐẠT" (TUYỆT ĐỐI KHÔNG XẾP CÂN NHẮC NẾU DƯỚI 50 ĐIỂM) -> Lưu vào: RoomFiles/${this.roomId}/hr-miniapp/outputs-cv/${currentMonth}/01-failed/
-   - Vị trí không tuyển trong JD: "KHÔNG TUYỂN VỊ TRÍ NÀY" -> Lưu vào: RoomFiles/${this.roomId}/hr-miniapp/outputs-cv/${currentMonth}/01-failed/
-3. File CV gốc: Đổi tên theo chuẩn và lưu/copy vào:
-   RoomFiles/${this.roomId}/hr-miniapp/raws-cv/${currentMonth}/
+2. CHỈ THỊ LƯU TRỮ (ROOM FILES - NO SANDBOX):
+   - Môi trường: Dùng PrivOS File Tool lưu trực tiếp vào Room Files (File phòng) để người dùng xem và tương tác được. TUYỆT ĐỐI KHÔNG lưu vào container sandbox.
+   - Quy tắc đường dẫn: Bắt đầu trực tiếp bằng "hr-miniapp/...". TUYỆT ĐỐI KHÔNG thêm tiền tố "RoomFiles/" hoặc "${this.roomId}/" vào đường dẫn vì hệ thống đã tự động định tuyến vào Room.
+3. Ngưỡng phân loại và đường dẫn lưu Markdown kết quả:
+   - Tổng điểm >= 80/100: "ĐẠT" -> Lưu vào: hr-miniapp/outputs-cv/${currentMonth}/02-passed_screening/
+   - Tổng điểm 50 - 79/100: "CÂN NHẮC" -> Lưu vào: hr-miniapp/outputs-cv/${currentMonth}/02-passed_screening/
+   - Tổng điểm < 50/100: "KHÔNG ĐẠT" (TUYỆT ĐỐI KHÔNG XẾP CÂN NHẮC NẾU DƯỚI 50 ĐIỂM) -> Lưu vào: hr-miniapp/outputs-cv/${currentMonth}/01-failed/
+   - Vị trí không tuyển trong JD: "KHÔNG TUYỂN VỊ TRÍ NÀY" -> Lưu vào: hr-miniapp/outputs-cv/${currentMonth}/01-failed/
+4. File CV gốc: Đổi tên theo chuẩn và lưu/copy vào:
+   hr-miniapp/raws-cv/${currentMonth}/
 
 JD đối chiếu:
 <jd_content>
@@ -601,7 +604,7 @@ KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ:
         if (firstBrace !== -1 && lastBrace > firstBrace) {
           try {
             return JSON.parse(sanitizeJsonStr(block.substring(firstBrace, lastBrace + 1)));
-          } catch (e2) {}
+          } catch (e2) { }
         }
       }
     }
@@ -629,18 +632,18 @@ KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ:
         if (parsed && typeof parsed === 'object') {
           return parsed;
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // 3. Fallback Regex từng trường độc lập từ text
-    const scoreMatch = text.match(/"score"\s*:\s*(\d+(?:\.\d+)?)/i) || 
-                       text.match(/(?:Tổng điểm|Điểm số|Score)[:\s*]+(\d+(?:\.\d+)?)/i);
-    const catMatch = text.match(/"category"\s*:\s*"([^"]+)"/i) || 
-                     text.match(/(?:Kết quả|Phân loại|Xếp loại)[:\s*]*(ĐẠT|CÂN NHẮC|KHÔNG ĐẠT|KHÔNG TUYỂN VỊ TRÍ NÀY|DEEP_REVIEW)/i);
+    const scoreMatch = text.match(/"score"\s*:\s*(\d+(?:\.\d+)?)/i) ||
+      text.match(/(?:Tổng điểm|Điểm số|Score)[:\s*]+(\d+(?:\.\d+)?)/i);
+    const catMatch = text.match(/"category"\s*:\s*"([^"]+)"/i) ||
+      text.match(/(?:Kết quả|Phân loại|Xếp loại)[:\s*]*(ĐẠT|CÂN NHẮC|KHÔNG ĐẠT|KHÔNG TUYỂN VỊ TRÍ NÀY|DEEP_REVIEW)/i);
     const reasonMatch = text.match(/"reason"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/i) ||
-                        text.match(/(?:Lý do|Nhận xét)[:\s*]+([^\n\r]+)/i);
+      text.match(/(?:Lý do|Nhận xét)[:\s*]+([^\n\r]+)/i);
     const savedFileMatch = text.match(/"saved_file"\s*:\s*"([^"]+)"/i) ||
-                           text.match(/<saved_file>\s*([^<\s]+)\s*<\/saved_file>/i);
+      text.match(/<saved_file>\s*([^<\s]+)\s*<\/saved_file>/i);
 
     if (scoreMatch || catMatch || savedFileMatch) {
       return {
@@ -839,6 +842,23 @@ ${content}
     return i >= 0 ? filename.slice(i) : '';
   }
 
+  private formatKanbanItemTitle(rawTitle: string): string {
+    if (!rawTitle) return 'CV_Unknown.md';
+
+    // Bỏ extension .md / .pdf / .docx
+    const nameWithoutExt = rawTitle.replace(/\.(md|pdf|docx|doc)$/i, '').trim();
+
+    // Khớp mẫu: YYYY-MM-DD_CV_HoTenKhongDau...
+    const match = nameWithoutExt.match(/^(\d{4}-\d{2}-\d{2})_CV_([a-zA-Z0-9]+)(?:_.*)?$/i);
+    if (match) {
+      const [, date, candidateName] = match;
+      return `${date}_CV_${candidateName}.md`;
+    }
+
+    // Nếu không khớp pattern chuẩn, giữ nguyên và đảm bảo đuôi .md
+    return nameWithoutExt.endsWith('.md') ? nameWithoutExt : `${nameWithoutExt}.md`;
+  }
+
   /**
    * Tạo một List Kanban và lưu toàn bộ kết quả CV vào các stage phù hợp sau khi chấm điểm xong đợt.
    * Được gọi từ UI sau khi toàn bộ CV đã được chấm xong.
@@ -850,10 +870,34 @@ ${content}
   ): Promise<void> {
     if (results.length === 0) return;
 
-    const positionMatches = jdName.match(/^JD_(?:AI_)?(.*)\.md$/i);
-    const positionName = positionMatches ? positionMatches[1] : 'UNKNOWN';
-    // Clean up spaces/hyphens to underscore for the list name
-    const cleanPosition = positionName.replace(/[\s-]/g, '_').toUpperCase();
+    // Bóc tách tên vị trí từ tên file JD linh hoạt (hỗ trợ mọi định dạng file, tiền tố, hậu tố)
+    let positionName = 'UNKNOWN';
+    if (jdName) {
+      // 1. Loại bỏ extension: .md, .pdf, .docx, .doc...
+      let cleaned = jdName.replace(/\.(md|pdf|docx|doc)$/i, '').trim();
+
+      // 2. Loại bỏ các hậu tố trùng lặp: (1), _1, -1...
+      cleaned = cleaned.replace(/(?:[\(_\-]\d+\)?)+$/, '').trim();
+
+      // 3. Loại bỏ các tiền tố phổ biến: JD_AI_, JD_, JD-, Job_Description_, Mo_ta_cong_viec_...
+      cleaned = cleaned.replace(/^(?:JD(?:[_\-\s]+(?:AI)?)?|Job[_\-\s]*Description|Mo[_\-\s]*ta[_\-\s]*cong[_\-\s]*viec)[_\-\s]*/i, '').trim();
+
+      if (cleaned.length > 0) {
+        positionName = cleaned;
+      }
+    }
+
+    // Chuẩn hóa: bỏ dấu tiếng Việt, ký tự đặc biệt -> gạch dưới, viết hoa
+    const cleanPosition = positionName
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D')
+      .replace(/[^a-zA-Z0-9_]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '')
+      .toUpperCase() || 'UNKNOWN';
+
     const listName = `SCREENING_${cleanPosition}`;
     const fieldDefinitions = [
       { _id: 'tong_diem', name: 'Tổng điểm', type: 'NUMBER' },
@@ -906,13 +950,13 @@ ${content}
         name: 'privos.lists.getAll',
         arguments: { roomId: this.roomId }
       }));
-      
+
       if (Array.isArray(allLists)) {
         const existingList = allLists.find(l => l.name === listName);
         if (existingList) {
           listId = existingList._id;
           if (onLog) onLog(`[Kanban] Tìm thấy List đã tồn tại: ${listId}. Đang tải cấu hình stages...`);
-          
+
           try {
             const searchRes = parseToolResponse(await this.app.callServerTool({
               name: 'privos.lists.searchItems',
@@ -926,7 +970,7 @@ ${content}
           } catch (e) {
             console.warn('Failed to load existing stages', e);
           }
-          
+
           if (onLog) onLog(`[Kanban] Đã tải ${createdStages.length} stages. Sẽ thêm ${results.length} CV vào List này.`);
         }
       }
@@ -959,7 +1003,7 @@ ${content}
         const stageId = stageIdByName[stageName] || stageIdByName['01_Dau_Vao'];
         if (!stageId) throw new Error(`Không tìm thấy stageId cho stage ${stageName}.`);
         return {
-          title: r.normalizedName || r.originalName,
+          title: this.formatKanbanItemTitle(r.normalizedName || r.originalName),
           description: r.reason || '',
           stageId,
           customFields: [

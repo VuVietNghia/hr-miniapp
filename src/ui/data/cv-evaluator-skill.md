@@ -29,9 +29,10 @@ Dựa trên yêu cầu của người dùng (Sơ loại hay Deep Review), hãy �
 
 ### Phase 2: Lưu trữ File Gốc (BẮT BUỘC VÀO ROOM FILES)
 - ⚠️ **SYSTEM DIRECTIVE - NO SANDBOX:** BẠN BẮT BUỘC PHẢI THỰC HIỆN "BƯỚC 1" TRONG FILE GUIDELINES TRƯỚC TIÊN.
-- Đổi tên CV gốc theo chuẩn và dùng PrivOS File Tool để lưu vào Room Files:
-  `RoomFiles/[ROOM_ID]/hr-miniapp/raws-cv/[YYYY-MM]/[Tên_file_chuẩn]`
+- Đổi tên CV gốc theo chuẩn và dùng PrivOS File Tool để lưu trực tiếp vào Room Files:
+  `hr-miniapp/raws-cv/[YYYY-MM]/[Tên_file_chuẩn]`
 - Tuyệt đối KHÔNG lưu file vào container sandbox nội bộ.
+- Tuyệt đối KHÔNG thêm tiền tố `RoomFiles/` hoặc `[ROOM_ID]/` vào đường dẫn lưu file.
 - Tuyệt đối không được bỏ sót bất kỳ file CV nào do người dùng tải lên.
 
 ### Phase 3: Đọc dữ liệu & Phân tích
@@ -51,15 +52,16 @@ Dựa trên yêu cầu của người dùng (Sơ loại hay Deep Review), hãy �
 
 2. **Lưu file Markdown vào đúng thư mục Room Files:**
    - Tên file chuẩn: `[YYYY-MM-DD]_CV_[TenKhongDau]_[ViTriKhongDau].md` (Nếu trùng thì thêm `_1.md`, `_2.md`...).
+   - Đường dẫn tương đối bắt đầu bằng `hr-miniapp/...` (TUYỆT ĐỐI KHÔNG thêm `RoomFiles/` hay `[ROOM_ID]/` vào đường dẫn):
    - **Bảng phân loại thư mục lưu trữ Room Files:**
 
 | Kết quả đánh giá | Ngưỡng điểm | Thư mục lưu trữ (Room Files) |
 | :--- | :--- | :--- |
-| ✅ **ĐẠT** | ≥ 80/100 | `RoomFiles/[ROOM_ID]/hr-miniapp/outputs-cv/[YYYY-MM]/02-passed_screening/` |
-| 🟡 **CÂN NHẮC** | 50 – 79/100 | `RoomFiles/[ROOM_ID]/hr-miniapp/outputs-cv/[YYYY-MM]/02-passed_screening/` |
-| ❌ **KHÔNG ĐẠT** | < 50/100 | `RoomFiles/[ROOM_ID]/hr-miniapp/outputs-cv/[YYYY-MM]/01-failed/` |
-| ⛔ **KHÔNG TUYỂN** | Sai vị trí | `RoomFiles/[ROOM_ID]/hr-miniapp/outputs-cv/[YYYY-MM]/01-failed/` |
-| 🔍 **ĐÁNH GIÁ CHUYÊN SÂU** | Deep Review | `RoomFiles/[ROOM_ID]/hr-miniapp/outputs-cv/[YYYY-MM]/03-deep_reviewed/` |
+| ✅ **ĐẠT** | ≥ 80/100 | `hr-miniapp/outputs-cv/[YYYY-MM]/02-passed_screening/` |
+| 🟡 **CÂN NHẮC** | 50 – 79/100 | `hr-miniapp/outputs-cv/[YYYY-MM]/02-passed_screening/` |
+| ❌ **KHÔNG ĐẠT** | < 50/100 | `hr-miniapp/outputs-cv/[YYYY-MM]/01-failed/` |
+| ⛔ **KHÔNG TUYỂN** | Sai vị trí | `hr-miniapp/outputs-cv/[YYYY-MM]/01-failed/` |
+| 🔍 **ĐÁNH GIÁ CHUYÊN SÂU** | Deep Review | `hr-miniapp/outputs-cv/[YYYY-MM]/03-deep_reviewed/` |
 
 3. **Trả về kết quả (Strict Output Format):**
    - Thẻ báo tên file đã lưu: `<saved_file>[Tên_file_MD_đã_lưu].md</saved_file>`
