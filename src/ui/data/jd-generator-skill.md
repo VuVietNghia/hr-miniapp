@@ -29,8 +29,9 @@ Sử dụng kỹ năng này khi người dùng yêu cầu: "Tạo JD", "Viết m
 ### Bước 3: Lưu file JD (BẮT BUỘC VÀO ROOM FILES)
 - ⚠️ **STRICT DIRECTIVE - NO SANDBOX STORAGE:**
   - Tuyệt đối KHÔNG ĐƯỢC lưu file vào thư mục container sandbox nội bộ (`/tmp` hoặc `/workspace`).
-  - BẮT BUỘC phải dùng công cụ quản lý Room File của PrivOS để lưu file trực tiếp vào không gian lưu trữ của phòng chat:
-    **Đường dẫn chuẩn:** `RoomFiles/[ROOM_ID]/hr-miniapp/jds/JD_AI_[TênVịTríKhôngDấu].md` (hoặc `[ROOM_ID]/hr-miniapp/jds/JD_AI_[TênVịTríKhôngDấu].md`).
+  - BẮT BUỘC phải dùng công cụ quản lý Room File của PrivOS để lưu file trực tiếp vào không gian lưu trữ của phòng chat (Room Files).
+  - TUYỆT ĐỐI KHÔNG thêm tiền tố `RoomFiles/` hay `[ROOM_ID]/` vào đường dẫn lưu file.
+  - **Đường dẫn chuẩn:** `hr-miniapp/jds/JD_AI_[TênVịTríKhôngDấu].md`.
 - Tên file chuẩn: `JD_AI_[TênVịTríKhôngDấu].md` (Ví dụ: `JD_AI_DataAnalyst.md`).
 - Nếu file đã tồn tại trong thư mục `hr-miniapp/jds/`, tự động thêm số thứ tự vào sau (VD: `JD_AI_DataAnalyst_1.md`).
 

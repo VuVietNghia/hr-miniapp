@@ -10,13 +10,13 @@
 
 ## BƯỚC 1: COPY FILE RAW VÀO THƯ MỤC RAWS-CV TRONG ROOM FILES (BẮT BUỘC)
 
-> ⚠️ **SYSTEM DIRECTIVE - NO SANDBOX:** YOU MUST COPY ALL RAW FILES TO `RoomFiles/[ROOM_ID]/hr-miniapp/raws-cv/[YYYY-MM]/` BEFORE PROCEEDING. NẾU BẠN BỎ QUA BƯỚC NÀY HOẶC LƯU VÀO SANDBOX CONTAINER, TOÀN BỘ QUY TRÌNH SẼ BỊ LỖI.
+> ⚠️ **SYSTEM DIRECTIVE - NO SANDBOX:** BẮT BUỘC DÙNG PRIVOS FILE TOOL ĐỂ LƯU FILE VÀO ROOM FILES: `hr-miniapp/raws-cv/[YYYY-MM]/` TRƯỚC KHI TIẾP TỤC. NẾU BẠN BỎ QUA BƯỚC NÀY HOẶC LƯU VÀO SANDBOX CONTAINER, TOÀN BỘ QUY TRÌNH SẼ BỊ LỖI. TUYỆT ĐỐI KHÔNG THÊM TIỀN TỐ `RoomFiles/` HOẶC `[ROOM_ID]/` VÀO ĐƯỜNG DẪN LƯU FILE.
 
 Ngay khi nhận được yêu cầu xử lý một file CV raw (ví dụ: `NguyenVanA.pdf`), bạn phải thực hiện quy trình sau để lưu trữ bản gốc:
 
 * **Cách làm:** Thay vì phải gọi tool kiểm tra danh sách file, bạn hãy ĐỔI TÊN file gốc theo chuẩn `[YYYY-MM-DD]_CV_[TenKhongDau]_[ViTriKhongDau]_[Timestamp_YYYYMMDD_HHMMSS].[extension]`.
 * **Ví dụ:** File gốc là `NguyenVanA.pdf` ứng tuyển Data Analyst, ở thời điểm hiện tại (ví dụ 16:05:30 ngày 09/07/2026), bạn sẽ đặt tên là `2026-07-09_CV_NguyenVanA_DataAnalyst_20260709_160530.pdf`.
-* **Thực thi:** Dùng công cụ PrivOS File Tool để lưu/copy file này vào Room Files: `RoomFiles/[ROOM_ID]/hr-miniapp/raws-cv/[YYYY-MM]/` với tên vừa tạo. Bằng cách này 100% không bao giờ bị trùng tên! KHÔNG CẦN LOOP HAY KIỂM TRA LẠI, CV có thể có nhiều đuôi khác nhau (ví dụ: .pdf, .doc, .docx, vv) cần phải copy hết.
+* **Thực thi:** Dùng công cụ PrivOS File Tool để lưu/copy file này trực tiếp vào Room Files: `hr-miniapp/raws-cv/[YYYY-MM]/` với tên vừa tạo. Bằng cách này 100% không bao giờ bị trùng tên! KHÔNG CẦN LOOP HAY KIỂM TRA LẠI, CV có thể có nhiều đuôi khác nhau (ví dụ: .pdf, .doc, .docx, vv) cần phải copy hết.
 
 **(TUYỆT ĐỐI KHÔNG ĐƯỢC GHI ĐÈ FILE CŨ, KHÔNG LƯU VÀO SANDBOX VÀ KHÔNG BỎ QUA BƯỚC NÀY)**
 
@@ -59,10 +59,10 @@ Sử dụng nội dung từ "Nguồn Dữ Liệu Gốc", định dạng lại CV
 * Trích xuất Họ và Tên ứng viên cùng với Vị trí ứng tuyển TỪ TRONG NỘI DUNG CV. **LƯU Ý CỐT LÕI:** Vị trí ứng tuyển phải lấy đúng theo những gì ứng viên viết trong CV, TUYỆT ĐỐI KHÔNG lấy tên tiêu đề của file JD hay tên JD để đặt tên. Nếu trong CV không ghi rõ vị trí, hãy dùng `KhongXacDinh`.
 * Loại bỏ dấu tiếng Việt và dấu cách cho cả Tên và Vị trí ứng tuyển (VD: `Lưu Sơn Trường` -> `LuuSonTruong`, `Lập trình viên` -> `LapTrinhVien`).
 * Tên file chuẩn: `[YYYY-MM-DD]_CV_[TenKhongDau]_[ViTriUngTuyenKhongDau].md`.
-* BẮT BUỘC dùng công cụ PrivOS File Tool để lưu nội dung vừa được chuẩn hóa vào các thư mục Room Files tương ứng theo tháng `[YYYY-MM]` (TUYỆT ĐỐI KHÔNG lưu vào sandbox container):
-  * NẾU ĐANG CHẤM SƠ LOẠI VÀ ỨNG VIÊN ĐẠT/CÂN NHẮC: `RoomFiles/[ROOM_ID]/hr-miniapp/outputs-cv/[YYYY-MM]/02-passed_screening/[Tên_file_chuẩn]`
-  * NẾU ĐANG CHẤM SƠ LOẠI VÀ ỨNG VIÊN KHÔNG ĐẠT/KHÔNG TUYỂN: `RoomFiles/[ROOM_ID]/hr-miniapp/outputs-cv/[YYYY-MM]/01-failed/[Tên_file_chuẩn]`
-  * NẾU ĐANG LÀM NHIỆM VỤ ĐÁNH GIÁ CHUYÊN SÂU (Deep Review): `RoomFiles/[ROOM_ID]/hr-miniapp/outputs-cv/[YYYY-MM]/03-deep_reviewed/[Tên_file_chuẩn]`
+* BẮT BUỘC dùng công cụ PrivOS File Tool để lưu nội dung vừa được chuẩn hóa vào các thư mục Room Files tương ứng theo tháng `[YYYY-MM]` (TUYỆT ĐỐI KHÔNG lưu vào sandbox container, TUYỆT ĐỐI KHÔNG thêm tiền tố `RoomFiles/` hay `[ROOM_ID]/` vào đường dẫn):
+  * NẾU ĐANG CHẤM SƠ LOẠI VÀ ỨNG VIÊN ĐẠT/CÂN NHẮC: `hr-miniapp/outputs-cv/[YYYY-MM]/02-passed_screening/[Tên_file_chuẩn]`
+  * NẾU ĐANG CHẤM SƠ LOẠI VÀ ỨNG VIÊN KHÔNG ĐẠT/KHÔNG TUYỂN: `hr-miniapp/outputs-cv/[YYYY-MM]/01-failed/[Tên_file_chuẩn]`
+  * NẾU ĐANG LÀM NHIỆM VỤ ĐÁNH GIÁ CHUYÊN SÂU (Deep Review): `hr-miniapp/outputs-cv/[YYYY-MM]/03-deep_reviewed/[Tên_file_chuẩn]`
 * **QUAN TRỌNG (CHỐNG TRÙNG LẶP):** Trước khi lưu, nếu phát hiện file đã tồn tại trong Room Files, bạn **BẮT BUỘC** phải tạo ra tên file mới bằng cách thêm số thứ tự (ví dụ: `..._LapTrinhVien_1.md`).
 
 ## BƯỚC 5: TẠO THẺ ỨNG VIÊN TRÊN BẢNG KANBAN (PRIVOS LISTS)
