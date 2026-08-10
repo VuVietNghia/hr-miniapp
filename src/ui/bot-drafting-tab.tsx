@@ -1,204 +1,28 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { usePrivosApp, usePrivosContext, type McpApp } from '@privos/app-react';
 import {
-  DraftingTemplate,
   IDraftingTemplateProvider,
   BuiltinTemplateProvider,
-  renderDraftingTemplate,
+  buildDraftingRouterPrompt,
   buildDraftingAIPrompt,
-  IDocumentDiffService,
-  DocumentDiffService
+  buildGenericDraftingAIPrompt
 } from './drafting-templates';
 import { PipelineService } from './pipeline-service';
 import { MarkdownPathContextBuilder } from './cv-context-builder';
 import { createOrUpdateFile } from './privos-rest';
 import { DocxExportService } from './docx-export-service';
-import { PrivOSLifecycleService } from './lifecycle/services/PrivOSLifecycleService';
-import { getMockProfiles } from './lifecycle/services/lifecycleService';
-import type { EmployeeProfile, ILifecycleService } from './lifecycle/types';
-import './contact-form-styles.css';
+import './hr-premium-styles.css';
 import './bot-drafting.css';
 
 export interface BotDraftingTabProps {
   app?: McpApp | null;
   roomId?: string | null;
   onLog?: (msg: string) => void;
-  lifecycleService?: ILifecycleService | null;
   pipelineService?: PipelineService | null;
   templateProvider?: IDraftingTemplateProvider | null;
-  diffService?: IDocumentDiffService | null;
-}
-
-type TemplateCategory = 'all' | 'onboarding' | 'personnel' | 'admin' | 'legal';
-
-const CATEGORIES: { id: TemplateCategory; label: string; icon: string }[] = [
-  { id: 'all', label: 'Tất cả mẫu', icon: '📑' },
-  { id: 'onboarding', label: 'Tuyển dụng & Thử việc', icon: '👋' },
-  { id: 'personnel', label: 'Nhân sự & Quyết định', icon: '👥' },
-  { id: 'admin', label: 'Hành chính & Công văn', icon: '🏛️' },
-  { id: 'legal', label: 'Pháp lý & Đề án', icon: '⚖️' }
-];
-
-const FIELD_GROUPS = [
-  {
-    id: 'personnel',
-    title: 'Thông tin Nhân sự & Ứng viên',
-    icon: '👤',
-    keys: [
-      'candidateName',
-      'employeeName',
-      'position',
-      'currentPosition',
-      'newPosition',
-      'department',
-      'idCard',
-      'email',
-      'phone',
-      'oldSalary',
-      'newSalary',
-      'probationSalary',
-      'officialSalary',
-      'baseSalary'
-    ]
-  },
-  {
-    id: 'company',
-    title: 'Đơn vị & Pháp lý',
-    icon: '🏛️',
-    keys: [
-      'companyName',
-      'companyRep',
-      'companyRole',
-      'companyAddress',
-      'draftingDept',
-      'planCode',
-      'docCode',
-      'recipientOrg',
-      'targetCompany'
-    ]
-  },
-  {
-    id: 'content',
-    title: 'Nội dung & Thời hạn',
-    icon: '📄',
-    keys: [
-      'subject',
-      'announcementTitle',
-      'reportTitle',
-      'meetingSubject',
-      'proposalSubject',
-      'reason',
-      'startDate',
-      'endDate',
-      'resumeDate',
-      'duration',
-      'totalBudget',
-      'budget',
-      'meetingTime',
-      'meetingLocation',
-      'expectedRoi',
-      'notes'
-    ]
-  },
-  {
-    id: 'signers',
-    title: 'Ký duyệt, Chủ trì & Nơi nhận',
-    icon: '✍️',
-    keys: [
-      'signerName',
-      'signerRole',
-      'proposerName',
-      'proposerRole',
-      'approver',
-      'recipients',
-      'recipientGroup',
-      'chairperson',
-      'secretary',
-      'attendees',
-      'authorizerName',
-      'authorizerRole',
-      'authorizerId',
-      'authorizedPerson',
-      'authorizedRole',
-      'authorizedId',
-      'authorizedIdDate',
-      'authorizedIdPlace',
-      'scope',
-      'validFrom',
-      'validTo'
-    ]
-  }
-];
-
-/**
- * Maps an EmployeeProfile to template form fields based on target schema.
- */
-function mapProfileToFormData(profile: EmployeeProfile, currentData: Record<string, string>): Record<string, string> {
-  const updated = { ...currentData };
-
-  if ('candidateName' in updated) {
-    updated.candidateName = profile.name;
-  }
-  if ('employeeName' in updated) {
-    updated.employeeName = profile.name;
-  }
-  if ('position' in updated && profile.position) {
-    updated.position = profile.position;
-  }
-  if ('currentPosition' in updated && profile.position) {
-    updated.currentPosition = profile.position;
-  }
-  if ('department' in updated && profile.department) {
-    updated.department = profile.department;
-  }
-  if ('startDate' in updated && profile.startDate) {
-    updated.startDate = profile.startDate;
-  }
-  if ('email' in updated && profile.email) {
-    updated.email = profile.email;
-  }
-  if ('phone' in updated && profile.phone) {
-    updated.phone = profile.phone;
-  }
-
-  return updated;
-}
-
-/**
- * Safely replaces a field value or placeholder inside a document while preserving AI-generated modifications.
- */
-function replaceValueInDocument(doc: string, oldValue: string, newValue: string, fieldKey?: string): string {
-  if (!doc) return doc;
-
-  // 1. If oldValue is meaningful (not empty and distinct from newValue) and exists in doc
-  if (oldValue && oldValue.trim() !== '' && oldValue !== newValue && doc.includes(oldValue)) {
-    return doc.split(oldValue).join(newValue);
-  }
-
-  // 2. If oldValue is not found but template placeholder exists (e.g. {{fieldKey}})
-  if (fieldKey) {
-    const placeholder = `{{${fieldKey}}}`;
-    if (doc.includes(placeholder)) {
-      return doc.split(placeholder).join(newValue);
-    }
-  }
-
-  return doc;
-}
-
-/**
- * Checks if a template is designed for personnel / HR onboarding.
- */
-function isPersonnelTemplate(template: DraftingTemplate): boolean {
-  if (template.category === 'onboarding' || template.category === 'personnel') {
-    return true;
-  }
-  const defaultKeys = Object.keys(template.defaultData);
-  return defaultKeys.some(k => ['candidateName', 'employeeName', 'position', 'currentPosition'].includes(k));
 }
 
 export default function BotDraftingTab(props: BotDraftingTabProps) {
-  // PrivOS Context Resolution (Supports both Direct Props and Ambient Context)
   const contextApp = usePrivosApp();
   const contextRoomInfo = usePrivosContext();
 
@@ -212,230 +36,38 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
     }
   }, [props.onLog]);
 
-  // Dependency Injection: Service Instantiations
-  const lifecycleService: ILifecycleService | null = useMemo(() => {
-    if (props.lifecycleService !== undefined) {
-      return props.lifecycleService;
-    }
-    if (app) {
-      return new PrivOSLifecycleService(app);
-    }
-    return null;
-  }, [props.lifecycleService, app]);
-
-  const pipelineService: PipelineService | null = useMemo(() => {
-    if (props.pipelineService !== undefined) {
-      return props.pipelineService;
-    }
-    if (app && roomId) {
-      return new PipelineService(app, roomId, new MarkdownPathContextBuilder());
-    }
+  const pipelineService = useMemo(() => {
+    if (props.pipelineService !== undefined) return props.pipelineService;
+    if (app && roomId) return new PipelineService(app, roomId, new MarkdownPathContextBuilder());
     return null;
   }, [props.pipelineService, app, roomId]);
 
-  // Dependency Injection: Template Provider
-  const templateProvider: IDraftingTemplateProvider = useMemo(() => {
-    if (props.templateProvider) {
-      return props.templateProvider;
-    }
+  const templateProvider = useMemo(() => {
+    if (props.templateProvider) return props.templateProvider;
     return new BuiltinTemplateProvider();
   }, [props.templateProvider]);
 
-  // Dependency Injection: Document Diff Service
-  const diffService: IDocumentDiffService = useMemo(() => {
-    if (props.diffService) {
-      return props.diffService;
-    }
-    return new DocumentDiffService();
-  }, [props.diffService]);
+  const templates = useMemo(() => templateProvider.getTemplates(), [templateProvider]);
 
   // UI States
-  const [templates, setTemplates] = useState<DraftingTemplate[]>(() => templateProvider.getTemplates());
-
-  useEffect(() => {
-    setTemplates(templateProvider.getTemplates());
-  }, [templateProvider]);
-
-  const [selectedCategory, setSelectedCategory] = useState<TemplateCategory>('all');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(() => {
-    const list = templateProvider.getTemplates();
-    return list.length > 0 ? list[0].id : 'implementation-plan';
-  });
-  const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState<boolean>(false);
-  const [sidebarTab, setSidebarTab] = useState<'form' | 'ai'>('form');
-  const [zoomLevel, setZoomLevel] = useState<number>(100);
-  const [previewCompareMode, setPreviewCompareMode] = useState<'current' | 'diff' | 'original'>('current');
-
-  const [formData, setFormData] = useState<Record<string, string>>({});
-  const [documentContent, setDocumentContent] = useState<string>('');
   const [viewMode, setViewMode] = useState<'a4' | 'raw'>('a4');
+  const [zoomLevel, setZoomLevel] = useState<number>(100);
+  const [documentContent, setDocumentContent] = useState<string>('');
+  const [userPrompt, setUserPrompt] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
-  const [isAiModified, setIsAiModified] = useState<boolean>(false);
   const [pollingStatus, setPollingStatus] = useState<string>('');
-  const [aiCustomPrompt, setAiCustomPrompt] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Personnel List State from Kanban / Profiles
-  const [profiles, setProfiles] = useState<EmployeeProfile[]>([]);
-  const [isLoadingProfiles, setIsLoadingProfiles] = useState<boolean>(false);
-  const [selectedProfileId, setSelectedProfileId] = useState<string>('');
-
-  const currentTemplate = useMemo(
-    () => templates.find(t => t.id === selectedTemplateId) || templates[0],
-    [templates, selectedTemplateId]
-  );
-
-  const isPersonnel = useMemo(() => isPersonnelTemplate(currentTemplate), [currentTemplate]);
-
-  // Baseline template content
-  const initialRenderedText = useMemo(() => {
-    return renderDraftingTemplate(currentTemplate.templateText, currentTemplate.defaultData);
-  }, [currentTemplate]);
-
-  // Dirty detection: checks whether document or formData differs from pristine template default
-  const isDirty = useMemo(() => {
-    if (isAiModified || selectedProfileId !== '') return true;
-    if (documentContent.trim() !== initialRenderedText.trim()) return true;
-    return JSON.stringify(formData) !== JSON.stringify(currentTemplate.defaultData);
-  }, [isAiModified, selectedProfileId, documentContent, initialRenderedText, formData, currentTemplate]);
-
-  // Count of differences compared to baseline template
-  const diffCount = useMemo(() => {
-    if (!diffService) return 0;
-    return diffService.countDifferences(initialRenderedText, documentContent);
-  }, [diffService, initialRenderedText, documentContent]);
-
-  // Group templates by category for quick select dropdown
-  const templatesByCategory = useMemo(() => {
-    return CATEGORIES.filter(cat => cat.id !== 'all').map(cat => ({
-      category: cat,
-      items: templates.filter(t => t.category === cat.id)
-    })).filter(group => group.items.length > 0);
-  }, [templates]);
-
-  // Filter templates by category and search
-  const filteredTemplates = useMemo(() => {
-    return templates.filter(tpl => {
-      const matchesCat = selectedCategory === 'all' || tpl.category === selectedCategory;
-      const matchesSearch =
-        !searchQuery.trim() ||
-        tpl.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        tpl.description.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesCat && matchesSearch;
-    });
-  }, [templates, selectedCategory, searchQuery]);
-
-  // Toast Notification Helper
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   }, []);
 
-  // Fetch Employee Profiles on mount / roomId change
-  useEffect(() => {
-    let isMounted = true;
+  const paperRef = useRef<HTMLElement>(null);
 
-    async function loadEmployeeProfiles() {
-      setIsLoadingProfiles(true);
-      try {
-        if (lifecycleService && roomId) {
-          const fetchedProfiles = await lifecycleService.loadProfiles(roomId);
-          if (isMounted) {
-            setProfiles(fetchedProfiles.length > 0 ? fetchedProfiles : getMockProfiles());
-          }
-        } else {
-          if (isMounted) {
-            setProfiles(getMockProfiles());
-          }
-        }
-      } catch (err) {
-        console.warn('[BotDrafting] Fallback to mock profiles due to load failure:', err);
-        if (isMounted) {
-          setProfiles(getMockProfiles());
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoadingProfiles(false);
-        }
-      }
-    }
-
-    loadEmployeeProfiles();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [lifecycleService, roomId]);
-
-  // Initialize Form Data when Template Changes
-  useEffect(() => {
-    setSelectedProfileId('');
-    setIsAiModified(false);
-    setPreviewCompareMode('current');
-    setFormData({ ...currentTemplate.defaultData });
-    const initialText = renderDraftingTemplate(currentTemplate.templateText, currentTemplate.defaultData);
-    setDocumentContent(initialText);
-  }, [selectedTemplateId, currentTemplate]);
-
-  // Update Live Document when form inputs change (smart find-and-replace if AI-modified)
-  const handleInputChange = (key: string, value: string) => {
-    const oldValue = formData[key] ?? '';
-    const updated = { ...formData, [key]: value };
-    setFormData(updated);
-
-    if (isAiModified) {
-      const updatedContent = replaceValueInDocument(documentContent, oldValue, value, key);
-      setDocumentContent(updatedContent);
-    } else {
-      const rendered = renderDraftingTemplate(currentTemplate.templateText, updated);
-      setDocumentContent(rendered);
-    }
-  };
-
-  // Handle Quick Employee Profile Selection & Auto-populate
-  const handleProfileSelect = (profileId: string) => {
-    setSelectedProfileId(profileId);
-    if (!profileId) return;
-
-    const profile = profiles.find(p => p._id === profileId);
-    if (!profile) return;
-
-    const updated = mapProfileToFormData(profile, formData);
-
-    if (isAiModified) {
-      let updatedContent = documentContent;
-      for (const [key, newVal] of Object.entries(updated)) {
-        const oldVal = formData[key] ?? '';
-        if (oldVal !== newVal) {
-          updatedContent = replaceValueInDocument(updatedContent, oldVal, newVal, key);
-        }
-      }
-      setFormData(updated);
-      setDocumentContent(updatedContent);
-    } else {
-      setFormData(updated);
-      const rendered = renderDraftingTemplate(currentTemplate.templateText, updated);
-      setDocumentContent(rendered);
-    }
-    showToast(`Đã tự động nạp hồ sơ nhân sự "${profile.name}" vào văn bản!`);
-  };
-
-  // Restore Default Template (Discards all manual and AI modifications)
-  const handleResetTemplate = () => {
-    setSelectedProfileId('');
-    setIsAiModified(false);
-    setFormData({ ...currentTemplate.defaultData });
-    const initialText = renderDraftingTemplate(currentTemplate.templateText, currentTemplate.defaultData);
-    setDocumentContent(initialText);
-    showToast('Đã khôi phục văn bản về mẫu chuẩn ban đầu!');
-  };
-
-  // AI Pipeline Execution with Real-Time Polling Status & Guaranteed Completion
-  const handleAiAction = async (
-    actionType: 'full_generation' | 'make_formal' | 'make_concise' | 'add_nda' | 'bilingual_summary' | 'custom'
-  ) => {
-    if (isGenerating) return;
+  // AI Pipeline Execution
+  const handleAiAction = async () => {
+    if (!userPrompt.trim() || isGenerating) return;
 
     if (!pipelineService || !app || !roomId) {
       showToast('Chưa kết nối PrivOS. Vui lòng mở trong ứng dụng PrivOS.');
@@ -443,31 +75,43 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
     }
 
     setIsGenerating(true);
-    setPollingStatus('Đang gửi yêu cầu cho AI...');
-    onLog(`[AI DRAFTING] Khởi chạy tác vụ: ${actionType} cho "${currentTemplate.title}"`);
+    onLog(`[AI DRAFTING] Bắt đầu xử lý pipeline 2 bước với prompt: "${userPrompt}"`);
 
     try {
-      const prompt = buildDraftingAIPrompt(
-        currentTemplate,
-        formData,
-        actionType,
-        actionType === 'custom' ? aiCustomPrompt : undefined,
-        documentContent
-      );
+      // BƯỚC 1: Phân loại ý định
+      setPollingStatus('Bước 1/2: Đang phân loại yêu cầu...');
+      const routerPrompt = buildDraftingRouterPrompt(templates, userPrompt);
+      const routerResponse = await pipelineService.askAI(routerPrompt, undefined, undefined, onLog);
+      const routerText = routerResponse?.text ?? '';
+      
+      const routerMatch = routerText.match(/<router_result>\s*([\s\S]*?)\s*<\/router_result>/i);
+      const templateId = routerMatch ? routerMatch[1].trim() : 'unknown';
+      onLog(`[AI DRAFTING] Kết quả phân loại: ${templateId}`);
 
-      const aiResponse = await pipelineService.askAI(prompt, undefined, undefined, onLog);
+      // BƯỚC 2: Sinh văn bản
+      let generatorPrompt = '';
+      const matchedTemplate = templates.find(t => t.id === templateId);
+
+      if (matchedTemplate) {
+        setPollingStatus(`Bước 2/2: Đang soạn thảo theo mẫu "${matchedTemplate.title}"...`);
+        generatorPrompt = buildDraftingAIPrompt(matchedTemplate, {}, 'custom', userPrompt, documentContent);
+      } else {
+        setPollingStatus('Bước 2/2: Đang soạn thảo văn bản tự do...');
+        generatorPrompt = buildGenericDraftingAIPrompt(userPrompt, documentContent);
+      }
+      
+      const aiResponse = await pipelineService.askAI(generatorPrompt, undefined, undefined, onLog);
       let text = aiResponse?.text ?? '';
 
       // Extract content from <drafting_content> tag if present
       const contentMatch = text.match(/<drafting_content>\s*([\s\S]*?)\s*<\/drafting_content>/i);
       let finalMarkdown = contentMatch ? contentMatch[1].trim() : text.trim();
 
-      // Clean AI artifacts (em dash, colon in headings)
+      // Clean AI artifacts
       finalMarkdown = finalMarkdown.replace(/—/g, ' - ');
 
       if (finalMarkdown) {
         setDocumentContent(finalMarkdown);
-        setIsAiModified(true);
         setPollingStatus('Hoàn tất!');
         showToast('AI đã hoàn tất soạn thảo văn bản!');
       } else {
@@ -484,6 +128,13 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleAiAction();
+    }
+  };
+
   // Export & Action Handlers
   const handleCopy = async () => {
     try {
@@ -496,7 +147,8 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
   };
 
   const handleDownloadMd = () => {
-    const filename = diffService.generateVietnameseDocFilename(currentTemplate.title, formData, 'md');
+    const dateStr = new Date().toISOString().split('T')[0];
+    const filename = `VanBan_${dateStr}.md`;
     const blob = new Blob([documentContent], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -509,7 +161,8 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
 
   const handleDownloadDocx = async () => {
     try {
-      const filename = diffService.generateVietnameseDocFilename(currentTemplate.title, formData, 'docx');
+      const dateStr = new Date().toISOString().split('T')[0];
+      const filename = `VanBan_${dateStr}.docx`;
       await DocxExportService.downloadDocx(filename, documentContent);
       showToast(`Đã xuất file Word "${filename}" chuẩn Nghị định 30 thành công!`);
     } catch (err: any) {
@@ -525,7 +178,8 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
     }
 
     try {
-      const filename = diffService.generateVietnameseDocFilename(currentTemplate.title, formData, 'md');
+      const dateStr = new Date().toISOString().split('T')[0];
+      const filename = `VanBan_${dateStr}.md`;
       const targetPath = `${roomId}/hr-miniapp/van-ban/${filename}`;
       await createOrUpdateFile(app, targetPath, documentContent);
       showToast(`Đã lưu tài liệu vào Room PrivOS: ${targetPath}`);
@@ -536,48 +190,9 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
     }
   };
 
-  // Zoom Helpers
   const handleZoomIn = () => setZoomLevel(prev => Math.min(prev + 10, 130));
   const handleZoomOut = () => setZoomLevel(prev => Math.max(prev - 10, 70));
   const handleZoomReset = () => setZoomLevel(100);
-
-  // Group Form Fields logically for clean UI
-  const groupedFields = useMemo(() => {
-    const presentKeys = Object.keys(formData);
-    const groups: { id: string; title: string; icon: string; fields: [string, string][] }[] = [];
-    const assigned = new Set<string>();
-
-    for (const group of FIELD_GROUPS) {
-      const fieldsInGroup = group.keys
-        .filter(k => presentKeys.includes(k))
-        .map(k => [k, formData[k]] as [string, string]);
-
-      if (fieldsInGroup.length > 0) {
-        groups.push({
-          id: group.id,
-          title: group.title,
-          icon: group.icon,
-          fields: fieldsInGroup
-        });
-        fieldsInGroup.forEach(([k]) => assigned.add(k));
-      }
-    }
-
-    const remaining = presentKeys
-      .filter(k => !assigned.has(k))
-      .map(k => [k, formData[k]] as [string, string]);
-
-    if (remaining.length > 0) {
-      groups.push({
-        id: 'other',
-        title: 'Thông tin khác',
-        icon: 'ℹ️',
-        fields: remaining
-      });
-    }
-
-    return groups;
-  }, [formData]);
 
   // Professional A4 Parser according to NĐ 30/2020/NĐ-CP Standard
   const renderFormattedA4 = (markdown: string) => {
@@ -593,10 +208,7 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
 
     const flushTable = (keyPrefix: string) => {
       if (tableBuffer.length === 0) return;
-      const rows = tableBuffer.map(r =>
-        r.split('|').slice(1, -1).map(c => c.trim())
-      );
-
+      const rows = tableBuffer.map(r => r.split('|').slice(1, -1).map(c => c.trim()));
       const isHeader2Col = rows.length >= 2 && rows[0].length === 2 && rows[1].every(c => /^:?-+:?$/.test(c));
 
       if (isHeader2Col) {
@@ -606,21 +218,11 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
         elements.push(
           <div key={`header-table-${keyPrefix}`} className="a4-header-grid">
             <div className="a4-header-col-left">
-              <div
-                className="a4-org-block"
-                dangerouslySetInnerHTML={{
-                  __html: formatInline(leftCell)
-                }}
-              />
+              <div className="a4-org-block" dangerouslySetInnerHTML={{ __html: formatInline(leftCell) }} />
               <div className="a4-line-dec a4-line-org" />
             </div>
             <div className="a4-header-col-right">
-              <div
-                className="a4-motto-block"
-                dangerouslySetInnerHTML={{
-                  __html: formatInline(rightCell)
-                }}
-              />
+              <div className="a4-motto-block" dangerouslySetInnerHTML={{ __html: formatInline(rightCell) }} />
               <div className="a4-line-dec a4-line-motto" />
             </div>
           </div>
@@ -635,13 +237,7 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
                 return (
                   <tr key={`tr-${rIdx}`}>
                     {row.map((cell, cIdx) => (
-                      <td
-                        key={`td-${cIdx}`}
-                        className={isHead ? 'a4-th' : 'a4-td'}
-                        dangerouslySetInnerHTML={{
-                          __html: formatInline(cell)
-                        }}
-                      />
+                      <td key={`td-${cIdx}`} className={isHead ? 'a4-th' : 'a4-td'} dangerouslySetInnerHTML={{ __html: formatInline(cell) }} />
                     ))}
                   </tr>
                 );
@@ -673,28 +269,14 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
       }
 
       if (trimmed.startsWith('# ')) {
-        const headingText = trimmed.replace('# ', '');
-        elements.push(
-          <h1
-            key={`h1-${i}`}
-            className="a4-heading-1"
-            dangerouslySetInnerHTML={{
-              __html: formatInline(headingText)
-            }}
-          />
-        );
+        elements.push(<h1 key={`h1-${i}`} className="a4-heading-1" dangerouslySetInnerHTML={{ __html: formatInline(trimmed.replace('# ', '')) }} />);
         i++;
       } else if (trimmed.startsWith('### ') || trimmed.startsWith('## ')) {
         const subText = trimmed.replace(/^#{2,3}\s+/, '');
         const isSubject = DocxExportService.isSubjectLine(subText);
         elements.push(
           <React.Fragment key={`sub-${i}`}>
-            <h3
-              className={isSubject ? 'a4-subject-heading' : 'a4-heading-3'}
-              dangerouslySetInnerHTML={{
-                __html: formatInline(subText)
-              }}
-            />
+            <h3 className={isSubject ? 'a4-subject-heading' : 'a4-heading-3'} dangerouslySetInnerHTML={{ __html: formatInline(subText) }} />
             {isSubject && <div className="a4-line-dec a4-line-subject" />}
           </React.Fragment>
         );
@@ -709,567 +291,118 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
           rawLegalLines.push(lines[i].trim());
           i++;
         }
-
         const normalizedLegalLines = DocxExportService.normalizeLegalBases(rawLegalLines);
         normalizedLegalLines.forEach((legalText, lIdx) => {
           elements.push(
             <p key={`legal-${startIndex}-${lIdx}`} className="a4-legal-basis">
-              <em
-                dangerouslySetInnerHTML={{
-                  __html: formatInline(legalText)
-                }}
-              />
+              <em dangerouslySetInnerHTML={{ __html: formatInline(legalText) }} />
             </p>
           );
         });
       } else if (/^[a-z]\)\s+/.test(trimmed)) {
-        elements.push(
-          <p
-            key={`sec-${i}`}
-            className="a4-sub-section"
-            dangerouslySetInnerHTML={{
-              __html: formatInline(trimmed)
-            }}
-          />
-        );
+        elements.push(<p key={`sec-${i}`} className="a4-sub-section" dangerouslySetInnerHTML={{ __html: formatInline(trimmed) }} />);
         i++;
       } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-        const bulletContent = trimmed.replace(/^[-*]\s+/, '');
-        elements.push(
-          <p
-            key={`bullet-${i}`}
-            className="a4-bullet-item"
-            dangerouslySetInnerHTML={{
-              __html: `• ${formatInline(bulletContent)}`
-            }}
-          />
-        );
+        elements.push(<p key={`bullet-${i}`} className="a4-bullet-item" dangerouslySetInnerHTML={{ __html: `• ${formatInline(trimmed.replace(/^[-*]\s+/, ''))}` }} />);
         i++;
       } else if (trimmed === './.') {
-        elements.push(
-          <p key={`end-${i}`} className="a4-end-mark">
-            <strong>./.</strong>
-          </p>
-        );
+        elements.push(<p key={`end-${i}`} className="a4-end-mark"><strong>./.</strong></p>);
         i++;
       } else {
-        elements.push(
-          <p
-            key={`p-${i}`}
-            className="a4-paragraph"
-            dangerouslySetInnerHTML={{
-              __html: formatInline(trimmed)
-            }}
-          />
-        );
+        elements.push(<p key={`p-${i}`} className="a4-paragraph" dangerouslySetInnerHTML={{ __html: formatInline(trimmed) }} />);
         i++;
       }
     }
 
-    if (tableBuffer.length > 0) {
-      flushTable(`table-final`);
-    }
-
+    if (tableBuffer.length > 0) flushTable(`table-final`);
     return elements;
   };
 
-  const labelMap: Record<string, string> = {
-    companyName: 'Tên Doanh nghiệp',
-    companyRep: 'Người đại diện',
-    companyRole: 'Chức danh người đại diện',
-    companyAddress: 'Địa chỉ công ty',
-    signerName: 'Họ tên người ký',
-    signerRole: 'Chức danh người ký',
-    candidateName: 'Họ tên nhân sự / Ứng viên',
-    employeeName: 'Họ tên nhân sự',
-    position: 'Vị trí công tác',
-    currentPosition: 'Vị trí hiện tại',
-    newPosition: 'Vị trí bổ nhiệm mới',
-    department: 'Phòng ban / Bộ phận',
-    draftingDept: 'Đơn vị soạn thảo',
-    subject: 'Trích yếu / Nội dung chính',
-    recipients: 'Nơi nhận / Kính gửi',
-    totalBudget: 'Tổng ngân sách dự toán',
-    duration: 'Thời gian thực hiện',
-    planCode: 'Số hiệu kế hoạch',
-    startDate: 'Ngày bắt đầu',
-    endDate: 'Ngày kết thúc',
-    probationSalary: 'Lương thử việc',
-    officialSalary: 'Lương chính thức',
-    baseSalary: 'Mức lương thỏa thuận',
-    oldSalary: 'Mức lương cũ',
-    newSalary: 'Mức lương mới',
-    idCard: 'Số CCCD / MST',
-    announcementTitle: 'Tiêu đề thông báo',
-    recipientGroup: 'Đối tượng nhận thông báo',
-    resumeDate: 'Ngày làm việc lại',
-    reason: 'Lý do ban hành',
-    docCode: 'Số hiệu văn bản',
-    recipientOrg: 'Đơn vị nhận / Đối tác',
-    approver: 'Cấp có thẩm quyền phê duyệt',
-    proposerRole: 'Chức danh người trình',
-    proposerName: 'Họ tên người trình',
-    budget: 'Tổng kinh phí dự toán',
-    reportTitle: 'Tiêu đề báo cáo',
-    reportingDept: 'Đơn vị thực hiện báo cáo',
-    reporterRole: 'Chức danh người báo cáo',
-    reporterName: 'Họ tên người báo cáo',
-    meetingSubject: 'Chủ đề cuộc họp',
-    meetingTime: 'Thời gian họp',
-    meetingLocation: 'Địa điểm họp',
-    chairperson: 'Chủ trì cuộc họp',
-    secretary: 'Thư ký cuộc họp',
-    attendees: 'Thành phần tham dự',
-    authorizerName: 'Họ tên người ủy quyền',
-    authorizerRole: 'Chức danh người ủy quyền',
-    authorizerId: 'CCCD người ủy quyền',
-    authorizedPerson: 'Họ tên người được ủy quyền',
-    authorizedRole: 'Chức danh người được ủy quyền',
-    authorizedId: 'CCCD người được ủy quyền',
-    authorizedIdDate: 'Ngày cấp CCCD',
-    authorizedIdPlace: 'Nơi cấp CCCD',
-    scope: 'Phạm vi ủy quyền',
-    validFrom: 'Hiệu lực từ ngày',
-    validTo: 'Hiệu lực đến ngày',
-    proposalSubject: 'Tên đề án / Đề xuất',
-    targetCompany: 'Đơn vị tiếp nhận đề xuất',
-    expectedRoi: 'Hiệu quả kỳ vọng (ROI)'
-  };
-
   return (
-    <main className="bot-drafting-tab">
-      {/* Toast Notification */}
+    <div className="hr-terminal-ui bot-drafting-ui">
       {toastMessage && (
         <div className="bot-toast-message">
-          <span>✓</span> {toastMessage}
+          <span>{toastMessage.includes('Lỗi') ? '❌' : '✅'}</span>
+          {toastMessage}
         </div>
       )}
 
-      {/* Modern Header Banner */}
-      <section className="bot-drafting-header">
-        <div className="bot-drafting-title-area">
-          <div className="bot-drafting-title-icon">✍️</div>
-          <div className="bot-drafting-title-text">
-            <h1>
-              Bot Soạn Thảo Văn Bản Chuẩn Doanh Nghiệp
-              <span className="bot-drafting-badge">Nghị định 30/2020/NĐ-CP</span>
-            </h1>
-            <p>
-              Soạn thảo Kế hoạch, Quyết định, Hợp đồng, Thư mời nhận việc, Công văn, Tờ trình và xuất file Word (.docx) chuyên nghiệp.
-            </p>
-          </div>
+      <header className="hr-header-block">
+        <div className="header-content">
+          <h2 className="hr-title">Bot Soạn Thảo (Zero-Shot AI)</h2>
+          <p className="hr-subtitle">Trợ lý AI tự động nhận diện yêu cầu, chọn biểu mẫu và soạn thảo văn bản chuẩn Nghị định 30.</p>
         </div>
-        <div className="bot-drafting-status-pill">
-          <span className="bot-drafting-status-dot" />
-          {isGenerating ? `AI: ${pollingStatus}` : 'PrivOS AI Sẵn sàng'}
+        <div className="header-actions">
+           <button type="button" className="hr-btn hr-btn-accent" onClick={handleDownloadDocx}>
+             <span>💾</span> Xuất Word (.docx)
+           </button>
+           <button type="button" className="hr-btn" onClick={handleSaveToPrivos}>
+             <span>☁️</span> Lưu PrivOS Room
+           </button>
         </div>
-      </section>
+      </header>
 
-      {/* Active Document Bar & Quick Template Switcher */}
-      <section className="bot-active-doc-bar">
-        <div className="bot-active-doc-info">
-          <span className="bot-active-doc-icon">{currentTemplate.icon}</span>
-          <div className="bot-active-doc-titles">
-            <div className="bot-active-doc-label">Mẫu văn bản đang chọn:</div>
-            <div className="bot-active-doc-name" title={currentTemplate.title}>
-              {currentTemplate.title}
-              <span className={`bot-track-badge ${currentTemplate.track === 'nd30_administrative' ? 'bot-track-nd30' : 'bot-track-modern'}`}>
-                {currentTemplate.track === 'nd30_administrative' ? 'Nghị định 30' : 'Doanh nghiệp'}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="bot-active-doc-actions">
-          {/* Quick Select Dropdown */}
-          <div className="bot-quick-select-wrapper">
-            <label htmlFor="quick-template-select" className="bot-quick-select-label">Đổi mẫu:</label>
-            <select
-              id="quick-template-select"
-              className="bot-quick-select"
-              value={selectedTemplateId}
-              onChange={(e) => setSelectedTemplateId(e.target.value)}
-              aria-label="Chọn nhanh mẫu văn bản"
-            >
-              {templatesByCategory.map(group => (
-                <optgroup key={group.category.id} label={`${group.category.icon} ${group.category.label}`}>
-                  {group.items.map(tpl => (
-                    <option key={tpl.id} value={tpl.id}>
-                      {tpl.icon} {tpl.title}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          </div>
-
-          {/* Toggle Full Visual Catalog Drawer */}
-          <button
-            type="button"
-            className={`bot-catalog-toggle-btn ${isTemplatePickerOpen ? 'active' : ''}`}
-            onClick={() => setIsTemplatePickerOpen(prev => !prev)}
-            aria-expanded={isTemplatePickerOpen}
-            aria-controls="bot-template-drawer"
-          >
-            <span>📑</span>
-            <span>{isTemplatePickerOpen ? 'Thu gọn kho mẫu' : `Kho biểu mẫu (${templates.length})`}</span>
-            <span className="bot-toggle-arrow">{isTemplatePickerOpen ? '▲' : '▼'}</span>
-          </button>
-        </div>
-      </section>
-
-      {/* Collapsible Template Catalog Drawer */}
-      {isTemplatePickerOpen && (
-        <section id="bot-template-drawer" className="bot-template-drawer" aria-label="Kho biểu mẫu chi tiết">
-          <div className="bot-drawer-toolbar">
-            {/* Search Input */}
-            <div className="bot-drawer-search">
-              <span className="bot-search-icon">🔍</span>
-              <input
-                type="text"
-                placeholder="Tìm kiếm mẫu văn bản theo tên hoặc từ khóa..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                aria-label="Tìm kiếm biểu mẫu"
-                autoFocus
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  className="bot-search-clear-btn"
-                  onClick={() => setSearchQuery('')}
-                  title="Xóa tìm kiếm"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            {/* Category Filter Bar */}
-            <nav className="bot-category-bar" aria-label="Phân loại biểu mẫu">
-              {CATEGORIES.map(cat => {
-                const isActive = selectedCategory === cat.id;
-                const count = cat.id === 'all'
-                  ? templates.length
-                  : templates.filter(t => t.category === cat.id).length;
-
-                return (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    className={`bot-cat-pill ${isActive ? 'active' : ''}`}
-                    onClick={() => setSelectedCategory(cat.id)}
-                  >
-                    <span>{cat.icon}</span>
-                    <span>{cat.label}</span>
-                    <span style={{ opacity: 0.8, fontSize: '0.72rem' }}>({count})</span>
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-
-          {/* Template Grid Selector */}
-          <div className="bot-template-grid" aria-label="Danh sách mẫu văn bản">
-            {filteredTemplates.length === 0 ? (
-              <div className="bot-template-empty">
-                <span>🔍</span> Không tìm thấy mẫu văn bản phù hợp với từ khóa "{searchQuery}"
-              </div>
-            ) : (
-              filteredTemplates.map(tpl => {
-                const isActive = tpl.id === selectedTemplateId;
-                const isND30 = tpl.track === 'nd30_administrative';
-
-                return (
-                  <div
-                    key={tpl.id}
-                    className={`bot-template-card ${isActive ? 'active' : ''}`}
-                    onClick={() => {
-                      setSelectedTemplateId(tpl.id);
-                      setIsTemplatePickerOpen(false);
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        setSelectedTemplateId(tpl.id);
-                        setIsTemplatePickerOpen(false);
-                      }
-                    }}
-                  >
-                    <div className="bot-tpl-icon">{tpl.icon}</div>
-                    <div className="bot-tpl-meta">
-                      <div className="bot-tpl-title" title={tpl.title}>{tpl.title}</div>
-                      <div className="bot-tpl-desc">{tpl.description}</div>
-                      <div>
-                        <span className={`bot-track-badge ${isND30 ? 'bot-track-nd30' : 'bot-track-modern'}`}>
-                          {isND30 ? 'Nghị định 30' : 'Doanh nghiệp'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
+      <div className="bot-minimal-container">
+        {/* Chat / Prompt Panel */}
+        <section className="bot-chat-panel">
+           <div className="bot-chat-header">
+             <h3>Giao tiếp với AI</h3>
+             <span className="bot-chat-subtitle">Ngầm hiểu {templates.length} mẫu văn bản</span>
+           </div>
+           
+           <div className="bot-chat-body">
+             <div className="bot-chat-instructions">
+               <p><strong>Hướng dẫn:</strong> Nhập yêu cầu soạn thảo của bạn hoặc chọn nhanh từ các gợi ý dưới đây.</p>
+             </div>
+             
+             <div className="bot-suggestion-tags">
+               {[
+                 "Soạn thảo Văn bản hành chính khác (Tự do)",
+                 "Soạn quyết định bổ nhiệm anh Nguyễn Văn A làm Giám đốc Kỹ thuật, mức lương 50 triệu.",
+                 "Viết thư mời nhận việc cho chị B, vị trí Kế toán trưởng, thử việc 2 tháng.",
+                 "Tạo quyết định chấm dứt hợp đồng lao động với nhân viên C.",
+                 "Làm biên bản bàn giao thiết bị làm việc."
+               ].map((prompt, idx) => (
+                 <button 
+                   key={idx} 
+                   className="bot-suggestion-chip"
+                   onClick={() => setUserPrompt(prompt)}
+                   disabled={isGenerating}
+                   title={prompt}
+                 >
+                   {prompt.length > 35 ? prompt.substring(0, 35) + '...' : prompt}
+                 </button>
+               ))}
+             </div>
+             
+             <textarea 
+               className="bot-chat-textarea" 
+               placeholder="Nhập yêu cầu soạn thảo của bạn tại đây... (Nhấn Enter để gửi)"
+               value={userPrompt}
+               onChange={(e) => setUserPrompt(e.target.value)}
+               onKeyDown={handleKeyDown}
+               disabled={isGenerating}
+             />
+             
+             {isGenerating && (
+               <div className="bot-chat-loading">
+                  <div className="spinner"></div>
+                  <span>{pollingStatus}</span>
+               </div>
+             )}
+             
+             <button 
+               className="hr-btn hr-btn-accent bot-chat-send-btn"
+               onClick={handleAiAction}
+               disabled={isGenerating || !userPrompt.trim()}
+             >
+               {isGenerating ? 'Đang xử lý...' : 'Gửi yêu cầu soạn thảo'}
+             </button>
+           </div>
         </section>
-      )}
 
-      {/* Split Workspace: Left Studio Controls / Right A4 Canvas */}
-      <div className="bot-drafting-split">
-        {/* Left Studio Sidebar */}
-        <aside className="bot-studio-sidebar">
-          {/* Sidebar Tab Switcher */}
-          <div className="bot-sidebar-tabs">
-            <button
-              type="button"
-              className={`bot-sidebar-tab-btn ${sidebarTab === 'form' ? 'active' : ''}`}
-              onClick={() => setSidebarTab('form')}
-            >
-              <span>📝</span> Điền thông tin
-            </button>
-            <button
-              type="button"
-              className={`bot-sidebar-tab-btn ${sidebarTab === 'ai' ? 'active' : ''}`}
-              onClick={() => setSidebarTab('ai')}
-            >
-              <span>🤖</span> Trợ lý AI PrivOS
-            </button>
-          </div>
-
-          {sidebarTab === 'form' ? (
-            <>
-              {/* Personnel Auto-Fill Box for Onboarding & Personnel Templates */}
-              {isPersonnel && (
-                <div className="bot-profile-autofill-box">
-                  <div className="bot-profile-autofill-header">
-                    <div className="bot-profile-autofill-title">
-                      <span>👤</span> Tự Động Nạp Hồ Sơ Nhân Sự
-                    </div>
-                    <span
-                      className="bot-drafting-badge"
-                      style={{ fontSize: '0.7rem', padding: '2px 6px' }}
-                    >
-                      {isLoadingProfiles ? 'Đang tải...' : `${profiles.length} hồ sơ`}
-                    </span>
-                  </div>
-                  <p className="bot-profile-autofill-desc">
-                    Chọn nhân sự từ Kanban / Hồ sơ để tự động nạp họ tên, chức danh, phòng ban và ngày bắt đầu vào văn bản.
-                  </p>
-                  <div className="bot-form-group">
-                    <select
-                      id="select-employee-profile"
-                      value={selectedProfileId}
-                      onChange={(e) => handleProfileSelect(e.target.value)}
-                      disabled={isLoadingProfiles}
-                    >
-                      <option value="">-- Chọn nhân sự từ Hồ sơ / Kanban --</option>
-                      {profiles.map(p => (
-                        <option key={p._id} value={p._id}>
-                          {p.name} {p.position ? `— ${p.position}` : ''} ({p.department || p.status})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              )}
-
-              {/* Grouped Form Fields */}
-              {groupedFields.map(group => (
-                <section key={group.id} className="bot-field-section">
-                  <div className="bot-field-section-header">
-                    <span>{group.icon}</span>
-                    <span>{group.title}</span>
-                  </div>
-                  <div className="bot-form-grid">
-                    {group.fields.map(([key, value]) => {
-                      const isLongText = [
-                        'notes',
-                        'reason',
-                        'recipients',
-                        'subject',
-                        'attendees',
-                        'scope',
-                        'expectedRoi',
-                        'proposalSubject'
-                      ].includes(key);
-
-                      return (
-                        <div className="bot-form-group" key={key}>
-                          <label htmlFor={`input-${key}`}>{labelMap[key] || key}:</label>
-                          {isLongText ? (
-                            <textarea
-                              id={`input-${key}`}
-                              value={value}
-                              onChange={(e) => handleInputChange(key, e.target.value)}
-                            />
-                          ) : (
-                            <input
-                              id={`input-${key}`}
-                              type="text"
-                              value={value}
-                              onChange={(e) => handleInputChange(key, e.target.value)}
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
-              ))}
-
-              {isDirty && (
-                <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px dashed var(--border-color)' }}>
-                  <button
-                    type="button"
-                    className="bot-action-btn bot-btn-reset"
-                    style={{ width: '100%', justifyContent: 'center' }}
-                    onClick={handleResetTemplate}
-                  >
-                    <span>↺</span> Khôi phục tất cả về mẫu gốc
-                  </button>
-                </div>
-              )}
-            </>
-          ) : (
-            /* AI Assistant Studio */
-            <div className="bot-ai-studio">
-              <div className="bot-ai-studio-header">
-                <div className="bot-ai-studio-title">
-                  <span>🤖</span> Chỉ đạo PrivOS AI
-                </div>
-                {isGenerating && (
-                  <span className="bot-drafting-badge" style={{ color: 'var(--accent)' }}>
-                    Đang xử lý...
-                  </span>
-                )}
-              </div>
-
-              <div className="bot-form-group">
-                <label htmlFor="ai-custom-prompt">Yêu cầu điều chỉnh tùy biến:</label>
-                <textarea
-                  id="ai-custom-prompt"
-                  rows={4}
-                  placeholder="VD: Thêm điều khoản cam kết bảo mật thông tin và trách nhiệm bồi thường nếu vi phạm trong vòng 2 năm..."
-                  value={aiCustomPrompt}
-                  onChange={(e) => setAiCustomPrompt(e.target.value)}
-                />
-                {aiCustomPrompt && (
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
-                    <button
-                      type="button"
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--text-muted)',
-                        fontSize: '0.72rem',
-                        cursor: 'pointer',
-                        textDecoration: 'underline'
-                      }}
-                      onClick={() => setAiCustomPrompt('')}
-                    >
-                      Xóa trắng yêu cầu
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <button
-                type="button"
-                className="bot-primary-btn"
-                disabled={isGenerating || !aiCustomPrompt.trim()}
-                onClick={() => handleAiAction('custom')}
-              >
-                {isGenerating ? 'AI đang thực hiện...' : '✨ Thực hiện yêu cầu tùy biến'}
-              </button>
-
-              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', marginTop: '10px' }}>
-                Hành động thông minh một chạm:
-              </div>
-
-              <div className="bot-ai-actions-wrap">
-                <button
-                  type="button"
-                  className="bot-ai-chip"
-                  disabled={isGenerating}
-                  onClick={() => handleAiAction('full_generation')}
-                >
-                  <span>🔄</span>
-                  <div>
-                    <div>Soạn mới toàn diện</div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-                      Sinh lại văn bản hoàn chỉnh dựa trên tham số đã điền
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  className="bot-ai-chip"
-                  disabled={isGenerating}
-                  onClick={() => handleAiAction('make_formal')}
-                >
-                  <span>🏛️</span>
-                  <div>
-                    <div>Chuẩn hóa Nghị định 30</div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-                      Tối ưu câu từ hành chính, chuẩn căn cứ pháp lý
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  className="bot-ai-chip"
-                  disabled={isGenerating}
-                  onClick={() => handleAiAction('make_concise')}
-                >
-                  <span>✂️</span>
-                  <div>
-                    <div>Rút gọn & Súc tích</div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-                      Tập trung vào điều khoản chính, loại bỏ câu chữ rườm rà
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  className="bot-ai-chip"
-                  disabled={isGenerating}
-                  onClick={() => handleAiAction('add_nda')}
-                >
-                  <span>🔒</span>
-                  <div>
-                    <div>Bổ sung điều khoản NDA & Cam kết</div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-                      Thêm cam kết bảo mật thông tin và sở hữu trí tuệ
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  className="bot-ai-chip"
-                  disabled={isGenerating}
-                  onClick={() => handleAiAction('bilingual_summary')}
-                >
-                  <span>🌐</span>
-                  <div>
-                    <div>Tóm tắt Song ngữ Anh - Việt</div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-                      Thêm phần tóm tắt Executive Summary tiếng Anh ở đầu
-                    </div>
-                  </div>
-                </button>
-              </div>
-            </div>
-          )}
-        </aside>
-
-        {/* Right Preview Panel & Canvas */}
+        {/* Preview Panel */}
         <section className="bot-preview-panel">
-          {/* Action Toolbar */}
           <div className="bot-preview-toolbar">
             <div className="bot-preview-tabs">
               <button
@@ -1277,7 +410,7 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
                 className={`bot-preview-tab-btn ${viewMode === 'a4' ? 'active' : ''}`}
                 onClick={() => setViewMode('a4')}
               >
-                📄 Bản in A4 chuẩn NĐ 30
+                📄 Bản in A4 chuẩn
               </button>
               <button
                 type="button"
@@ -1288,123 +421,51 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
               </button>
             </div>
 
-            {/* Zoom Controls */}
             {viewMode === 'a4' && (
               <div className="bot-zoom-controls">
-                <button type="button" className="bot-zoom-btn" onClick={handleZoomOut} title="Thu nhỏ">
-                  -
-                </button>
-                <span onClick={handleZoomReset} style={{ cursor: 'pointer' }} title="Đặt về 100%">
-                  {zoomLevel}%
-                </span>
-                <button type="button" className="bot-zoom-btn" onClick={handleZoomIn} title="Phóng to">
-                  +
-                </button>
+                <button type="button" className="bot-zoom-btn" onClick={handleZoomOut} title="Thu nhỏ">-</button>
+                <span onClick={handleZoomReset} style={{ cursor: 'pointer' }} title="Đặt về 100%">{zoomLevel}%</span>
+                <button type="button" className="bot-zoom-btn" onClick={handleZoomIn} title="Phóng to">+</button>
               </div>
             )}
 
-            {/* Action Buttons */}
             <div className="bot-action-buttons">
-              {/* 3-State Preview Modes Switcher */}
-              {viewMode === 'a4' && (
-                <div className="bot-preview-modes-group">
-                  <button
-                    type="button"
-                    className={`bot-mode-segment-btn ${previewCompareMode === 'current' ? 'active' : ''}`}
-                    onClick={() => setPreviewCompareMode('current')}
-                    title="Xem văn bản đang soạn thảo"
-                  >
-                    📄 Hiện tại
-                  </button>
-                  <button
-                    type="button"
-                    className={`bot-mode-segment-btn ${previewCompareMode === 'diff' ? 'active active-diff' : ''}`}
-                    onClick={() => setPreviewCompareMode(prev => prev === 'diff' ? 'current' : 'diff')}
-                    title="Đối chiếu các phần đã thay đổi so với mẫu gốc ban đầu"
-                  >
-                    🔍 Đối chiếu thay đổi
-                    {diffCount > 0 && <span className="bot-diff-count-badge">{diffCount}</span>}
-                  </button>
-                  <button
-                    type="button"
-                    className={`bot-mode-segment-btn ${previewCompareMode === 'original' ? 'active' : ''}`}
-                    onClick={() => setPreviewCompareMode('original')}
-                    title="Xem lại nguyên văn mẫu chuẩn ban đầu"
-                  >
-                    📋 Mẫu gốc
-                  </button>
-                </div>
-              )}
-
-              {/* Reset to Default Template Button */}
-              {isDirty && (
-                <button
-                  type="button"
-                  className="bot-action-btn bot-btn-reset"
-                  onClick={handleResetTemplate}
-                  title="Khôi phục về mẫu chuẩn ban đầu (bỏ mọi thay đổi của người dùng hoặc AI)"
-                >
-                  <span>↺</span> Khôi phục mẫu
-                </button>
-              )}
-
-              <button
-                type="button"
-                className="bot-action-btn bot-btn-docx-primary"
-                onClick={handleDownloadDocx}
-                title="Tải file Word (.docx) chuẩn Nghị định 30"
-              >
-                <span>💾</span> Xuất Word (.docx)
-              </button>
-              <button type="button" className="bot-action-btn" onClick={handleCopy} title="Sao chép nội dung">
-                <span>📋</span> Copy
-              </button>
-              <button type="button" className="bot-action-btn" onClick={handleSaveToPrivos} title="Lưu văn bản vào Room PrivOS">
-                <span>☁️</span> Lưu Room
-              </button>
-              <button
-                type="button"
-                className="bot-action-btn"
-                onClick={() => window.print()}
-                title="In văn bản hoặc xuất PDF"
-              >
-                <span>🖨️</span> In / PDF
-              </button>
-              <button type="button" className="bot-action-btn" onClick={handleDownloadMd} title="Tải file .md">
-                <span>📥</span> .md
-              </button>
+              <button type="button" className="hr-btn" onClick={handleCopy} title="Sao chép nội dung">📋 Copy</button>
+              <button type="button" className="hr-btn" onClick={() => window.print()} title="In văn bản / PDF">🖨️ In</button>
+              <button type="button" className="hr-btn" onClick={handleDownloadMd} title="Tải file .md">📥 .md</button>
             </div>
           </div>
 
-          {/* Document Content Canvas */}
-          {viewMode === 'a4' ? (
-            <div className="bot-a4-sheet-container">
-              <article
-                className="bot-a4-paper"
-                style={{
-                  transform: zoomLevel !== 100 ? `scale(${zoomLevel / 100})` : undefined,
-                  transformOrigin: 'top center'
-                }}
-              >
-                {renderFormattedA4(
-                  previewCompareMode === 'diff'
-                    ? diffService.generateDiffMarkdown(initialRenderedText, documentContent)
-                    : previewCompareMode === 'original'
-                    ? initialRenderedText
-                    : documentContent
-                )}
-              </article>
-            </div>
-          ) : (
-            <textarea
-              className="bot-raw-editor"
-              value={documentContent}
-              onChange={(e) => setDocumentContent(e.target.value)}
-              placeholder="Nội dung văn bản định dạng Markdown..."
-            />
-          )}
+          <div className="bot-preview-content">
+            {!documentContent ? (
+              <div className="bot-empty-state">
+                <div className="bot-empty-icon">📄</div>
+                <p>Chưa có văn bản nào được soạn thảo.</p>
+                <p className="bot-empty-sub">Hãy nhập yêu cầu ở khung bên trái để AI bắt đầu tạo tài liệu.</p>
+              </div>
+            ) : viewMode === 'a4' ? (
+              <div className="bot-a4-sheet-container">
+                <article
+                  ref={paperRef}
+                  className="bot-a4-paper"
+                  style={{
+                    zoom: zoomLevel !== 100 ? zoomLevel / 100 : undefined
+                  } as any}
+                >
+                  {renderFormattedA4(documentContent)}
+                </article>
+              </div>
+            ) : (
+              <textarea
+                className="bot-raw-editor"
+                value={documentContent}
+                onChange={(e) => setDocumentContent(e.target.value)}
+                placeholder="Nội dung văn bản định dạng Markdown..."
+              />
+            )}
+          </div>
         </section>
       </div>
-    </main>
+    </div>
   );
 }
