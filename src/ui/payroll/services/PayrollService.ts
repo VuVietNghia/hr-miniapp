@@ -34,11 +34,12 @@ export class PayrollService implements IPayrollService {
     }
   }
 
-  async getRecords(): Promise<PayrollRecord[]> {
+  async getRecords(password: string): Promise<PayrollRecord[]> {
     try {
       const res: any = await this.app.callServerTool({
-        name: 'privos.db.query',
+        name: 'hrm.payroll.query',
         arguments: {
+          password,
           collection: this.collectionName,
           where: [{ field: 'roomId', op: '==', value: this.roomId }]
         }
@@ -49,31 +50,31 @@ export class PayrollService implements IPayrollService {
       return parsed.records || [];
     } catch (err) {
       console.error("Failed to fetch payroll records:", err);
-      return [];
+      throw err;
     }
   }
 
-  async saveRecord(record: PayrollRecord): Promise<void> {
+  async saveRecord(record: PayrollRecord, password: string): Promise<void> {
     const { _id, _createdAt, _updatedAt, ...rest } = record as any;
     const data = { ...rest, roomId: this.roomId };
     
     if (record._id) {
       await this.app.callServerTool({
-        name: 'privos.db.update',
-        arguments: { collection: this.collectionName, id: record._id, data }
+        name: 'hrm.payroll.update',
+        arguments: { password, collection: this.collectionName, id: record._id, data }
       });
     } else {
       await this.app.callServerTool({
-        name: 'privos.db.create',
-        arguments: { collection: this.collectionName, data }
+        name: 'hrm.payroll.create',
+        arguments: { password, collection: this.collectionName, data }
       });
     }
   }
 
-  async deleteRecord(id: string): Promise<void> {
+  async deleteRecord(id: string, password: string): Promise<void> {
     await this.app.callServerTool({
-      name: 'privos.db.delete',
-      arguments: { collection: this.collectionName, id }
+      name: 'hrm.payroll.delete',
+      arguments: { password, collection: this.collectionName, id }
     });
   }
 }
