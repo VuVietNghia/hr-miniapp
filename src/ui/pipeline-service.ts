@@ -707,7 +707,7 @@ KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ:
     return { category, score, reason };
   }
 
-  async askAI(content: string, fileName?: string, fileId?: string, onLog?: (msg: string) => void): Promise<{ text: string }> {
+  async askAI(content: string, fileName?: string, fileId?: string, onLog?: (msg: string) => void, customFlowChatId?: string): Promise<{ text: string }> {
 
     let finalPrompt = content;
 
@@ -733,7 +733,7 @@ ${content}
         entityType: 'room-chat',
         entityId: this.roomId,
         roomId: this.roomId,
-        flowChatId: this.roomId,
+        flowChatId: customFlowChatId || this.roomId,
         content: finalPrompt,
         ...(fileId ? { fileIds: [fileId] } : {})
       },
