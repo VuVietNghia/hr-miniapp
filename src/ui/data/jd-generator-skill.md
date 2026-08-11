@@ -23,7 +23,6 @@ Sử dụng kỹ năng này khi người dùng yêu cầu: "Tạo JD", "Viết m
 ### Bước 2: Sinh nội dung JD (Anti-Hallucination)
 - **SYSTEM DIRECTIVE:** Bắt buộc phải sinh JD dựa theo bộ khung (template) `jd_template.md`.
 - Tuyệt đối KHÔNG BỊA ĐẶT (Hallucinate) các chế độ phúc lợi (Ví dụ: Không tự ý ghi "Du lịch châu Âu", "Tháng lương 13", "Macbook Pro" nếu người dùng không cung cấp hoặc trên web công ty không có). Nếu không chắc chắn, hãy ghi "Theo chính sách hiện hành của công ty".
-- Đối với phần "Về B.Army", hãy viết tóm tắt ngắn gọn từ những gì bạn đọc được trên website `https://www.b.army/`.
 - Hãy dịch hoặc viết lại cho mạch lạc, thu hút ứng viên nhưng giữ tính trung thực.
 
 ### Bước 3: Lưu file JD (BẮT BUỘC VÀO ROOM FILES)

@@ -99,6 +99,9 @@ export async function ensureTemplatesExistGlobal(app: McpApp, roomId: string, fo
 
       await ensureFolderPath(app, roomId, ['hr-miniapp', 'jds']);
       console.log(`[DEBUG] Đã đảm bảo tồn tại thư mục jds`);
+
+      await ensureFolderPath(app, roomId, ['hr-miniapp', 'company']);
+      console.log(`[DEBUG] Đã đảm bảo tồn tại thư mục company`);
     } catch (e) {
       console.error(`[CẢNH BÁO] Không thể tạo thư mục gốc cho ứng dụng:`, e);
     }

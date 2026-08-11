@@ -216,6 +216,7 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   const [jdPrompt, setJdPrompt] = useState('');
   const [jdFormOpen, setJdFormOpen] = useState(false);
   const [jdForm, setJdForm] = useState<JDFormState>(emptyJDForm);
+  const [useCompanyInfo, setUseCompanyInfo] = useState(false);
   const [isGeneratingJD, setIsGeneratingJD] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const [logOpen, setLogOpen] = useState(false);
@@ -425,7 +426,7 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
       const fullPrompt = `@Files:${roomId}/hr-miniapp/skills/jd-generator-skill.md
 [SYSTEM AUTOMATION] EXECUTE NOW. DO NOT ASK FOLLOW-UP QUESTIONS.
 Read the skill file above and run the full JD generation workflow.
-
+${useCompanyInfo ? '\nLƯU Ý QUAN TRỌNG: Hãy tìm và đọc các tài liệu trong thư mục "hr-miniapp/company" (Dữ liệu công ty). Dựa vào đó, hãy tự động thêm một phần "Thông tin công ty" vào trong JD và tóm tắt ngắn gọn các thông tin chính về công ty.\n' : ''}
 User JD request:
 ${jdPrompt}
 
@@ -1013,6 +1014,18 @@ REQUIRED:
                 >
                   {'\u2715'}
                 </button>
+              </div>
+
+              <div style={{ paddingBottom: '16px', borderBottom: '1px solid var(--border-light)', marginBottom: '16px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: 'var(--text)', fontWeight: 500 }}>
+                  <input 
+                    type="checkbox" 
+                    checked={useCompanyInfo}
+                    onChange={(e) => setUseCompanyInfo(e.target.checked)}
+                    style={{ width: '16px', height: '16px', accentColor: 'var(--accent)' }}
+                  />
+                  Thêm thông tin công ty vào JD
+                </label>
               </div>
 
               <div className="pl-form-grid">
