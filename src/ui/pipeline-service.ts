@@ -917,6 +917,7 @@ ${content}
       { name: '07_Gui_Offer', color: '#10b981' },
       { name: '08_Dau_Nhan_Viec', color: '#059669' },
       { name: '09_Loai_Sau_PV', color: '#dc2626' },
+      { name: '10_CV_Cu', color: '#9ca3af' },
     ];
 
     const parseToolResponse = (res: any) => {
