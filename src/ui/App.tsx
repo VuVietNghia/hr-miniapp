@@ -77,7 +77,7 @@ function ThemedApp() {
               setOpenSection(null);
             }}
           >
-            Home
+            Company
           </button>
 
           {TAB_SECTIONS.map((section) => {

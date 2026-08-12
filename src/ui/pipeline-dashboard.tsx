@@ -22,7 +22,7 @@ export interface IPipelineService {
   fetchAvailableJDs?(onLog?: (msg: string) => void): Promise<CVFile[]>;
   sendMessageToRoom?(text: string): Promise<any>;
   waitForBotReply?(sinceTs: string, onLog?: (msg: string) => void): Promise<boolean>;
-  askAI?(prompt: string, fileName?: string, fileId?: string, onLog?: (msg: string) => void): Promise<{ text: string }>;
+  askAI?(prompt: string, fileName?: string, fileId?: string, onLog?: (msg: string) => void, customFlowChatId?: string): Promise<{ text: string }>;
   createKanbanBatchViaAI?(
     results: Array<{ originalName: string; normalizedName?: string; score?: number; category?: string; reason?: string }>,
     jdName: string,
@@ -216,13 +216,19 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   const [jdPrompt, setJdPrompt] = useState('');
   const [jdFormOpen, setJdFormOpen] = useState(false);
   const [jdForm, setJdForm] = useState<JDFormState>(emptyJDForm);
+  const [useCompanyInfo, setUseCompanyInfo] = useState(false);
   const [isGeneratingJD, setIsGeneratingJD] = useState(false);
+  const [chatFormOpen, setChatFormOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<{role: 'user'|'ai', content: string}[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatting, setIsChatting] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const [logOpen, setLogOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
   const toastTimerRef = useRef<number | null>(null);
   const jdDropdownRef = useRef<HTMLDivElement>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
   const serviceRef = useRef<IPipelineService | null>(null);
 
 
@@ -231,6 +237,12 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   useEffect(() => {
     // Cannot use localStorage here
   }, []);
+
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages, isChatting]);
 
 
 
@@ -425,7 +437,7 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
       const fullPrompt = `@Files:${roomId}/hr-miniapp/skills/jd-generator-skill.md
 [SYSTEM AUTOMATION] EXECUTE NOW. DO NOT ASK FOLLOW-UP QUESTIONS.
 Read the skill file above and run the full JD generation workflow.
-
+${useCompanyInfo ? '\nLƯU Ý QUAN TRỌNG: Hãy tìm và đọc các tài liệu trong thư mục "hr-miniapp/company" (Dữ liệu công ty). Dựa vào đó, hãy tự động thêm một phần "Thông tin công ty" vào trong JD và tóm tắt ngắn gọn các thông tin chính về công ty.\n' : ''}
 User JD request:
 ${jdPrompt}
 
@@ -528,6 +540,79 @@ REQUIRED:
       showToast('L\u1ed7i g\u1eedi y\u00eau c\u1ea7u: ' + err.message, 'error');
     } finally {
       setIsGeneratingJD(false);
+    }
+  };
+
+  const handleSendChatMessage = async () => {
+    if (!chatInput.trim() || !serviceRef.current?.askAI) return;
+    
+    const currentInput = chatInput;
+    const newMessages: {role: 'user'|'ai', content: string}[] = [...chatMessages, { role: 'user', content: currentInput }];
+    setChatMessages(newMessages);
+    setChatInput('');
+    setIsChatting(true);
+    
+    let prompt = `@Files:${roomId}/hr-miniapp/skills/jd-generator-skill.md\n`;
+    prompt += `[SYSTEM AUTOMATION] Bạn là AI Chatbot chuyên gia Tuyển dụng.\n`;
+    prompt += `Nhiệm vụ: Phỏng vấn người dùng để lấy đủ các thông tin quan trọng để tạo Job Description (JD).\n`;
+    prompt += `Các thông tin quan trọng bắt buộc phải có: Vị trí, Địa điểm làm việc, Mức lương, Yêu cầu công việc/kinh nghiệm.\n`;
+    prompt += `Quy tắc phỏng vấn:\n`;
+    prompt += `- Hãy hỏi từng thông tin một, đừng hỏi một lúc quá nhiều câu.\n`;
+    prompt += `- Nếu CHƯA ĐỦ các thông tin quan trọng trên, TUYỆT ĐỐI CHƯA TẠO JD mà hãy dừng lại và tiếp tục hỏi người dùng cho rõ (trừ khi người dùng nói rõ là bỏ qua/không cần thông tin đó).\n`;
+    prompt += `Quan trọng khi tạo JD:\n`;
+    prompt += `1. CHỈ KHI đã thu thập đủ thông tin quan trọng (hoặc người dùng yêu cầu "Tạo JD" bỏ qua thông tin thiếu), hãy TỰ SINH RA JD bằng tiếng Việt, bọc TOÀN BỘ nội dung markdown trong thẻ <jd_content>...</jd_content>.\n`;
+    prompt += `2. TUYỆT ĐỐI KHÔNG tự tạo thư mục mới. BẮT BUỘC trả về tên file trong thẻ <saved_file>JD_AI_[Tên_Vị_Trí_Viết_Liền_Không_Dấu].md</saved_file>, ví dụ: <saved_file>JD_AI_NhanVienSale.md</saved_file>.\n\n`;
+    prompt += `Lịch sử hội thoại:\n`;
+    newMessages.forEach(m => {
+      prompt += `${m.role === 'user' ? 'Người dùng' : 'AI'}: ${m.content}\n\n`;
+    });
+    if (useCompanyInfo) {
+      prompt += `\n[LƯU Ý CUỐI CHO LƯỢT NÀY]: NẾU BẠN CHUẨN BỊ TẠO JD TRONG LƯỢT NÀY, BẮT BUỘC PHẢI DÙNG CÔNG CỤ ĐỌC THƯ MỤC "hr-miniapp/company" ĐỂ LẤY THÔNG TIN CÔNG TY VÀ THÊM VÀO JD! NẾU CHƯA TẠO JD THÌ CỨ TIẾP TỤC HỎI.\n`;
+    }
+    prompt += `AI: `;
+    
+    try {
+      const beforeJDNames = new Set(availableJDs.map(jd => jd.name));
+      const randomFlowChatId = `jd-chat-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const res = await serviceRef.current.askAI(prompt, undefined, undefined, addLog, randomFlowChatId);
+      
+      if (res && res.text) {
+        setChatMessages(prev => [...prev, { role: 'ai', content: res.text }]);
+        
+        if (res.text.includes('<jd_content>')) {
+          let extractedJD = '';
+          const jdMatch = res.text.match(/<jd_content>\s*([\s\S]*?)\s*<\/jd_content>/i);
+          if (jdMatch && jdMatch[1]) extractedJD = jdMatch[1].trim();
+          
+          let jdFileName = '';
+          const fileMatch = res.text.match(/<saved_file>\s*([\s\S]*?)\s*<\/saved_file>/i);
+          if (fileMatch && fileMatch[1]) jdFileName = fileMatch[1].trim().split('/').pop() || '';
+          
+          if (!jdFileName || !jdFileName.endsWith('.md')) {
+            jdFileName = `JD_AI_ChatGenerated_${Date.now()}.md`;
+          }
+
+          if (extractedJD && app) {
+            addLog(`[Chat AI] Đang tự động lưu file JD: ${jdFileName}`);
+            try {
+              await createOrUpdateFile(app, `${roomId}/hr-miniapp/jds/${jdFileName}`, extractedJD);
+              const refreshedJDs = await loadJDs();
+              const createdJD = refreshedJDs.find(jd => jd.name === jdFileName || !beforeJDNames.has(jd.name));
+              if (createdJD) {
+                addLog(`[Chat AI] Đã lưu thành công file JD: ${jdFileName}`);
+                await handleSelectJD(createdJD._id, refreshedJDs);
+                showToast(`AI đã tạo xong JD: ${jdFileName}`);
+              }
+            } catch (saveErr: any) {
+              console.warn('[Chat AI] Lỗi ghi file JD:', saveErr);
+            }
+          }
+        }
+      }
+    } catch (err: any) {
+      showToast('Lỗi gửi tin nhắn AI: ' + err.message, 'error');
+    } finally {
+      setIsChatting(false);
     }
   };
 
@@ -872,14 +957,22 @@ REQUIRED:
               </div>
 
               {/* JD AI Generator */}
-              <div style={{ marginBottom: '16px' }}>
+              <div style={{ marginBottom: '16px', display: 'flex', gap: '8px' }}>
                 <button
                   className="pl-btn pl-btn-primary"
-                  style={{ width: '100%', justifyContent: 'center' }}
+                  style={{ flex: 1, justifyContent: 'center' }}
                   onClick={() => setJdFormOpen(true)}
                   disabled={isGeneratingJD}
                 >
-                  {isGeneratingJD ? '\u0110ang t\u1ea1o JD' : <><span>{'\u2728'}</span> {'T\u1ea1o JD b\u1eb1ng AI'}</>}
+                  {isGeneratingJD ? 'Đang tạo...' : <><span>{'\u2728'}</span> {'Tạo bằng form'}</>}
+                </button>
+                <button
+                  className="pl-btn"
+                  style={{ flex: 1, justifyContent: 'center', backgroundColor: 'rgba(21, 111, 245, 0.08)', color: 'var(--accent)', borderColor: 'rgba(21, 111, 245, 0.2)' }}
+                  onClick={() => setChatFormOpen(true)}
+                  disabled={isGeneratingJD}
+                >
+                  {'\ud83d\udcac'} Chat với AI
                 </button>
               </div>
               {/* JD Upload Fallback */}
@@ -1015,6 +1108,18 @@ REQUIRED:
                 </button>
               </div>
 
+              <div style={{ paddingBottom: '16px', borderBottom: '1px solid var(--border-light)', marginBottom: '16px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: 'var(--text)', fontWeight: 500 }}>
+                  <input 
+                    type="checkbox" 
+                    checked={useCompanyInfo}
+                    onChange={(e) => setUseCompanyInfo(e.target.checked)}
+                    style={{ width: '16px', height: '16px', accentColor: 'var(--accent)' }}
+                  />
+                  Thêm thông tin Công ty vào JD
+                </label>
+              </div>
+
               <div className="pl-form-grid">
                 <p className="pl-label pl-span-2" style={{ margin: '2px 0 0' }}>{"Th\u00f4ng tin chung"}</p>
                 {renderJDFormField('position', 'V\u1ecb tr\u00ed', 'VD: L\u1eadp tr\u00ecnh vi\u00ean Mini App', false, false, ['L\u1eadp tr\u00ecnh vi\u00ean Front-end', 'L\u1eadp tr\u00ecnh vi\u00ean Back-end', 'L\u1eadp tr\u00ecnh vi\u00ean Mobile', 'Data Analyst', 'Chuy\u00ean vi\u00ean Nh\u00e2n s\u1ef1', 'Chuy\u00ean vi\u00ean Marketing'])}
@@ -1056,6 +1161,86 @@ REQUIRED:
                 >
                   {isGeneratingJD ? '\u0110ang g\u1eedi y\u00eau c\u1ea7u...' : 'G\u1eedi AI t\u1ea1o JD'}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {chatFormOpen && (
+          <div className="pl-modal-backdrop" onClick={() => !isChatting && setChatFormOpen(false)}>
+            <div className="pl-modal" style={{ maxWidth: '600px', display: 'flex', flexDirection: 'column', height: '80vh' }} onClick={(e) => e.stopPropagation()}>
+              <div className="pl-modal-header" style={{ flexShrink: 0, borderBottom: '1px solid var(--border-light)', paddingBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <p className="pl-label" style={{ margin: 0 }}>{"Chat tạo JD với AI"}</p>
+                  <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
+                    {'Trợ lý AI sẽ phỏng vấn bạn để thu thập thông tin tạo JD.'}
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button className="pl-btn pl-btn-secondary" style={{ padding: '6px 10px', fontSize: '12px' }} onClick={() => setChatMessages([])} disabled={isChatting}>
+                    Đoạn chat mới
+                  </button>
+                  <button className="pl-btn" style={{ padding: '6px 10px' }} onClick={() => setChatFormOpen(false)} disabled={isChatting}>
+                    {'\u2715'}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ flex: 1, overflowY: 'auto', margin: '16px 0', display: 'flex', flexDirection: 'column', gap: '12px', padding: '12px', background: 'var(--bg)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)' }}>
+                {chatMessages.length === 0 ? (
+                  <p style={{ textAlign: 'center', fontSize: '13px', color: 'var(--text-muted)', marginTop: 'auto', marginBottom: 'auto' }}>
+                    Chat với AI và cung cấp thông tin vị trí bạn muốn tuyển dụng
+                  </p>
+                ) : (
+                  chatMessages.map((msg, idx) => {
+                    let cleanContent = msg.content.replace(/<jd_content>[\s\S]*?<\/jd_content>/gi, '[Đã tạo file JD tự động. Vui lòng đóng Chat để xem kết quả.]');
+                    cleanContent = cleanContent.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+                    return (
+                      <div key={idx} style={{ 
+                        alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                        background: msg.role === 'user' ? 'var(--accent)' : 'var(--bg-card)',
+                        color: msg.role === 'user' ? '#fff' : 'var(--text)',
+                        padding: '10px 14px', borderRadius: '12px', maxWidth: '85%',
+                        boxShadow: 'var(--shadow-card)', fontSize: '13px',
+                        whiteSpace: 'pre-wrap', border: msg.role === 'user' ? 'none' : '1px solid var(--border)'
+                      }}
+                      dangerouslySetInnerHTML={{ __html: cleanContent }}
+                      />
+                    );
+                  })
+                )}
+                {isChatting && (
+                  <div style={{ alignSelf: 'flex-start', background: 'var(--bg-card)', padding: '10px 14px', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>AI đang suy nghĩ...</span>
+                  </div>
+                )}
+                <div ref={chatEndRef} />
+              </div>
+
+              <div style={{ paddingBottom: '12px', flexShrink: 0 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: 'var(--text)', fontWeight: 500, marginBottom: '12px' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={useCompanyInfo}
+                    onChange={(e) => setUseCompanyInfo(e.target.checked)}
+                    style={{ width: '16px', height: '16px', accentColor: 'var(--accent)' }}
+                  />
+                  Thêm thông tin Công ty vào JD
+                </label>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <input 
+                    type="text" 
+                    className="pl-input" 
+                    placeholder="Nhập yêu cầu của bạn..." 
+                    value={chatInput} 
+                    onChange={e => setChatInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleSendChatMessage()}
+                    disabled={isChatting}
+                  />
+                  <button className="pl-btn pl-btn-primary" onClick={handleSendChatMessage} disabled={isChatting || !chatInput.trim()}>
+                    Gửi
+                  </button>
+                </div>
               </div>
             </div>
           </div>

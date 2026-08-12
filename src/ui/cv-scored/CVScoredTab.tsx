@@ -15,6 +15,7 @@ const CV_COLUMNS = [
   { status: '02_Loai_CV', label: 'Loại', color: '#ef4444' },
   { status: '03_Tiem_Nang', label: 'Tiềm năng', color: '#22c55e' },
   { status: '05_Moi_Phong_Van', label: 'Mời phỏng vấn', color: '#eab308' },
+  { status: '10_CV_Cu', label: 'CV cũ', color: '#9ca3af' },
 ];
 
 function CVCard({ cv, onMove }: { cv: CVProfile, onMove: (id: string, newStatus: string) => void }) {
@@ -79,6 +80,7 @@ function CVColumn({ column, cvs, onMove }: { column: typeof CV_COLUMNS[0], cvs: 
   return (
     <div 
       className={`hr-kanban-col ${isDragOver ? 'drag-over' : ''}`}
+      style={{ flex: '0 0 calc((100% - 48px) / 3)', minWidth: '280px' }}
       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setIsDragOver(true); }}
       onDragLeave={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node)) {
@@ -120,7 +122,7 @@ function CVBoard({ board, onMove }: { board: CVBoardData, onMove: (listId: strin
       <div style={{ width: '100%', padding: '0 10px', marginBottom: '16px' }}>
         <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: 'var(--text)' }}>{board.listName}</h3>
       </div>
-      <div className="hr-kanban-container" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px', paddingBottom: '16px' }}>
+      <div className="hr-kanban-container" style={{ display: 'flex', gap: '24px', paddingBottom: '16px', overflowX: 'auto' }}>
         {CV_COLUMNS.map(col => (
           <CVColumn 
             key={col.status} 

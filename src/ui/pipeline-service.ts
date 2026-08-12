@@ -99,6 +99,9 @@ export async function ensureTemplatesExistGlobal(app: McpApp, roomId: string, fo
 
       await ensureFolderPath(app, roomId, ['hr-miniapp', 'jds']);
       console.log(`[DEBUG] Đã đảm bảo tồn tại thư mục jds`);
+
+      await ensureFolderPath(app, roomId, ['hr-miniapp', 'company']);
+      console.log(`[DEBUG] Đã đảm bảo tồn tại thư mục company`);
     } catch (e) {
       console.error(`[CẢNH BÁO] Không thể tạo thư mục gốc cho ứng dụng:`, e);
     }
@@ -704,7 +707,7 @@ KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ:
     return { category, score, reason };
   }
 
-  async askAI(content: string, fileName?: string, fileId?: string, onLog?: (msg: string) => void): Promise<{ text: string }> {
+  async askAI(content: string, fileName?: string, fileId?: string, onLog?: (msg: string) => void, customFlowChatId?: string): Promise<{ text: string }> {
 
     let finalPrompt = content;
 
@@ -730,7 +733,7 @@ ${content}
         entityType: 'room-chat',
         entityId: this.roomId,
         roomId: this.roomId,
-        flowChatId: this.roomId,
+        flowChatId: customFlowChatId || this.roomId,
         content: finalPrompt,
         ...(fileId ? { fileIds: [fileId] } : {})
       },
@@ -914,6 +917,7 @@ ${content}
       { name: '07_Gui_Offer', color: '#10b981' },
       { name: '08_Dau_Nhan_Viec', color: '#059669' },
       { name: '09_Loai_Sau_PV', color: '#dc2626' },
+      { name: '10_CV_Cu', color: '#9ca3af' },
     ];
 
     const parseToolResponse = (res: any) => {
