@@ -15,7 +15,8 @@ const CV_COLUMNS = [
   { status: '02_Loai_CV', label: 'Loại', color: '#ef4444' },
   { status: '03_Tiem_Nang', label: 'Tiềm năng', color: '#22c55e' },
   { status: '05_Moi_Phong_Van', label: 'Mời phỏng vấn', color: '#eab308' },
-  { status: '10_CV_Cu', label: 'CV cũ', color: '#9ca3af' },
+  { status: '06_Sai_JD', label: 'Sai JD', color: '#f59e0b' },
+  { status: '07_CV_Cu', label: 'CV cũ', color: '#9ca3af' },
 ];
 
 function CVCard({ cv, onMove }: { cv: CVProfile, onMove: (id: string, newStatus: string) => void }) {
@@ -127,7 +128,7 @@ function CVBoard({ board, onMove }: { board: CVBoardData, onMove: (listId: strin
           <CVColumn 
             key={col.status} 
             column={col} 
-            cvs={board.cvs.filter(cv => cv.status === col.status)} 
+            cvs={board.cvs.filter(cv => cv.status === col.status || (col.status === '07_CV_Cu' && cv.status === '10_CV_Cu'))} 
             onMove={(id, newStatus) => onMove(board.listId, id, newStatus)} 
           />
         ))}
@@ -249,7 +250,9 @@ export default function CVScoredTab() {
           // Fallback deduce stageId if sMap is missing this specific stageId
           if (!sMap[item.stageId] && item.stageId && category) {
             const normalized = String(category || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/Đ/g, 'D').trim();
-            if (normalized.includes('KHONG DAT') || normalized.includes('KHONG TUYEN')) {
+            if (normalized.includes('SAI JD')) {
+              sMap[item.stageId] = '06_Sai_JD';
+            } else if (normalized.includes('KHONG DAT') || normalized.includes('KHONG TUYEN')) {
               sMap[item.stageId] = '02_Loai_CV';
             } else if (normalized.includes('DAT') || normalized.includes('CAN NHAC')) {
               sMap[item.stageId] = '03_Tiem_Nang';
@@ -302,7 +305,10 @@ export default function CVScoredTab() {
     if (!board) return;
 
     // Find stageId for newStatus
-    const stageId = Object.keys(board.stagesMap).find(k => board.stagesMap[k] === newStatus);
+    let stageId = Object.keys(board.stagesMap).find(k => board.stagesMap[k] === newStatus);
+    if (!stageId && newStatus === '07_CV_Cu') {
+      stageId = Object.keys(board.stagesMap).find(k => board.stagesMap[k] === '10_CV_Cu');
+    }
     if (!stageId) return;
 
     // Optimistic

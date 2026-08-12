@@ -412,6 +412,8 @@ QUY TẮC PHÂN LOẠI & LƯU TRỮ (BẮT BUỘC THANG ĐIỂM 100):
    - Tổng điểm 50 - 79/100: "CÂN NHẮC" -> Lưu vào: hr-miniapp/outputs-cv/${currentMonth}/02-passed_screening/
    - Tổng điểm < 50/100: "KHÔNG ĐẠT" (TUYỆT ĐỐI KHÔNG XẾP CÂN NHẮC NẾU DƯỚI 50 ĐIỂM) -> Lưu vào: hr-miniapp/outputs-cv/${currentMonth}/01-failed/
    - Vị trí không tuyển trong JD: "KHÔNG TUYỂN VỊ TRÍ NÀY" -> Lưu vào: hr-miniapp/outputs-cv/${currentMonth}/01-failed/
+   - Ứng tuyển sai vị trí JD nhưng CV có tiềm năng (điểm >= 50): "SAI JD (TIỀM NĂNG)" -> Lưu vào: hr-miniapp/outputs-cv/${currentMonth}/02-passed_screening/
+     * LƯU Ý QUAN TRỌNG: Nếu trong CV ứng viên có ghi rõ vị trí ứng tuyển (ví dụ: "thực tập sinh backend", "ứng tuyển vị trí backend") VÀ vị trí đó khớp với JD đang chấm, thì TUYỆT ĐỐI KHÔNG ĐƯỢC phân loại là "SAI JD (TIỀM NĂNG)" hay "KHÔNG TUYỂN VỊ TRÍ NÀY". Trường hợp này chỉ được phân loại là ĐẠT, CÂN NHẮC hoặc KHÔNG ĐẠT.
 4. File CV gốc: Đổi tên theo chuẩn và lưu/copy vào:
    hr-miniapp/raws-cv/${currentMonth}/
 
@@ -434,7 +436,7 @@ KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ:
 {
   "saved_file": "Tên-File-Da-Luu.md",
   "score": 85,
-  "category": "ĐẠT" | "CÂN NHẮC" | "KHÔNG ĐẠT" | "KHÔNG TUYỂN VỊ TRÍ NÀY",
+  "category": "ĐẠT" | "CÂN NHẮC" | "KHÔNG ĐẠT" | "KHÔNG TUYỂN VỊ TRÍ NÀY" | "SAI JD (TIỀM NĂNG)",
   "reason": "[lý do ngắn gọn]",
   "extracted_evidence": ["[trích dẫn 1]", "[trích dẫn 2]"]
 }
@@ -913,11 +915,8 @@ ${content}
       { name: '03_Tiem_Nang', color: '#22c55e' },
       { name: '04_Phone_Screening', color: '#3b82f6' },
       { name: '05_Moi_Phong_Van', color: '#8b5cf6' },
-      { name: '06_Cho_Ket_Qua', color: '#f59e0b' },
-      { name: '07_Gui_Offer', color: '#10b981' },
-      { name: '08_Dau_Nhan_Viec', color: '#059669' },
-      { name: '09_Loai_Sau_PV', color: '#dc2626' },
-      { name: '10_CV_Cu', color: '#9ca3af' },
+      { name: '06_Sai_JD', color: '#f59e0b' },
+      { name: '07_CV_Cu', color: '#9ca3af' },
     ];
 
     const parseToolResponse = (res: any) => {
@@ -939,6 +938,7 @@ ${content}
 
     const getTargetStageName = (category?: string) => {
       const normalized = normalizeCategory(category);
+      if (normalized.includes('SAI JD')) return '06_Sai_JD';
       if (normalized.includes('KHONG DAT') || normalized.includes('KHONG TUYEN')) return '02_Loai_CV';
       if (normalized === 'DAT' || normalized.includes('CAN NHAC')) return '03_Tiem_Nang';
       return '01_Dau_Vao';
