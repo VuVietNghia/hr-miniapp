@@ -199,6 +199,11 @@ function CVResultCard({ s }: { s: ProcessingStatus }) {
 
 // Main Component
 
+const AI_GREETING_MESSAGE = {
+  role: 'ai' as const,
+  content: 'Chào bạn! Mình là AI Hỗ trợ Tuyển dụng. Để mình tạo JD, bạn hãy cung cấp một vài thông tin cơ bản như: **Vị trí**, **Mô tả công việc**, **Yêu cầu (Kinh nghiệm, Kỹ năng)** và **Mức lương/Quyền lợi** nhé!'
+};
+
 export default function PipelineDashboard({ serviceFactory }: PipelineDashboardProps = {}) {
   const app = usePrivosApp();
   const { roomId } = usePrivosContext();
@@ -219,7 +224,7 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   const [useCompanyInfo, setUseCompanyInfo] = useState(false);
   const [isGeneratingJD, setIsGeneratingJD] = useState(false);
   const [chatFormOpen, setChatFormOpen] = useState(false);
-  const [chatMessages, setChatMessages] = useState<{role: 'user'|'ai', content: string}[]>([]);
+  const [chatMessages, setChatMessages] = useState<{role: 'user'|'ai', content: string}[]>([AI_GREETING_MESSAGE]);
   const [chatInput, setChatInput] = useState('');
   const [isChatting, setIsChatting] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
@@ -1177,7 +1182,7 @@ REQUIRED:
                   </p>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button className="pl-btn pl-btn-secondary" style={{ padding: '6px 10px', fontSize: '12px' }} onClick={() => setChatMessages([])} disabled={isChatting}>
+                  <button className="pl-btn pl-btn-secondary" style={{ padding: '6px 10px', fontSize: '12px' }} onClick={() => setChatMessages([AI_GREETING_MESSAGE])} disabled={isChatting}>
                     Đoạn chat mới
                   </button>
                   <button className="pl-btn" style={{ padding: '6px 10px' }} onClick={() => setChatFormOpen(false)} disabled={isChatting}>
