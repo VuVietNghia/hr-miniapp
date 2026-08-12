@@ -150,12 +150,15 @@ export function CreateDetailedProfileForm({
     setIsSubmitting(true);
 
     try {
-      // 1. Ensure folder exists
-      const folderId = await ensureFolderPath(app, roomId, ['hr-miniapp', 'employees']);
-      if (!folderId) throw new Error('Không thể tạo hoặc truy cập thư mục employees trong Room.');
+      const normalizedName = trimmedName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/Đ/g, 'D').replace(/đ/g, 'd');
+      const safeName = normalizedName.replace(/[^a-zA-Z0-9\s]/g, '').trim().replace(/\s+/g, '_');
+      const safeDept = formData.department.replace(/[^a-zA-Z0-9\s]/g, '').trim().replace(/\s+/g, '_');
+
+      // 1. Ensure employee specific folder exists
+      const folderId = await ensureFolderPath(app, roomId, ['hr-miniapp', 'employees', safeDept, safeName]);
+      if (!folderId) throw new Error('Không thể tạo hoặc truy cập thư mục của nhân sự này.');
 
       // 2. Upload photo if present
-      let uploadedPhotoUrl = '';
       if (idPhoto) {
         addLog(`Bắt đầu upload ảnh: ${idPhoto.filename} (Kích thước gốc ước tính: ${Math.round(idPhoto.base64.length * 0.75 / 1024)} KB)`);
         
@@ -171,34 +174,7 @@ export function CreateDetailedProfileForm({
             new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout sau 15 giây khi tải ảnh lên')), 15000))
           ]);
           
-          addLog(`Response từ server sau upload: ${JSON.stringify(photoRes).substring(0, 150)}...`);
-        
-        if (photoRes?.file?.downloadUrl || photoRes?.downloadUrl) {
-           uploadedPhotoUrl = photoRes?.file?.downloadUrl || photoRes?.downloadUrl;
-        } else {
-           // PrivOS app.uploadFile may not return downloadUrl directly. Fetch the file list to get it.
-           const fileId = photoRes?.file?._id || photoRes?.file?.id || photoRes?._id;
-           if (fileId) {
-             console.log('Photo uploaded, fetching downloadUrl for fileId:', fileId);
-             try {
-               const listRes: any = await app.rest({ method: 'GET', path: `api/v1/file-management.files.channel/${roomId}`, query: { count: 100 } });
-               const files = listRes?.files || listRes?.data || (Array.isArray(listRes) ? listRes : []);
-               const uploadedFile = files.find((f: any) => f._id === fileId);
-               if (uploadedFile && uploadedFile.downloadUrl) {
-                 uploadedPhotoUrl = uploadedFile.downloadUrl;
-                 addLog(`Thành công lấy URL ảnh: ${uploadedPhotoUrl}`);
-               } else {
-                 addLog('CẢNH BÁO: Không tìm thấy ảnh trong danh sách API, dùng URL dự phòng.');
-                 uploadedPhotoUrl = `/file-upload/${fileId}/${idPhoto.filename}`;
-               }
-             } catch (err: any) {
-               addLog(`Lỗi khi get list file: ${err.message}`);
-               uploadedPhotoUrl = `/file-upload/${fileId}/${idPhoto.filename}`;
-             }
-           } else {
-             addLog(`CẢNH BÁO: Server không trả về fileId, response: ${JSON.stringify(photoRes)}`);
-           }
-        }
+          addLog(`Upload ảnh thành công vào thư mục của ${safeName}.`);
         } catch (uploadErr: any) {
           addLog(`LỖI UPLOAD ẢNH: ${uploadErr.message}`);
           throw uploadErr; // Ném ra ngoài để dừng quá trình tạo hồ sơ
@@ -232,15 +208,12 @@ export function CreateDetailedProfileForm({
       mdContent = mdContent.replace('[VEHICLE_TYPE]', formData.vehicleType);
       mdContent = mdContent.replace('[VEHICLE_PLATE]', formData.vehiclePlate);
       
-      let imgLinkStr = uploadedPhotoUrl ? `![](${uploadedPhotoUrl})` : '*Chưa có ảnh đính kèm*';
+      let imgLinkStr = idPhoto ? `*Ảnh thẻ và các tài liệu liên quan được lưu trữ cùng thư mục với hồ sơ này.*` : '*Chưa có ảnh đính kèm*';
       mdContent = mdContent.replace('[IMAGE_LINK]', imgLinkStr);
 
       // 4. Upload Markdown file
-      // Normalize name to ASCII without accents for filename
-      const normalizedName = trimmedName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/Đ/g, 'D').replace(/đ/g, 'd');
-      const safeName = normalizedName.replace(/[^a-zA-Z0-9\s]/g, '').trim().replace(/\s+/g, '_');
       const mdFileName = `${new Date().toISOString().split('T')[0]}_PROFILE_${safeName}.md`;
-      const mdFilePath = `hr-miniapp/employees/${mdFileName}`;
+      const mdFilePath = `hr-miniapp/employees/${safeDept}/${safeName}/${mdFileName}`;
       
       await createOrUpdateFile(app, `${roomId}/${mdFilePath}`, mdContent);
       addLog(`Tạo file Markdown thành công. Đang lưu database...`);
@@ -252,7 +225,8 @@ export function CreateDetailedProfileForm({
         email: trimmedEmail,
         position: selectedCandidate?.position || 'Unknown',
         department: getDepartmentForPosition(selectedCandidate?.position || ''),
-        startDate: new Date().toISOString().split('T')[0]
+        startDate: new Date().toISOString().split('T')[0],
+        sourceCandidateId: selectedCandidate?._id
       });
 
       setIsSuccess(true);

@@ -5,6 +5,7 @@ import { PrivOSLifecycleService } from './services/PrivOSLifecycleService';
 import { LifecycleServiceProvider, useLifecycleService } from './di/LifecycleContext';
 import { KanbanBoard } from './components/KanbanBoard';
 import { ProfileListView } from './components/ProfileListView';
+import { CreateProfileForm } from './components/CreateProfileForm';
 import { CreateDetailedProfileForm } from './components/CreateDetailedProfileForm';
 import { usePolling } from '../hooks/usePolling';
 import '../hr-premium-styles.css';
@@ -168,9 +169,19 @@ function LifecycleContent() {
 
   // Available candidates not yet onboarded
   const availableCandidates = useMemo(() => {
-    // TẠM THỜI BỎ FILTER THEO YÊU CẦU: Hiển thị toàn bộ nhân sự
-    // Sẽ thêm lại logic check sourceCandidateId sau khi merge code
-    return passedCandidates;
+    return passedCandidates.filter(
+      c => {
+        // Kiểm tra xem ứng viên này đã được tạo hồ sơ chưa (dựa theo ID Kanban card)
+        const onboardedById = profiles.some(p => p.sourceCandidateId === c._id);
+        if (onboardedById) return false;
+
+        // Fallback cho data cũ (chưa lưu sourceCandidateId): lọc theo tên
+        const onboardedByName = profiles.some(p => !p.sourceCandidateId && p.name === c.name);
+        if (onboardedByName) return false;
+
+        return true;
+      }
+    );
   }, [passedCandidates, profiles]);
 
   return (

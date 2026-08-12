@@ -99,7 +99,8 @@ export function CreateProfileForm({
         email: trimmedEmail,
         position: formData.position,
         department: formData.department,
-        startDate: formData.startDate
+        startDate: formData.startDate,
+        sourceCandidateId: selectedCandidate?._id
       });
     } catch (err: any) {
       setError(err?.message || 'Có lỗi xảy ra khi lưu hồ sơ.');
