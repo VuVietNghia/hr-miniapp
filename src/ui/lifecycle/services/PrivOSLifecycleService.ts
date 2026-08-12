@@ -486,27 +486,13 @@ export class PrivOSLifecycleService implements ILifecycleService {
     const rawStageName = this.getStageName(item, stages || []);
     const stageName = this.normalizeText(rawStageName);
     
-    // Explicit exclude stages: 01_Dau_Vao, 02_Loai_CV, 03_Tiem_Nang, 04_Phone_Screening, 09_Loai_Sau_PV
-    const isExcludedStage = 
-      stageName.includes('01_') || stageName.includes('DAU VAO') || stageName.includes('DAU_VAO') ||
-      stageName.includes('02_') || stageName.includes('LOAI CV') || stageName.includes('LOAI_CV') ||
-      stageName.includes('03_') || stageName.includes('TIEM NANG') || stageName.includes('TIEM_NANG') ||
-      stageName.includes('04_') || stageName.includes('PHONE') ||
-      stageName.includes('09_') || stageName.includes('LOAI SAU PV') || stageName.includes('LOAI_SAU_PV') ||
-      stageName.includes('KHONG DAT') || stageName.includes('KHONG TUYEN');
+    // CHỈ lấy ứng viên đang ở Stage 05 (Mời phỏng vấn)
+    // Dùng Regex ^05[_\s] để đảm bảo bắt buộc bắt đầu bằng 05_ hoặc 05 (tránh dính 105_)
+    const isStage5 = /^05[_\s]/.test(stageName) || 
+                     stageName.includes('MOI PHONG VAN') || 
+                     stageName.includes('MOI_PHONG_VAN');
 
-    if (isExcludedStage) return false;
-
-    // Only allow candidates from Stage 05 (Mời phỏng vấn) onwards:
-    // 05_Moi_Phong_Van, 06_Cho_Ket_Qua, 07_Gui_Offer, 08_Dau_Nhan_Viec
-    const allowedStagePatterns = [
-      '05_', '05', 'MOI PHONG VAN', 'MOI_PHONG_VAN', 'PHONG VAN',
-      '06_', '06', 'CHO KET QUA', 'CHO_KET_QUA',
-      '07_', '07', 'GUI OFFER', 'GUI_OFFER', 'OFFER',
-      '08_', '08', 'DAU NHAN VIEC', 'DAU_NHAN_VIEC', 'NHAN VIEC'
-    ];
-
-    return allowedStagePatterns.some(pattern => stageName.includes(pattern));
+    return isStage5;
   }
 
   private mapItemToPassedCandidate(item: any, list: any): PassedCandidate {
