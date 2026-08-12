@@ -217,7 +217,7 @@ export default function RecruitmentPanel() {
 
   const submitJob = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!draft.title.trim() || !draft.summary.trim()) return;
+    if (!draft.title.trim() || !draft.summary.trim() || !draft.type.trim() || !draft.salary.trim() || !draft.req_professional.trim()) return;
 
     const newJob: Job = {
       title: draft.title.trim(),
@@ -362,7 +362,7 @@ _Đăng ngày: ${new Date().toISOString().slice(0, 10)}_
             <div className="recruitment-heading">
               <div>
                 <span>{jobs.length > 0 ? 'ĐANG TUYỂN' : 'TỰ TẠO JD'}</span>
-                <h2>Vị trí {departmentLabel}</h2>
+                <h2>Phòng Ban: {departmentLabel}</h2>
               </div>
               <button type="button" className="add-job-button" onClick={() => setShowForm(true)}>
                 <span aria-hidden="true">+</span> Thêm JD
@@ -380,55 +380,97 @@ _Đăng ngày: ${new Date().toISOString().slice(0, 10)}_
                 </div>
                 <div className="job-form-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
                   <label>
-                    Vị trí tuyển dụng <b>*</b>
-                    <input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="Ví dụ: Backend Developer" required />
+                    <span>Vị trí tuyển dụng <b style={{color: 'red'}}>*</b></span>
+                    <input list="list-title" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="Ví dụ: Backend Developer" required />
+                    <datalist id="list-title">
+                      <option value="Lập trình viên Front-end" />
+                      <option value="Lập trình viên Back-end" />
+                      <option value="Lập trình viên Mobile" />
+                      <option value="Data Analyst" />
+                      <option value="Chuyên viên Nhân sự" />
+                      <option value="Chuyên viên Marketing" />
+                    </datalist>
                   </label>
                   <label>
-                    Thời gian làm việc
-                    <input value={draft.type} onChange={(event) => setDraft({ ...draft, type: event.target.value })} placeholder="Ví dụ: Full-time" />
+                    <span>Thời gian làm việc <b style={{color: 'red'}}>*</b></span>
+                    <input list="list-type" value={draft.type} onChange={(event) => setDraft({ ...draft, type: event.target.value })} placeholder="Ví dụ: Full-time" required />
+                    <datalist id="list-type">
+                      <option value="Full-time" />
+                      <option value="Part-time" />
+                      <option value="Thực tập sinh (Intern)" />
+                      <option value="Cộng tác viên (CTV)" />
+                    </datalist>
                   </label>
                   <label>
-                    Mức lương
-                    <input value={draft.salary} onChange={(event) => setDraft({ ...draft, salary: event.target.value })} placeholder="Ví dụ: 12.000.000 VNĐ/tháng" />
+                    <span>Mức lương <b style={{color: 'red'}}>*</b></span>
+                    <input list="list-salary" value={draft.salary} onChange={(event) => setDraft({ ...draft, salary: event.target.value })} placeholder="Ví dụ: 12.000.000 VNĐ/tháng" required />
+                    <datalist id="list-salary">
+                      <option value="Thỏa thuận theo năng lực" />
+                      <option value="10.000.000 - 15.000.000 VNĐ" />
+                      <option value="15.000.000 - 20.000.000 VNĐ" />
+                      <option value="20.000.000 - 30.000.000 VNĐ" />
+                      <option value="Cạnh tranh trên thị trường" />
+                    </datalist>
                   </label>
                   <label>
-                    Địa điểm làm việc
-                    <input value={draft.location} onChange={(event) => setDraft({ ...draft, location: event.target.value })} placeholder="Ví dụ: Hà Nội" />
+                    <span>Địa điểm làm việc</span>
+                    <input list="list-location" value={draft.location} onChange={(event) => setDraft({ ...draft, location: event.target.value })} placeholder="Ví dụ: Hà Nội" />
+                    <datalist id="list-location">
+                      <option value="Hà Nội" />
+                      <option value="TP. Hồ Chí Minh" />
+                      <option value="Đà Nẵng" />
+                      <option value="Remote" />
+                      <option value="Hybrid" />
+                    </datalist>
                   </label>
                   <label className="job-form-wide" style={{ gridColumn: '1 / -1' }}>
-                    Mô tả ngắn <b>*</b>
+                    <span>Mô tả ngắn <b style={{color: 'red'}}>*</b></span>
                     <textarea value={draft.summary} onChange={(event) => setDraft({ ...draft, summary: event.target.value })} placeholder="Giới thiệu ngắn hiển thị trên thẻ..." required />
                   </label>
                   <label className="job-form-wide" style={{ gridColumn: '1 / -1' }}>
-                    Mô tả công việc
+                    <span>Mô tả công việc</span>
                     <textarea value={draft.responsibilities} onChange={(event) => setDraft({ ...draft, responsibilities: event.target.value })} placeholder="Mỗi dòng là một đầu việc (*...)" />
                   </label>
                   <label>
-                    Kinh nghiệm
-                    <textarea value={draft.req_experience} onChange={(event) => setDraft({ ...draft, req_experience: event.target.value })} placeholder="Yêu cầu về kinh nghiệm..." />
+                    <span>Kinh nghiệm</span>
+                    <input list="list-experience" value={draft.req_experience} onChange={(event) => setDraft({ ...draft, req_experience: event.target.value })} placeholder="Yêu cầu về kinh nghiệm..." />
+                    <datalist id="list-experience">
+                      <option value="Không yêu cầu kinh nghiệm" />
+                      <option value="Dưới 1 năm kinh nghiệm" />
+                      <option value="1-2 năm kinh nghiệm" />
+                      <option value="3-5 năm kinh nghiệm" />
+                      <option value="Trên 5 năm kinh nghiệm" />
+                    </datalist>
                   </label>
                   <label>
-                    Kỹ năng chuyên môn
-                    <textarea value={draft.req_professional} onChange={(event) => setDraft({ ...draft, req_professional: event.target.value })} placeholder="Kỹ năng chuyên môn..." />
-                  </label>
-                  <label>
-                    Kỹ năng mềm
-                    <textarea value={draft.req_soft} onChange={(event) => setDraft({ ...draft, req_soft: event.target.value })} placeholder="Kỹ năng mềm..." />
-                  </label>
-                  <label>
-                    Học vấn
-                    <textarea value={draft.req_education} onChange={(event) => setDraft({ ...draft, req_education: event.target.value })} placeholder="Yêu cầu học vấn..." />
+                    <span>Học vấn</span>
+                    <input list="list-education" value={draft.req_education} onChange={(event) => setDraft({ ...draft, req_education: event.target.value })} placeholder="Yêu cầu học vấn..." />
+                    <datalist id="list-education">
+                      <option value="Không yêu cầu bằng cấp" />
+                      <option value="Tốt nghiệp Cao đẳng trở lên" />
+                      <option value="Tốt nghiệp Đại học trở lên" />
+                      <option value="Tốt nghiệp Đại học chuyên ngành CNTT" />
+                      <option value="Đang là sinh viên năm 3, năm 4" />
+                    </datalist>
                   </label>
                   <label className="job-form-wide" style={{ gridColumn: '1 / -1' }}>
-                    Quyền lợi
+                    <span>Kỹ năng chuyên môn <b style={{color: 'red'}}>*</b></span>
+                    <textarea value={draft.req_professional} onChange={(event) => setDraft({ ...draft, req_professional: event.target.value })} placeholder="Kỹ năng chuyên môn..." required />
+                  </label>
+                  <label className="job-form-wide" style={{ gridColumn: '1 / -1' }}>
+                    <span>Kỹ năng mềm</span>
+                    <textarea value={draft.req_soft} onChange={(event) => setDraft({ ...draft, req_soft: event.target.value })} placeholder="Kỹ năng mềm..." />
+                  </label>
+                  <label className="job-form-wide" style={{ gridColumn: '1 / -1' }}>
+                    <span>Quyền lợi</span>
                     <textarea value={draft.benefits} onChange={(event) => setDraft({ ...draft, benefits: event.target.value })} placeholder="Mỗi dòng là một quyền lợi..." />
                   </label>
                   <label>
-                    Email nhận CV
+                    <span>Email nhận CV</span>
                     <input type="email" value={draft.contact_email} onChange={(event) => setDraft({ ...draft, contact_email: event.target.value })} placeholder="Ví dụ: hr@company.com" />
                   </label>
                   <label>
-                    Tiêu đề email
+                    <span>Tiêu đề email</span>
                     <input value={draft.contact_title} onChange={(event) => setDraft({ ...draft, contact_title: event.target.value })} placeholder="Ví dụ: [Backend] - Họ tên" />
                   </label>
                 </div>
