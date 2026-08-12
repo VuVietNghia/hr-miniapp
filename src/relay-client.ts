@@ -105,6 +105,30 @@ async function getAccessToken(privosUrl: string, clientId: string, clientSecret:
 	return data.access_token;
 }
 
+let activeWs: WebSocket | null = null;
+let msgIdCounter = 1;
+const pendingRequests = new Map<number, { resolve: (val: any) => void; reject: (err: any) => void }>();
+
+/** Send a tool call to the PrivOS Hub and wait for the response */
+export async function callHubTool(name: string, args: any = {}): Promise<any> {
+	if (!activeWs || activeWs.readyState !== WebSocket.OPEN) {
+		throw new Error('Not connected to PrivOS Hub');
+	}
+	return new Promise((resolve, reject) => {
+		const id = msgIdCounter++;
+		pendingRequests.set(id, { resolve, reject });
+		activeWs!.send(JSON.stringify({
+			jsonrpc: '2.0',
+			id,
+			method: 'tools/call',
+			params: {
+				name,
+				arguments: args
+			}
+		}));
+	});
+}
+
 /** Connect to Privos relay WebSocket with auto-reconnect */
 export async function connectRelay(opts: RelayClientOptions): Promise<WebSocket> {
 	const accessToken = await getAccessToken(opts.privosUrl, opts.clientId, opts.clientSecret);
@@ -112,11 +136,25 @@ export async function connectRelay(opts: RelayClientOptions): Promise<WebSocket>
 
 	const wsUrl = opts.privosUrl.replace(/^http/, 'ws') + '/api/v1/mcp-apps.relay';
 	const ws = new WebSocket(wsUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+	activeWs = ws;
 
 	ws.on('open', () => console.log('[Relay] Connected to Privos'));
 
 	ws.on('message', async (raw: Buffer) => {
 		const msg = JSON.parse(raw.toString());
+		
+		// Handle incoming responses to our outgoing requests
+		if (msg.id !== undefined && msg.method === undefined) {
+			const pending = pendingRequests.get(msg.id);
+			if (pending) {
+				pendingRequests.delete(msg.id);
+				if (msg.error) pending.reject(new Error(msg.error.message || JSON.stringify(msg.error)));
+				else pending.resolve(msg.result);
+			}
+			return;
+		}
+		
+		// Handle incoming requests from Hub
 		if (msg.jsonrpc !== '2.0' || !msg.method) return;
 		try {
 			const result = await opts.onMessage(msg.method, msg.id, msg.params);
@@ -133,6 +171,14 @@ export async function connectRelay(opts: RelayClientOptions): Promise<WebSocket>
 	ws.on('ping', () => ws.pong());
 	ws.on('close', (code) => {
 		console.log(`[Relay] Disconnected (code: ${code}), reconnecting in 5s...`);
+		if (activeWs === ws) activeWs = null;
+		
+		// Reject all pending requests
+		for (const [id, pending] of pendingRequests.entries()) {
+			pending.reject(new Error('WebSocket disconnected'));
+			pendingRequests.delete(id);
+		}
+		
 		setTimeout(() => connectRelay(opts), 5000);
 	});
 	ws.on('error', (err) => console.error('[Relay] WS error:', err.message));
