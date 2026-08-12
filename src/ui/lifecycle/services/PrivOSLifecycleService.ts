@@ -76,7 +76,8 @@ export class PrivOSLifecycleService implements ILifecycleService {
           arguments: {
             listId: list._id || list.id,
             title: data.name,
-            customFields
+            customFields,
+            ...(data.sourceCandidateId ? { description: `[sourceCandidateId:${data.sourceCandidateId}]` } : {})
           }
         });
         
@@ -309,6 +310,13 @@ export class PrivOSLifecycleService implements ILifecycleService {
       name: item.name || item.title || 'Không có tên',
       status: this.getStageName(item, list.stages),
     };
+
+    if (item.description) {
+      const match = item.description.match(/\[sourceCandidateId:([^\]]+)\]/);
+      if (match) {
+        profile.sourceCandidateId = match[1];
+      }
+    }
 
     if (item.customFields) {
       this.extractCustomFields(profile, item.customFields, fieldDefMap);

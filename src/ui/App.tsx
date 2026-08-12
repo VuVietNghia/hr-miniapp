@@ -136,6 +136,8 @@ function ThemedApp() {
         </div>
       )}
 
+
+
       {visitedTabs.has('lifecycle') && (
         <div className={tab === 'lifecycle' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'lifecycle'}>
           <LifecycleDashboard />

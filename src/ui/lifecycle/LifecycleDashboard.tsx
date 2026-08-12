@@ -5,7 +5,7 @@ import { PrivOSLifecycleService } from './services/PrivOSLifecycleService';
 import { LifecycleServiceProvider, useLifecycleService } from './di/LifecycleContext';
 import { KanbanBoard } from './components/KanbanBoard';
 import { ProfileListView } from './components/ProfileListView';
-import { CreateProfileForm } from './components/CreateProfileForm';
+import { CreateDetailedProfileForm } from './components/CreateDetailedProfileForm';
 import { usePolling } from '../hooks/usePolling';
 import '../hr-premium-styles.css';
 
@@ -83,7 +83,6 @@ function LifecycleContent() {
     // Optimistic UI update
     setProfiles(prev => [...prev, newProfile]);
     setStatusMsg({ text: `Đã thêm hồ sơ "${data.name}" thành công!`, type: 'success' });
-    setIsCreating(false);
     
     setTimeout(() => setStatusMsg(null), 3000);
 
@@ -167,6 +166,13 @@ function LifecycleContent() {
     });
   }, [profiles, selectedDept, searchTerm, viewMode, selectedStatus]);
 
+  // Available candidates not yet onboarded
+  const availableCandidates = useMemo(() => {
+    // TẠM THỜI BỎ FILTER THEO YÊU CẦU: Hiển thị toàn bộ nhân sự
+    // Sẽ thêm lại logic check sourceCandidateId sau khi merge code
+    return passedCandidates;
+  }, [passedCandidates, profiles]);
+
   return (
     <div className="hr-terminal-ui">
       <header className="hr-header-block">
@@ -206,10 +212,10 @@ function LifecycleContent() {
       </header>
 
       {isCreating && (
-        <CreateProfileForm 
+        <CreateDetailedProfileForm 
           onSubmit={handleCreateSubmit} 
           onCancel={() => setIsCreating(false)} 
-          passedCandidates={passedCandidates}
+          passedCandidates={availableCandidates}
           isLoadingCandidates={isLoadingCandidates}
         />
       )}

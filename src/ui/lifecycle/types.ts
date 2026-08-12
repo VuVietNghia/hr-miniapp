@@ -7,6 +7,7 @@ export interface EmployeeProfile {
   position?: string;
   department?: string;
   startDate?: string;
+  sourceCandidateId?: string;
 }
 
 export interface KanbanColumnDef {
