@@ -412,8 +412,8 @@ QUY TẮC PHÂN LOẠI & LƯU TRỮ (BẮT BUỘC THANG ĐIỂM 100):
    - Tổng điểm 50 - 79/100: "CÂN NHẮC" -> Lưu vào: hr-miniapp/outputs-cv/${currentMonth}/02-passed_screening/
    - Tổng điểm < 50/100: "KHÔNG ĐẠT" (TUYỆT ĐỐI KHÔNG XẾP CÂN NHẮC NẾU DƯỚI 50 ĐIỂM) -> Lưu vào: hr-miniapp/outputs-cv/${currentMonth}/01-failed/
    - Vị trí không tuyển trong JD: "KHÔNG TUYỂN VỊ TRÍ NÀY" -> Lưu vào: hr-miniapp/outputs-cv/${currentMonth}/01-failed/
-   - Ứng tuyển sai vị trí JD nhưng CV có tiềm năng (điểm >= 50): "SAI JD (TIỀM NĂNG)" -> Lưu vào: hr-miniapp/outputs-cv/${currentMonth}/02-passed_screening/
-     * LƯU Ý QUAN TRỌNG: Nếu trong CV ứng viên có ghi rõ vị trí ứng tuyển (ví dụ: "thực tập sinh backend", "ứng tuyển vị trí backend") VÀ vị trí đó khớp với JD đang chấm, thì TUYỆT ĐỐI KHÔNG ĐƯỢC phân loại là "SAI JD (TIỀM NĂNG)" hay "KHÔNG TUYỂN VỊ TRÍ NÀY". Trường hợp này chỉ được phân loại là ĐẠT, CÂN NHẮC hoặc KHÔNG ĐẠT.
+   - ƯU TIÊN SỐ 1 (SAI JD): Nếu ứng viên ứng tuyển SAI HOÀN TOÀN vị trí so với JD (ví dụ: xin làm IT nhưng nộp JD Sales), BẮT BUỘC gán category là "SAI JD" và chấm 0 điểm. TUYỆT ĐỐI KHÔNG xếp "ĐẠT" hay "CÂN NHẮC" dù kỹ năng trong CV tốt đến đâu. Lưu vào: hr-miniapp/outputs-cv/${currentMonth}/01-failed/
+     * LƯU Ý NGOẠI LỆ: Nếu trong CV ứng viên CÓ GHI RÕ vị trí ứng tuyển (ví dụ: "thực tập sinh backend", "ứng tuyển backend") VÀ vị trí đó KHỚP với JD đang chấm, thì TUYỆT ĐỐI KHÔNG ĐƯỢC phân loại là "SAI JD" hay "KHÔNG TUYỂN VỊ TRÍ NÀY". Trường hợp này chỉ được phân loại là ĐẠT, CÂN NHẮC hoặc KHÔNG ĐẠT theo điểm số.
 4. File CV gốc: Đổi tên theo chuẩn và lưu/copy vào:
    hr-miniapp/raws-cv/${currentMonth}/
 
@@ -436,7 +436,7 @@ KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ:
 {
   "saved_file": "Tên-File-Da-Luu.md",
   "score": 85,
-  "category": "ĐẠT" | "CÂN NHẮC" | "KHÔNG ĐẠT" | "KHÔNG TUYỂN VỊ TRÍ NÀY" | "SAI JD (TIỀM NĂNG)",
+  "category": "ĐẠT" | "CÂN NHẮC" | "KHÔNG ĐẠT" | "KHÔNG TUYỂN VỊ TRÍ NÀY" | "SAI JD",
   "reason": "[lý do ngắn gọn]",
   "extracted_evidence": ["[trích dẫn 1]", "[trích dẫn 2]"]
 }
