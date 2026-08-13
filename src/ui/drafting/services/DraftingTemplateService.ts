@@ -89,7 +89,7 @@ QUY TẮC BẮT BUỘC:
    - Thay thế toàn bộ các biến placeholder {{key}} bằng dữ liệu thực tế được cung cấp. Nếu dữ liệu không được cung cấp, tự sinh dữ liệu hợp lý. KHÔNG để lại placeholder thô dạng {{key}}.
 2. Không bịa đặt các số liệu không hợp lý.
 3. Bọc toàn bộ nội dung văn bản Markdown kết quả bên trong thẻ <drafting_content>...</drafting_content>.
-Không giải thích lan man bên ngoài thẻ.`;
+4. TUYỆT ĐỐI KHÔNG META-COMMENTARY (ANTI-YAPPING): Bạn không được phép giải thích, chú thích, xin lỗi, hay nhận xét về những gì bạn làm (ví dụ: không được sinh ra các câu như "Lưu ý...", "Dưới đây là..."). Nội dung sinh ra bên trong và bên ngoài thẻ <drafting_content> phải là VĂN BẢN NGUYÊN BẢN DUY NHẤT. Bắt đầu ngay lập tức bằng <drafting_content>.`;
 }
 
 export function buildGenericDraftingAIPrompt(
@@ -133,7 +133,7 @@ TÁC VỤ CẦN THỰC HIỆN:
 QUY TẮC BẮT BUỘC:
 1. Tuân thủ chính xác cấu trúc thẻ HTML/Markdown ở trên. Thay thế các nội dung trong dấu ngoặc vuông [...] bằng thông tin phù hợp.
 2. Bọc toàn bộ nội dung văn bản kết quả bên trong thẻ <drafting_content>...</drafting_content>.
-3. Bạn KHÔNG cần giải thích, CHỈ TRẢ VỀ nội dung nằm trong thẻ <drafting_content>.`;
+3. TUYỆT ĐỐI KHÔNG META-COMMENTARY (ANTI-YAPPING): Bạn không được phép giải thích, chú thích, xin lỗi, hay nhận xét về những gì bạn làm (ví dụ: không được sinh ra các câu như "Lưu ý...", "Dưới đây là..."). Nội dung sinh ra bên trong và bên ngoài thẻ <drafting_content> phải là VĂN BẢN NGUYÊN BẢN DUY NHẤT. Bắt đầu ngay lập tức bằng <drafting_content>.`;
 }
 
 export function buildDraftingRouterPrompt(

@@ -3,8 +3,8 @@ import { DraftingTemplate } from '../types';
 export const offerLetterTemplate: DraftingTemplate = {
   id: 'offer-letter',
   title: 'Thư mời nhận việc (Offer Letter)',
-  category: 'onboarding',
-  categoryLabel: 'Tuyển dụng & Onboarding',
+  category: 'thoathuan',
+  categoryLabel: 'Ghi nhận & Thỏa thuận',
   track: 'modern_enterprise',
   icon: '✉️',
   description: 'Thư mời nhận việc trang trọng gửi ứng viên trúng tuyển, chuẩn chính sách đãi ngộ B.Army.',

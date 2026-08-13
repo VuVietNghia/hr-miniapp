@@ -3,8 +3,8 @@ import { DraftingTemplate } from '../types';
 export const meetingMinutesTemplate: DraftingTemplate = {
   id: 'meeting-minutes',
   title: 'Biên bản cuộc họp (Meeting Minutes)',
-  category: 'admin',
-  categoryLabel: 'Hành chính & Biên bản',
+  category: 'thoathuan',
+  categoryLabel: 'Ghi nhận & Thỏa thuận',
   track: 'nd30_administrative',
   icon: '✍️',
   description: 'Biên bản ghi nhận diễn biến, kết luận cuộc họp Ban Giám đốc hoặc Hội đồng chuyên môn.',

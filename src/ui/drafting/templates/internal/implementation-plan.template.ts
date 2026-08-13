@@ -3,8 +3,8 @@ import { DraftingTemplate } from '../types';
 export const implementationPlanTemplate: DraftingTemplate = {
   id: 'implementation-plan',
   title: 'Kế hoạch triển khai (Implementation Plan / Roadmap)',
-  category: 'admin',
-  categoryLabel: 'Hành chính & Chiến lược',
+  category: 'kehoach',
+  categoryLabel: 'Kế hoạch & Báo cáo',
   track: 'nd30_administrative',
   icon: '📋',
   description: 'Kế hoạch triển khai dự án/chuyển đổi số chuẩn thể thức NĐ 30/2020/NĐ-CP (Khớp 100% định dạng Word chuẩn).',

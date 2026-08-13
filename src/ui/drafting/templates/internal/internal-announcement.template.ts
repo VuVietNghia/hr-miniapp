@@ -3,8 +3,8 @@ import { DraftingTemplate } from '../types';
 export const internalAnnouncementTemplate: DraftingTemplate = {
   id: 'internal-announcement',
   title: 'Thông báo nội bộ (Nghỉ Lễ / Quy chế)',
-  category: 'admin',
-  categoryLabel: 'Hành chính & Truyền thông',
+  category: 'thongtin',
+  categoryLabel: 'Thông tin & Giao tiếp',
   track: 'nd30_administrative',
   icon: '📢',
   description: 'Thông báo toàn thể CBNV chuẩn thể thức văn bản hành chính công vụ.',

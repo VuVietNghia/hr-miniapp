@@ -7,6 +7,7 @@ import {
   buildDraftingAIPrompt,
   buildGenericDraftingAIPrompt
 } from './drafting-templates';
+import type { DraftingTemplate } from './drafting/types';
 import { PipelineService } from './pipeline-service';
 import { MarkdownPathContextBuilder } from './cv-context-builder';
 import { createOrUpdateFile } from './privos-rest';
@@ -57,6 +58,27 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [pollingStatus, setPollingStatus] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Modal States
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
+  const categories = useMemo(() => {
+    const map = new Map<string, string>();
+    map.set('all', 'Tất cả');
+    templates.forEach(t => map.set(t.category, t.categoryLabel));
+    return Array.from(map.entries()).map(([id, label]) => ({ id, label }));
+  }, [templates]);
+
+  const filteredTemplates = useMemo(() => {
+    if (selectedCategory === 'all') return templates;
+    return templates.filter(t => t.category === selectedCategory);
+  }, [templates, selectedCategory]);
+
+  const handleSelectTemplate = useCallback((template: DraftingTemplate) => {
+    setUserPrompt(`Soạn thảo mẫu: ${template.title}\n\nYêu cầu bổ sung của tôi: `);
+    setIsTemplateModalOpen(false);
+  }, []);
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
@@ -352,27 +374,15 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
            
            <div className="bot-chat-body">
              <div className="bot-chat-instructions">
-               <p><strong>Hướng dẫn:</strong> Nhập yêu cầu soạn thảo của bạn hoặc chọn nhanh từ các gợi ý dưới đây.</p>
-             </div>
-             
-             <div className="bot-suggestion-tags">
-               {[
-                 "Soạn thảo Văn bản hành chính khác (Tự do)",
-                 "Soạn quyết định bổ nhiệm anh Nguyễn Văn A làm Giám đốc Kỹ thuật, mức lương 50 triệu.",
-                 "Viết thư mời nhận việc cho chị B, vị trí Kế toán trưởng, thử việc 2 tháng.",
-                 "Tạo quyết định chấm dứt hợp đồng lao động với nhân viên C.",
-                 "Làm biên bản bàn giao thiết bị làm việc."
-               ].map((prompt, idx) => (
-                 <button 
-                   key={idx} 
-                   className="bot-suggestion-chip"
-                   onClick={() => setUserPrompt(prompt)}
-                   disabled={isGenerating}
-                   title={prompt}
-                 >
-                   {prompt.length > 35 ? prompt.substring(0, 35) + '...' : prompt}
-                 </button>
-               ))}
+               <p><strong>Hướng dẫn:</strong> Nhập yêu cầu soạn thảo của bạn hoặc chọn nhanh từ các mẫu có sẵn.</p>
+               <button 
+                 className="hr-btn hr-btn-accent" 
+                 style={{ marginTop: '8px' }}
+                 onClick={() => setIsTemplateModalOpen(true)}
+                 disabled={isGenerating}
+               >
+                 📚 Xem thư viện mẫu văn bản ({templates.length} mẫu)
+               </button>
              </div>
              
              <textarea 
@@ -466,6 +476,43 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
           </div>
         </section>
       </div>
+
+      {isTemplateModalOpen && (
+        <div className="bot-template-modal-overlay" onClick={() => setIsTemplateModalOpen(false)}>
+          <div className="bot-template-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="bot-template-modal-header">
+              <h3>📚 Thư viện Mẫu văn bản</h3>
+              <button className="bot-template-close-btn" onClick={() => setIsTemplateModalOpen(false)}>×</button>
+            </div>
+            <div className="bot-template-modal-body">
+              <aside className="bot-template-sidebar">
+                {categories.map(c => (
+                  <button 
+                    key={c.id}
+                    className={`bot-template-category-btn ${selectedCategory === c.id ? 'active' : ''}`}
+                    onClick={() => setSelectedCategory(c.id)}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </aside>
+              <main className="bot-template-grid-container">
+                <div className="bot-template-grid">
+                  {filteredTemplates.map(t => (
+                    <div key={t.id} className="bot-template-card" onClick={() => handleSelectTemplate(t)}>
+                      <div className="bot-template-card-header">
+                        <span className="bot-template-card-icon">{t.icon}</span>
+                        <h4 className="bot-template-card-title">{t.title}</h4>
+                      </div>
+                      <p className="bot-template-card-desc">{t.description}</p>
+                    </div>
+                  ))}
+                </div>
+              </main>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

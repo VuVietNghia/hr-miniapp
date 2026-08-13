@@ -3,8 +3,8 @@ import { DraftingTemplate } from '../types';
 export const workReportTemplate: DraftingTemplate = {
   id: 'work-report',
   title: 'Báo cáo công tác / Tổng kết (Work Report)',
-  category: 'admin',
-  categoryLabel: 'Hành chính & Báo cáo',
+  category: 'kehoach',
+  categoryLabel: 'Kế hoạch & Báo cáo',
   track: 'nd30_administrative',
   icon: '📊',
   description: 'Báo cáo tổng kết tình hình thực hiện nhiệm vụ, kết quả và kiến nghị công tác chuẩn thể thức NĐ 30.',

@@ -3,8 +3,8 @@ import { DraftingTemplate } from '../types';
 export const digitalProposalTemplate: DraftingTemplate = {
   id: 'digital-proposal',
   title: 'Đề xuất giải pháp & ROI (Business Proposal)',
-  category: 'admin',
-  categoryLabel: 'Chiến lược & Đề xuất DA',
+  category: 'kehoach',
+  categoryLabel: 'Kế hoạch & Báo cáo',
   track: 'modern_enterprise',
   icon: '💡',
   description: 'Bản đề xuất giải pháp công nghệ, lộ trình và phân tích hiệu quả tài chính (ROI) hiện đại.',

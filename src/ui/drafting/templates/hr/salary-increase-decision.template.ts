@@ -3,8 +3,8 @@ import { DraftingTemplate } from '../types';
 export const salaryIncreaseDecisionTemplate: DraftingTemplate = {
   id: 'salary-increase-decision',
   title: 'Quyết định bổ nhiệm / Tăng lương',
-  category: 'personnel',
-  categoryLabel: 'Quyết định & Nhân sự',
+  category: 'chidao',
+  categoryLabel: 'Chỉ đạo & Điều hành',
   track: 'nd30_administrative',
   icon: '🎖️',
   description: 'Quyết định hành chính chuẩn thể thức NĐ 30/2020/NĐ-CP về bổ nhiệm và điều chỉnh lương.',

@@ -3,8 +3,8 @@ import { DraftingTemplate } from '../types';
 export const powerOfAttorneyTemplate: DraftingTemplate = {
   id: 'power-of-attorney',
   title: 'Giấy ủy quyền (Power of Attorney)',
-  category: 'legal',
-  categoryLabel: 'Pháp chế & Ủy quyền',
+  category: 'thongtin',
+  categoryLabel: 'Thông tin & Giao tiếp',
   track: 'nd30_administrative',
   icon: '⚖️',
   description: 'Văn bản ủy quyền đại diện ký kết hợp đồng, giải quyết thủ tục pháp lý hoặc điều hành công việc.',

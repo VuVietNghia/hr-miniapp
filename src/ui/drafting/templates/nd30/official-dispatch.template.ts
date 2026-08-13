@@ -3,8 +3,8 @@ import { DraftingTemplate } from '../types';
 export const officialDispatchTemplate: DraftingTemplate = {
   id: 'official-dispatch',
   title: 'Công văn hành chính (Official Dispatch)',
-  category: 'admin',
-  categoryLabel: 'Hành chính & Trao đổi',
+  category: 'thongtin',
+  categoryLabel: 'Thông tin & Giao tiếp',
   track: 'nd30_administrative',
   icon: '📨',
   description: 'Công văn trao đổi công việc, đề nghị phối hợp hoặc phúc đáp đối tác chuẩn thể thức Nghị định 30.',

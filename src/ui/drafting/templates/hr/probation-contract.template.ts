@@ -3,8 +3,8 @@ import { DraftingTemplate } from '../types';
 export const probationContractTemplate: DraftingTemplate = {
   id: 'probation-contract',
   title: 'Hợp đồng thử việc (Probation Contract)',
-  category: 'onboarding',
-  categoryLabel: 'Tuyển dụng & Onboarding',
+  category: 'thoathuan',
+  categoryLabel: 'Ghi nhận & Thỏa thuận',
   track: 'nd30_administrative',
   icon: '📝',
   description: 'Hợp đồng thử việc chuẩn theo Bộ luật Lao động 2019 và thể thức văn bản hiện đại.',

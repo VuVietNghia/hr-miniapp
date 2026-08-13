@@ -3,8 +3,8 @@ import { DraftingTemplate } from '../types';
 export const submissionProposalTemplate: DraftingTemplate = {
   id: 'submission-proposal',
   title: 'Tờ trình phê duyệt (Submission / Proposal)',
-  category: 'admin',
-  categoryLabel: 'Hành chính & Tờ trình',
+  category: 'kehoach',
+  categoryLabel: 'Kế hoạch & Báo cáo',
   track: 'nd30_administrative',
   icon: '📑',
   description: 'Tờ trình trình cấp có thẩm quyền phê duyệt chủ trương, kinh phí hoặc phương án công tác chuẩn NĐ 30.',

@@ -265,7 +265,7 @@
 }
 
 .bot-a4-paper {
-  background: repeating-linear-gradient(to bottom, #FFFFFF, #FFFFFF calc(297mm - 1px), #d1d5db calc(297mm - 1px), #d1d5db 297mm) !important;
+  background: #FFFFFF !important;
   color: #000000 !important;
   width: 210mm;
   min-height: 297mm;
@@ -458,35 +458,159 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Suggestion Tags */
-.bot-suggestion-tags {
+/* Template Modal */
+.bot-template-modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(2px);
+  z-index: 9999;
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding-bottom: 4px;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  animation: fadeIn 0.2s ease;
 }
 
-.bot-suggestion-chip {
-  flex-shrink: 0;
-  padding: 6px 12px;
-  background: var(--bg-hover, #F2F3F5);
-  border: 1px solid var(--border, #E4E7EA);
-  border-radius: 20px;
-  font-size: 0.75rem;
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.bot-template-modal-content {
+  background: var(--bg-card, #FFFFFF);
+  width: 900px;
+  max-width: 95vw;
+  height: 600px;
+  max-height: 90vh;
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.bot-template-modal-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border, #E4E7EA);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-table-head, #F7F8FA);
+}
+
+.bot-template-modal-header h3 {
+  margin: 0;
+  font-size: 1.125rem;
+  color: var(--text, #1F2329);
+}
+
+.bot-template-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--text-muted, #6C737A);
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.bot-template-close-btn:hover {
+  color: var(--text, #1F2329);
+}
+
+.bot-template-modal-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Sidebar Categories */
+.bot-template-sidebar {
+  width: 220px;
+  border-right: 1px solid var(--border, #E4E7EA);
+  background: var(--bg, #F7F8FA);
+  padding: 16px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+
+.bot-template-category-btn {
+  background: transparent;
+  border: none;
+  text-align: left;
+  padding: 10px 20px;
+  font-size: 0.9375rem;
   color: var(--text-secondary, #2F343D);
   cursor: pointer;
   transition: all 0.2s ease;
-  white-space: normal;
-  text-align: left;
 }
 
-.bot-suggestion-chip:hover:not(:disabled) {
+.bot-template-category-btn:hover {
+  background: var(--bg-hover, #F2F3F5);
+}
+
+.bot-template-category-btn.active {
   background: rgba(21, 111, 245, 0.1);
-  border-color: var(--accent, #156FF5);
   color: var(--accent, #156FF5);
+  font-weight: 600;
+  border-right: 3px solid var(--accent, #156FF5);
 }
 
-.bot-suggestion-chip:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+/* Grid Area */
+.bot-template-grid-container {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+  background: var(--bg-card, #FFFFFF);
+}
+
+.bot-template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.bot-template-card {
+  border: 1px solid var(--border, #E4E7EA);
+  border-radius: 8px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: var(--bg-card, #FFFFFF);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bot-template-card:hover {
+  border-color: var(--accent, #156FF5);
+  box-shadow: 0 4px 12px rgba(21, 111, 245, 0.08);
+  transform: translateY(-2px);
+}
+
+.bot-template-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bot-template-card-icon {
+  font-size: 1.5rem;
+}
+
+.bot-template-card-title {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--text, #1F2329);
+  margin: 0;
+}
+
+.bot-template-card-desc {
+  font-size: 0.8125rem;
+  color: var(--text-muted, #6C737A);
+  margin: 0;
+  line-height: 1.4;
 }
