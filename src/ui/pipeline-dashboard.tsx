@@ -442,7 +442,9 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
       const fullPrompt = `@Files:${roomId}/hr-miniapp/skills/jd-generator-skill.md
 [SYSTEM AUTOMATION] EXECUTE NOW. DO NOT ASK FOLLOW-UP QUESTIONS.
 Read the skill file above and run the full JD generation workflow.
-${useCompanyInfo ? '\nLƯU Ý QUAN TRỌNG: Hãy tìm và đọc các tài liệu trong thư mục "hr-miniapp/company" (Dữ liệu công ty). Dựa vào đó, hãy tự động thêm một phần "Thông tin công ty" vào trong JD và tóm tắt ngắn gọn các thông tin chính về công ty.\n' : ''}
+${useCompanyInfo 
+  ? '\nLƯU Ý QUAN TRỌNG: Hãy tìm và đọc các tài liệu trong thư mục "hr-miniapp/company" (Dữ liệu công ty). Dựa vào đó, hãy tự động thêm một phần "Thông tin công ty" vào trong JD và tóm tắt ngắn gọn các thông tin chính về công ty.\n' 
+  : '\nLƯU Ý QUAN TRỌNG: TUYỆT ĐỐI KHÔNG thêm thông tin công ty vào JD (Kể cả khi template JD có phần công ty, hãy bỏ qua hoặc để trống).\n'}
 User JD request:
 ${jdPrompt}
 
@@ -563,16 +565,19 @@ REQUIRED:
     prompt += `Các thông tin quan trọng bắt buộc phải có: Vị trí, Địa điểm làm việc, Mức lương, Yêu cầu công việc/kinh nghiệm.\n`;
     prompt += `Quy tắc phỏng vấn:\n`;
     prompt += `- Hãy hỏi từng thông tin một, đừng hỏi một lúc quá nhiều câu.\n`;
-    prompt += `- Nếu CHƯA ĐỦ các thông tin quan trọng trên, TUYỆT ĐỐI CHƯA TẠO JD mà hãy dừng lại và tiếp tục hỏi người dùng cho rõ (trừ khi người dùng nói rõ là bỏ qua/không cần thông tin đó).\n`;
+    prompt += `- KIỂM TRA NGHIÊM NGẶT: Bạn PHẢI tự rà soát xem đã có ĐỦ 4 thông tin cốt lõi chưa (Vị trí, Địa điểm, Mức lương, Kinh nghiệm). NẾU THIẾU DÙ CHỈ 1 THÔNG TIN (ví dụ: Địa điểm làm việc), TUYỆT ĐỐI KHÔNG ĐƯỢC TẠO JD. Bạn PHẢI tiếp tục đặt câu hỏi để lấy thông tin còn thiếu từ người dùng.\n`;
     prompt += `Quan trọng khi tạo JD:\n`;
-    prompt += `1. CHỈ KHI đã thu thập đủ thông tin quan trọng (hoặc người dùng yêu cầu "Tạo JD" bỏ qua thông tin thiếu), hãy TỰ SINH RA JD bằng tiếng Việt, bọc TOÀN BỘ nội dung markdown trong thẻ <jd_content>...</jd_content>.\n`;
-    prompt += `2. TUYỆT ĐỐI KHÔNG tự tạo thư mục mới. BẮT BUỘC trả về tên file trong thẻ <saved_file>JD_AI_[Tên_Vị_Trí_Viết_Liền_Không_Dấu].md</saved_file>, ví dụ: <saved_file>JD_AI_NhanVienSale.md</saved_file>.\n\n`;
+    prompt += `1. CHỈ KHI ĐÃ CÓ ĐẦY ĐỦ CÁC THÔNG TIN TRÊN, bạn mới được phép sinh ra JD bằng tiếng Việt, bọc TOÀN BỘ nội dung markdown trong thẻ <jd_content>...</jd_content>.\n`;
+    prompt += `2. TUYỆT ĐỐI KHÔNG tự tạo thư mục mới. BẮT BUỘC trả về tên file trong thẻ <saved_file>JD_AI_[Tên_Vị_Trí_Viết_Liền_Không_Dấu].md</saved_file>, ví dụ: <saved_file>JD_AI_NhanVienSale.md</saved_file>.\n`;
+    prompt += `3. NGUYÊN TẮC DUY NHẤT 1 FILE CHO 1 VỊ TRÍ: Nếu người dùng đang yêu cầu chỉnh sửa hoặc bổ sung nội dung cho vị trí mà bạn ĐÃ TẠO JD trước đó trong đoạn chat này, TUYỆT ĐỐI PHẢI GIỮ NGUYÊN TÊN FILE CŨ trong thẻ <saved_file> (để ghi đè bản cũ). CHỈ ĐƯỢC TẠO TÊN FILE MỚI khi người dùng yêu cầu tạo JD cho một vị trí hoàn toàn khác/mới.\n\n`;
     prompt += `Lịch sử hội thoại:\n`;
     newMessages.forEach(m => {
       prompt += `${m.role === 'user' ? 'Người dùng' : 'AI'}: ${m.content}\n\n`;
     });
     if (useCompanyInfo) {
       prompt += `\n[LƯU Ý CUỐI CHO LƯỢT NÀY]: NẾU BẠN CHUẨN BỊ TẠO JD TRONG LƯỢT NÀY, BẮT BUỘC PHẢI DÙNG CÔNG CỤ ĐỌC THƯ MỤC "hr-miniapp/company" ĐỂ LẤY THÔNG TIN CÔNG TY VÀ THÊM VÀO JD! NẾU CHƯA TẠO JD THÌ CỨ TIẾP TỤC HỎI.\n`;
+    } else {
+      prompt += `\n[LƯU Ý CUỐI CHO LƯỢT NÀY]: TUYỆT ĐỐI KHÔNG THÊM BẤT KỲ THÔNG TIN NÀO VỀ CÔNG TY VÀO JD KỂ CẢ KHI BẠN CHUẨN BỊ TẠO JD. HÃY BỎ QUA HOÀN TOÀN PHẦN THÔNG TIN CÔNG TY.\n`;
     }
     prompt += `AI: `;
     
@@ -582,6 +587,7 @@ REQUIRED:
       const res = await serviceRef.current.askAI(prompt, undefined, undefined, addLog, randomFlowChatId);
       
       if (res && res.text) {
+        setIsChatting(false);
         setChatMessages(prev => [...prev, { role: 'ai', content: res.text }]);
         
         if (res.text.includes('<jd_content>')) {
