@@ -123,7 +123,7 @@ export async function handleMcpMessage(method: string, _id: number, params: any)
 		case 'tools/call':
 			if (params?.name?.startsWith('hrm.payroll.')) {
 				const providedPassword = params?.arguments?.password;
-				if (!providedPassword || providedPassword !== process.env.PAYROLL_PASSWORD) {
+				if (!providedPassword || String(providedPassword).trim() !== String(process.env.PAYROLL_PASSWORD || '').trim()) {
 					throw new Error('Unauthorized: Invalid Password');
 				}
 				
