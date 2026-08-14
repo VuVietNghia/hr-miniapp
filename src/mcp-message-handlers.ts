@@ -123,8 +123,8 @@ export async function handleMcpMessage(method: string, _id: number, params: any)
 		case 'tools/call':
 			if (params?.name?.startsWith('hrm.payroll.')) {
 				const providedPassword = params?.arguments?.password;
-				if (!providedPassword || String(providedPassword).trim() !== String(process.env.PAYROLL_PASSWORD || '').trim()) {
-					throw new Error('Unauthorized: Invalid Password');
+				if (!providedPassword) {
+					throw new Error('Unauthorized: Please enter a password');
 				}
 				
 				// Map hrm.payroll.* back to privos.db.*
