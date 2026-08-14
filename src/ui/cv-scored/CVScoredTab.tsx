@@ -19,7 +19,7 @@ const CV_COLUMNS = [
   { status: '07_CV_Cu', label: 'CV cũ', color: '#9ca3af' },
 ];
 
-function CVCard({ cv, onMove }: { cv: CVProfile, onMove: (id: string, newStatus: string) => void }) {
+function CVCard({ cv, onMove, onInvite }: { cv: CVProfile, onMove: (id: string, newStatus: string) => void, onInvite: (cv: CVProfile, posName?: string) => void }) {
   const [isDragging, setIsDragging] = useState(false);
   const initials = cv.name.substring(0, 2).toUpperCase();
   const displayName = cv.name.length > 27 ? cv.name.substring(0, 27) + '...' : cv.name;
@@ -55,6 +55,33 @@ function CVCard({ cv, onMove }: { cv: CVProfile, onMove: (id: string, newStatus:
                 }
                 return <span className="position-badge" style={badgeStyle}>{cv.category}</span>;
               })()}
+              {cv.status === '05_Moi_Phong_Van' && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onInvite(cv); }}
+                  className="position-badge"
+                  style={{
+                    marginLeft: '4px',
+                    fontSize: '10px', 
+                    padding: '2px 8px', 
+                    border: '1px solid var(--accent, #156FF5)',
+                    backgroundColor: 'rgba(21, 111, 245, 0.08)',
+                    color: 'var(--accent, #156FF5)',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.backgroundColor = 'var(--accent, #156FF5)';
+                    e.currentTarget.style.color = '#fff';
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(21, 111, 245, 0.08)';
+                    e.currentTarget.style.color = 'var(--accent, #156FF5)';
+                  }}
+                >
+                  Gửi mail pv
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -68,7 +95,7 @@ function CVCard({ cv, onMove }: { cv: CVProfile, onMove: (id: string, newStatus:
   );
 }
 
-function CVColumn({ column, cvs, onMove }: { column: typeof CV_COLUMNS[0], cvs: CVProfile[], onMove: (id: string, newStatus: string) => void }) {
+function CVColumn({ column, cvs, onMove, onInvite }: { column: typeof CV_COLUMNS[0], cvs: CVProfile[], onMove: (id: string, newStatus: string) => void, onInvite: (cv: CVProfile, posName?: string) => void }) {
   const [isDragOver, setIsDragOver] = useState(false);
 
   const handleDrop = (e: React.DragEvent) => {
@@ -103,7 +130,7 @@ function CVColumn({ column, cvs, onMove }: { column: typeof CV_COLUMNS[0], cvs: 
         {cvs.length === 0 ? (
           <p className="empty-state">{isDragOver ? 'Thả CV vào đây' : 'Trống'}</p>
         ) : (
-          cvs.map(cv => <CVCard key={cv._id} cv={cv} onMove={onMove} />)
+          cvs.map(cv => <CVCard key={cv._id} cv={cv} onMove={onMove} onInvite={onInvite} />)
         )}
       </div>
     </div>
@@ -117,7 +144,7 @@ export interface CVBoardData {
   cvs: CVProfile[];
 }
 
-function CVBoard({ board, onMove }: { board: CVBoardData, onMove: (listId: string, id: string, newStatus: string) => void }) {
+function CVBoard({ board, onMove, onInvite }: { board: CVBoardData, onMove: (listId: string, id: string, newStatus: string) => void, onInvite: (cv: CVProfile, posName?: string) => void }) {
   return (
     <div style={{ marginBottom: '40px' }}>
       <div style={{ width: '100%', padding: '0 10px', marginBottom: '16px' }}>
@@ -130,6 +157,7 @@ function CVBoard({ board, onMove }: { board: CVBoardData, onMove: (listId: strin
             column={col} 
             cvs={board.cvs.filter(cv => cv.status === col.status || (col.status === '07_CV_Cu' && cv.status === '10_CV_Cu'))} 
             onMove={(id, newStatus) => onMove(board.listId, id, newStatus)} 
+            onInvite={(cv) => onInvite(cv, board.listName.replace(/^JD\s+/i, ''))}
           />
         ))}
       </div>
@@ -145,7 +173,43 @@ export default function CVScoredTab() {
   const [boards, setBoards] = useState<CVBoardData[]>([]);
   const [loading, setLoading] = useState(false);
   
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [selectedCVForInvite, setSelectedCVForInvite] = useState<CVProfile | null>(null);
+  
+  const [inviteCandidateName, setInviteCandidateName] = useState('');
+  const [invitePosition, setInvitePosition] = useState('');
+  const [inviteCompany, setInviteCompany] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteDate, setInviteDate] = useState('');
+  const [inviteSubject, setInviteSubject] = useState('');
+  const [inviteEmailBody, setInviteEmailBody] = useState('');
+
+  const inviteDateRef = React.useRef<HTMLInputElement>(null);
   const requestRef = React.useRef(0);
+
+  useEffect(() => {
+    if (!inviteModalOpen) return;
+    setInviteSubject(`Thư mời phỏng vấn - ${invitePosition || '[Vị trí]'} tại ${inviteCompany || '[Tên công ty]'}`);
+    
+    const formattedDate = inviteDate ? inviteDate.split('-').reverse().join('/') : '[Ngày, giờ]';
+    const emailBody = `Xin chào ${inviteCandidateName || '[Tên ứng viên]'},
+
+Cảm ơn bạn đã dành thời gian ứng tuyển vào vị trí ${invitePosition || '[Tên vị trí]'} tại ${inviteCompany || '[Tên công ty]'}! Chúng tôi đã xem xét hồ sơ của bạn và rất ấn tượng với những gì bạn có. Vì vậy, chúng tôi mong muốn có cơ hội gặp gỡ và trao đổi trực tiếp với bạn trong buổi phỏng vấn sắp tới.
+
+Thời gian: ${formattedDate}
+
+Địa điểm: [Địa chỉ công ty / Link phòng họp online]
+
+Người liên hệ: [Tên + Số điện thoại / Email]
+
+Nếu thời gian trên chưa phù hợp, bạn có thể phản hồi để sắp xếp lại lịch. Hãy xác nhận sự tham gia của bạn bằng cách trả lời email này trước [Thời hạn phản hồi].
+
+Chúng tôi rất mong được gặp bạn và trao đổi thêm về cơ hội hợp tác!
+
+Trân trọng,
+[Thông tin liên hệ của HR hoặc công ty]`;
+    setInviteEmailBody(emailBody);
+  }, [inviteCandidateName, invitePosition, inviteCompany, inviteDate, inviteModalOpen]);
 
   const loadData = useCallback(async () => {
     if (!app || !roomId) return;
@@ -378,8 +442,154 @@ export default function CVScoredTab() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {displayedBoards.map(board => (
-            <CVBoard key={board.listId} board={board} onMove={handleMove} />
+            <CVBoard 
+              key={board.listId} 
+              board={board} 
+              onMove={handleMove} 
+              onInvite={(cv, posName) => {
+                let cleanName = cv.name.replace(/\.md$/i, '');
+                const cvIndex = cleanName.indexOf('_CV_');
+                if (cvIndex !== -1) {
+                  cleanName = cleanName.substring(cvIndex + 4);
+                }
+                cleanName = cleanName.replace(/([a-z])([A-Z])/g, '$1 $2').trim();
+                
+                let cleanPos = posName || '';
+                cleanPos = cleanPos.replace(/^SCREENING_/i, '').replace(/_/g, ' ');
+
+                setSelectedCVForInvite(cv);
+                setInviteCandidateName(cleanName);
+                setInvitePosition(cleanPos);
+                setInviteCompany('Công ty ABC');
+                setInviteEmail('');
+                setInviteDate('');
+                setInviteModalOpen(true);
+              }}
+            />
           ))}
+        </div>
+      )}
+
+      {inviteModalOpen && selectedCVForInvite && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <div 
+            onClick={e => e.stopPropagation()} 
+            style={{ 
+              width: '850px', 
+              maxWidth: '95%', 
+              backgroundColor: 'var(--bg-card, #fff)', 
+              borderRadius: '12px', 
+              padding: '24px', 
+              boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
+              border: '1px solid var(--border)',
+              display: 'flex',
+              flexDirection: 'column',
+              zIndex: 10000
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0 }}>Gửi thư mời phỏng vấn</h3>
+              <button 
+                onClick={() => setInviteModalOpen(false)} 
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '16px', color: 'var(--text-muted)', padding: '4px' }}
+                title="Đóng"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+              {/* Left Column: Form Fields */}
+              <div>
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '4px' }}>Tên ứng viên</label>
+                  <input type="text" className="pl-input" value={inviteCandidateName} onChange={e => setInviteCandidateName(e.target.value)} style={{ width: '100%' }} />
+                </div>
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '4px' }}>Email ứng viên</label>
+                  <input type="email" className="pl-input" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="Ví dụ: ungvien@gmail.com" style={{ width: '100%' }} />
+                </div>
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '4px' }}>Tên vị trí</label>
+                  <input type="text" className="pl-input" value={invitePosition} onChange={e => setInvitePosition(e.target.value)} placeholder="Nhập tên vị trí" style={{ width: '100%' }} />
+                </div>
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '4px' }}>Tên công ty</label>
+                  <input type="text" className="pl-input" value={inviteCompany} onChange={e => setInviteCompany(e.target.value)} placeholder="Nhập tên công ty" style={{ width: '100%' }} />
+                </div>
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '4px' }}>Thời gian phỏng vấn</label>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <input 
+                      type="text" 
+                      className="pl-input" 
+                      readOnly 
+                      placeholder="dd/mm/yyyy"
+                      value={inviteDate ? inviteDate.split('-').reverse().join('/') : ''} 
+                      style={{ width: '100%', paddingRight: '40px', cursor: 'pointer', backgroundColor: 'var(--bg-subtle)' }} 
+                    />
+                    <div style={{ position: 'absolute', right: '10px', pointerEvents: 'none', color: '#156FF5', display: 'flex', alignItems: 'center' }}>
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="16" y1="2" x2="16" y2="6"></line>
+                        <line x1="8" y1="2" x2="8" y2="6"></line>
+                        <line x1="3" y1="10" x2="21" y2="10"></line>
+                      </svg>
+                    </div>
+                    <input 
+                      type="date"
+                      ref={inviteDateRef}
+                      value={inviteDate}
+                      onChange={e => setInviteDate(e.target.value)}
+                      onClick={(e) => {
+                        try { e.currentTarget.showPicker(); } catch (err) {}
+                      }}
+                      style={{ 
+                        position: 'absolute', left: 0, top: 0, width: '100%', height: '100%',
+                        opacity: 0, cursor: 'pointer' 
+                      }} 
+                    />
+                  </div>
+                </div>
+              </div>
+              
+              {/* Right Column: Preview */}
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '4px' }}>Tiêu đề (Cập nhật tự động)</label>
+                  <input type="text" className="pl-input" value={inviteSubject} onChange={e => setInviteSubject(e.target.value)} style={{ width: '100%' }} />
+                </div>
+                <div style={{ marginBottom: '12px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '4px' }}>Nội dung thư mời (Cập nhật tự động)</label>
+                  <textarea className="pl-input" style={{ width: '100%', flex: 1, minHeight: '260px', resize: 'vertical' }} value={inviteEmailBody} onChange={e => setInviteEmailBody(e.target.value)} />
+                </div>
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+              <button className="hr-btn" onClick={() => {
+                alert('Đã tải nội dung email!');
+              }}>Tải email về</button>
+              <button className="hr-btn hr-btn-primary" style={{ backgroundColor: '#156FF5', color: '#fff', borderColor: '#156FF5' }} onClick={() => {
+                alert('Đã gửi email mời phỏng vấn!');
+                setInviteModalOpen(false);
+              }}>Gửi</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
