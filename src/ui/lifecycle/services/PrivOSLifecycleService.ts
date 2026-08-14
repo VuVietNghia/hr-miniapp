@@ -6,7 +6,7 @@ export class PrivOSLifecycleService implements ILifecycleService {
   private static readonly SYSTEM_CONFIG_NAME = '[Hệ thống] Không xoá - Cấu hình Kanban';
   private static readonly DEFAULT_STAGE = 'Mới nhận việc';
 
-  constructor(private app: McpApp) {}
+  constructor(private app: McpApp) { }
 
   async loadProfiles(roomId: string): Promise<EmployeeProfile[]> {
     try {
@@ -30,8 +30,8 @@ export class PrivOSLifecycleService implements ILifecycleService {
     try {
       const allLists = await this.fetchAllLists(roomId);
       const screeningLists = allLists.filter(list => this.isScreeningList(list));
-      
-      console.log(`[PrivOSLifecycleService] Found ${allLists.length} lists in room, ${screeningLists.length} candidate lists:`, 
+
+      console.log(`[PrivOSLifecycleService] Found ${allLists.length} lists in room, ${screeningLists.length} candidate lists:`,
         screeningLists.map(l => l.name)
       );
 
@@ -66,21 +66,183 @@ export class PrivOSLifecycleService implements ILifecycleService {
     }
   }
 
+  private async getOrCreateFolder(roomId: string, folderName: string, parentId: string | null): Promise<string | null> {
+    try {
+      const parentQuery = parentId ? { folderId: parentId } : { channelId: roomId };
+      const toolName = parentId ? 'privos.folders.getContent' : 'privos.folders.getRootContent';
+
+      const contentRes: any = await this.app.callServerTool({
+        name: toolName,
+        arguments: parentQuery
+      });
+      const contentData = JSON.parse(contentRes?.content?.[0]?.text || '{"folders":[]}');
+      const folder = contentData.folders?.find((f: any) => f.name.toLowerCase() === folderName.toLowerCase());
+
+      if (folder) {
+        return folder._id || folder.id;
+      } else {
+        const createArgs: any = { channelId: roomId, name: folderName };
+        if (parentId) createArgs.parentId = parentId;
+
+        const createRes: any = await this.app.callServerTool({
+          name: 'privos.folders.create',
+          arguments: createArgs
+        });
+        const createdFolder = JSON.parse(createRes?.content?.[0]?.text || '{}');
+        return createdFolder._id || createdFolder.id;
+      }
+    } catch (err) {
+      console.warn(`[PrivOSLifecycleService] Lỗi tạo folder ${folderName}:`, err);
+      return null;
+    }
+  }
+
+  private async ensureEmployeeFolder(roomId: string, data: Partial<EmployeeProfile>): Promise<string | null> {
+    try {
+      // 1. Thư mục gốc: employees
+      let employeesFolderId = await this.getOrCreateFolder(roomId, 'employees', null);
+      if (!employeesFolderId) return null;
+
+      // 2. Thư mục vị trí (position)
+      const positionName = data.position || 'Chung';
+      let positionFolderId = await this.getOrCreateFolder(roomId, positionName, employeesFolderId);
+      if (!positionFolderId) return employeesFolderId; // fallback
+
+      // 3. Thư mục cá nhân nhân sự
+      const empFolderName = data.name ? data.name.replace(/\s+/g, '_') : 'Unknown_Profile';
+      let empFolderId = await this.getOrCreateFolder(roomId, empFolderName, positionFolderId);
+
+      return empFolderId || positionFolderId;
+    } catch (err) {
+      console.warn('[PrivOSLifecycleService] Error ensuring employee folders:', err);
+      return null;
+    }
+  }
+
   async createProfile(roomId: string, data: Omit<EmployeeProfile, '_id' | 'status'>): Promise<EmployeeProfile> {
     try {
       const list = await this.ensureValidList(roomId);
       if (list) {
         const customFields = this.buildCustomFieldsForCreation(data, list.fieldDefinitions);
+
+        let fileId = null;
+        let fileObjToSave = null;
+        let fileDownloadUrl = null;
+        const debugLog: string[] = [];
+
+        // Tạo thông tin MD
+        const markdownLines = [
+          `# Hồ sơ: ${data.name}`,
+          `- Số điện thoại: ${data.phone || 'Chưa cập nhật'}`,
+          `- Email: ${data.email || 'Chưa cập nhật'}`,
+          `- Vị trí: ${data.position || 'Chưa xác định'}`,
+          `- Phòng ban: ${data.department || 'Chưa xác định'}`,
+          `- Ngày bắt đầu: ${data.startDate || 'Chưa xác định'}`
+        ];
+        const markdownContent = markdownLines.join('\n');
+
+        // Base64 encode an toàn với Unicode
+        const base64Data = btoa(unescape(encodeURIComponent(markdownContent)));
+
+        // Lấy folder ID phù hợp (Cấu trúc: employees -> vị trí -> tên nhân sự)
+        const folderId = await this.ensureEmployeeFolder(roomId, data);
+        const safeName = data.name.replace(/\s+/g, '_');
+        const expectedFileName = `HoSo_${safeName}_${Date.now()}.md`;
+
+        // Upload Markdown file lên PrivOS
+        try {
+          const uploadRes: any = await this.app.uploadFile({
+            channelId: roomId,
+            fileName: expectedFileName,
+            base64Data: base64Data, // PrivOS expects raw base64 without prefix
+            mimeType: 'text/markdown',
+            folderId: folderId || undefined,
+            uploadOnly: true // Skip posting message, returns `{ file: { _id, url } }`
+          } as any);
+
+          if (uploadRes) {
+            // Handle both { file: { _id, url } } and { message: { file: { _id } } }
+            const fileObj = uploadRes.file || (uploadRes.message && uploadRes.message.file);
+            let rawFileId = (fileObj && fileObj._id) || uploadRes._id || uploadRes.id;
+
+            // Lấy URL fallback nếu cần
+            fileDownloadUrl = uploadRes.downloadUrl || uploadRes.url || (fileObj && fileObj.url);
+
+            try {
+              // Thêm delay 1 giây để File Management kịp đồng bộ từ Rocket.Chat
+              await new Promise(resolve => setTimeout(resolve, 1000));
+
+              const filesRes: any = await this.app.callServerTool({
+                name: 'privos.files.getByChannel',
+                arguments: { channelId: roomId, folderId: folderId || undefined, limit: 50 }
+              });
+              const filesText = filesRes?.content?.[0]?.text;
+              if (filesText) {
+                const files = JSON.parse(filesText);
+                const targetName = `HoSo_${safeName}_`;
+                // Tìm file vừa upload (có prefix HoSo_Name_)
+                const matchedFile = files.find((f: any) => f.name && f.name.includes(targetName));
+                if (matchedFile && (matchedFile._id || matchedFile.id)) {
+                  fileId = matchedFile._id || matchedFile.id;
+                  fileObjToSave = matchedFile;
+                  fileDownloadUrl = matchedFile.downloadUrl || fileDownloadUrl;
+                  debugLog.push(`✅ Found in FM: ${fileId}`);
+                } else {
+                  fileId = rawFileId; // Fallback
+                  fileObjToSave = { _id: fileId, name: expectedFileName, type: 'text/markdown' };
+                  debugLog.push(`❌ Not found in FM (count: ${files.length}). Fallback to: ${rawFileId}`);
+                }
+              } else {
+                fileId = rawFileId;
+                fileObjToSave = { _id: fileId, name: expectedFileName, type: 'text/markdown' };
+                debugLog.push(`❌ FM query empty. Fallback to: ${rawFileId}`);
+              }
+            } catch (queryErr) {
+              console.warn('[PrivOSLifecycleService] Không thể query File Management, dùng raw ID', queryErr);
+              fileId = rawFileId;
+              fileObjToSave = { _id: fileId, name: expectedFileName, type: 'text/markdown' };
+              debugLog.push(`❌ FM query error. Fallback to: ${rawFileId}`);
+            }
+          }
+        } catch (err) {
+          console.error('[PrivOSLifecycleService] Lỗi khi upload Markdown hồ sơ:', err);
+        }
+
+        if (fileObjToSave) {
+          // Tìm trường có type là DOCUMENT hoặc tên chứa 'hồ sơ' / 'document'
+          const fileFieldDef = (list.fieldDefinitions || []).find((fd: any) =>
+            fd.type === 'DOCUMENT' ||
+            (fd.name || '').toLowerCase().includes('hồ sơ') ||
+            (fd.name || '').toLowerCase().includes('document')
+          );
+          if (fileFieldDef) {
+            customFields.push({ fieldId: fileFieldDef._id || fileFieldDef.id, value: [fileObjToSave] });
+          }
+        }
+
+        const descriptionParts = [];
+        // Hiển thị debug log lên UI
+        if (typeof debugLog !== 'undefined' && debugLog.length > 0) {
+          descriptionParts.push(`**Debug ID:** ${debugLog.join(' | ')}`);
+        }
+
+        if (data.sourceCandidateId) {
+          descriptionParts.push(`[sourceCandidateId:${data.sourceCandidateId}]`);
+        }
+        if (fileDownloadUrl) {
+          descriptionParts.push(`[fileUrl:${fileDownloadUrl}]`);
+        }
+
         const res: any = await this.app.callServerTool({
           name: 'privos.lists.createItem',
           arguments: {
             listId: list._id || list.id,
             title: data.name,
             customFields,
-            ...(data.sourceCandidateId ? { description: `[sourceCandidateId:${data.sourceCandidateId}]` } : {})
+            ...(descriptionParts.length > 0 ? { description: descriptionParts.join('\n\n') } : {})
           }
         });
-        
+
         const parsed = JSON.parse(res?.content?.[0]?.text || '{}');
         return {
           ...data,
@@ -91,7 +253,7 @@ export class PrivOSLifecycleService implements ILifecycleService {
     } catch (err) {
       console.error('[PrivOSLifecycleService] Connection error when creating profile:', err);
     }
-    
+
     // Fallback if failed
     return {
       ...data,
@@ -146,7 +308,7 @@ export class PrivOSLifecycleService implements ILifecycleService {
 
   private async ensureValidList(roomId: string): Promise<any | null> {
     let list = await this.findExistingList(roomId);
-    
+
     if (list) {
       list = await this.enrichListWithStagesOrDelete(list);
     }
@@ -180,7 +342,7 @@ export class PrivOSLifecycleService implements ILifecycleService {
 
   private async enrichListWithStagesOrDelete(list: any): Promise<any | null> {
     const configItem = await this.fetchSystemConfigItem(list._id || list.id);
-    
+
     if (configItem && configItem.description) {
       try {
         list.stages = JSON.parse(configItem.description);
@@ -188,11 +350,11 @@ export class PrivOSLifecycleService implements ILifecycleService {
         console.warn('Failed to parse config item description');
       }
     }
-    
+
     if (this.isValidStagesArray(list.stages)) {
       return list;
     }
-    
+
     // List is corrupted or missing stages config -> delete and return null to trigger recreation
     console.log('[PrivOSLifecycleService] List is old/corrupted (no stages). Deleting to clean up...');
     await this.deleteList(list._id || list.id);
@@ -208,7 +370,7 @@ export class PrivOSLifecycleService implements ILifecycleService {
       name: 'privos.lists.searchItems',
       arguments: { listId, query: '[Hệ thống] Không xoá' }
     });
-    
+
     const searchParsed = JSON.parse(searchRes?.content?.[0]?.text || '[]');
     return searchParsed.find((i: any) => this.isSystemConfigItem(i)) || null;
   }
@@ -228,8 +390,8 @@ export class PrivOSLifecycleService implements ILifecycleService {
     try {
       const res: any = await this.app.callServerTool({
         name: 'privos.lists.create',
-        arguments: { 
-          roomId, 
+        arguments: {
+          roomId,
           name: 'Hồ sơ nhân sự',
           fieldDefinitions: this.getInitialFieldDefinitions(),
           stages: this.getInitialStages()
@@ -238,7 +400,7 @@ export class PrivOSLifecycleService implements ILifecycleService {
 
       const parsed = JSON.parse(res?.content?.[0]?.text || '{}');
       const newList = parsed.list || parsed || null;
-      
+
       if (newList && parsed.stages) {
         await this.createSystemConfigItem(newList._id || newList.id, parsed.stages);
         newList.stages = parsed.stages;
@@ -266,9 +428,10 @@ export class PrivOSLifecycleService implements ILifecycleService {
     return [
       { name: "Số điện thoại", type: "TEXT" },
       { name: "Email", type: "TEXT" },
-      { name: "Vị trí", type: "SELECT", options: [{value: "Developer"}, {value: "Tester"}, {value: "HR"}, {value: "Sales"}] },
-      { name: "Phòng ban", type: "SELECT", options: [{value: "IT"}, {value: "Business"}, {value: "Back-office"}] },
-      { name: "Ngày bắt đầu", type: "DATE" }
+      { name: "Vị trí", type: "SELECT", options: [{ value: "Developer" }, { value: "Tester" }, { value: "HR" }, { value: "Sales" }] },
+      { name: "Phòng ban", type: "SELECT", options: [{ value: "IT" }, { value: "Business" }, { value: "Back-office" }] },
+      { name: "Ngày bắt đầu", type: "DATE" },
+      { name: "Hồ sơ đính kèm", type: "DOCUMENT" }
     ];
   }
 
@@ -316,6 +479,10 @@ export class PrivOSLifecycleService implements ILifecycleService {
       if (match) {
         profile.sourceCandidateId = match[1];
       }
+      const urlMatch = item.description.match(/\[fileUrl:([^\]]+)\]/);
+      if (urlMatch) {
+        profile.attachedFileUrl = urlMatch[1];
+      }
     }
 
     if (item.customFields) {
@@ -343,7 +510,7 @@ export class PrivOSLifecycleService implements ILifecycleService {
     const parseField = (fieldId: string, val: any) => {
       const fd = fieldDefMap.get(fieldId);
       if (!fd) return;
-      
+
       const displayVal = this.getDisplayValueForField(fd, val);
       this.assignProfileFieldByName(profile, fd.name, displayVal);
     };
@@ -365,7 +532,7 @@ export class PrivOSLifecycleService implements ILifecycleService {
 
   private assignProfileFieldByName(profile: any, fieldName: string, value: any): void {
     const fname = fieldName.toLowerCase();
-    
+
     if (fname.includes('thoại') || fname.includes('phone')) profile.phone = value;
     else if (fname.includes('email')) profile.email = value;
     else if (fname.includes('vị trí') || fname.includes('position')) profile.position = value;
@@ -380,9 +547,9 @@ export class PrivOSLifecycleService implements ILifecycleService {
     fieldDefinitions.forEach((fd: any) => {
       const valueToSave = this.getProfileValueByFieldName(data, fd.name);
       if (valueToSave) {
-        customFields.push({ 
+        customFields.push({
           fieldId: fd._id || fd.id, // Fixed ID lookup
-          value: this.getRawValueForField(fd, valueToSave) 
+          value: this.getRawValueForField(fd, valueToSave)
         });
       }
     });
@@ -472,7 +639,7 @@ export class PrivOSLifecycleService implements ILifecycleService {
     const normalizedName = this.normalizeText(rawName);
 
     // Explicitly exclude HR lifecycle lists
-    const isHrLifecycle = 
+    const isHrLifecycle =
       normalizedName.includes('HO SO NHAN SU') ||
       normalizedName.includes('NHAN SU') ||
       normalizedName.includes('LIFECYCLE') ||
@@ -485,12 +652,12 @@ export class PrivOSLifecycleService implements ILifecycleService {
   private isPassedCandidateItem(item: any, stages?: any[]): boolean {
     const rawStageName = this.getStageName(item, stages || []);
     const stageName = this.normalizeText(rawStageName);
-    
+
     // CHỈ lấy ứng viên đang ở Stage 05 (Mời phỏng vấn)
     // Dùng Regex ^05[_\s] để đảm bảo bắt buộc bắt đầu bằng 05_ hoặc 05 (tránh dính 105_)
-    const isStage5 = /^05[_\s]/.test(stageName) || 
-                     stageName.includes('MOI PHONG VAN') || 
-                     stageName.includes('MOI_PHONG_VAN');
+    const isStage5 = /^05[_\s]/.test(stageName) ||
+      stageName.includes('MOI PHONG VAN') ||
+      stageName.includes('MOI_PHONG_VAN');
 
     return isStage5;
   }
@@ -517,7 +684,7 @@ export class PrivOSLifecycleService implements ILifecycleService {
 
   private extractFieldValue(customFields: any, fieldKeys: string[]): any {
     if (!customFields) return undefined;
-    
+
     if (Array.isArray(customFields)) {
       for (const cf of customFields) {
         const id = (cf.fieldId || cf.fieldDefinitionId || cf.name || '').toLowerCase();

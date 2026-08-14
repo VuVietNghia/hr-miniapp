@@ -35,6 +35,17 @@ export function CreateProfileForm({
     startDate: new Date().toISOString().split('T')[0]
   });
 
+  const fillMockData = () => {
+    setFormData({
+      name: 'Trần Văn ' + Math.floor(Math.random() * 1000),
+      phone: '09' + Math.floor(10000000 + Math.random() * 90000000),
+      email: `tv${Math.floor(Math.random() * 1000)}@example.com`,
+      position: 'Developer',
+      department: 'IT',
+      startDate: new Date().toISOString().split('T')[0]
+    });
+  };
+
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -266,20 +277,14 @@ export function CreateProfileForm({
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24 }}>
-          <button 
-            type="button" 
-            className="hr-btn" 
-            onClick={onCancel} 
-            disabled={isSubmitting}
-          >
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+          <button type="button" className="hr-btn" onClick={fillMockData} disabled={isSubmitting}>
+            Mock Data
+          </button>
+          <button type="button" className="hr-btn" onClick={onCancel} disabled={isSubmitting}>
             Hủy bỏ
           </button>
-          <button 
-            type="submit" 
-            className="hr-btn hr-btn-accent" 
-            disabled={isSubmitting}
-          >
+          <button type="submit" className="hr-btn hr-btn-accent" disabled={isSubmitting}>
             {isSubmitting ? 'Đang lưu hồ sơ...' : 'Tạo hồ sơ nhân sự'}
           </button>
         </div>
