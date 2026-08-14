@@ -39,8 +39,7 @@ export class PayrollService implements IPayrollService {
       const res: any = await this.app.callServerTool({
         name: 'hrm.payroll.query',
         arguments: {
-          collection: this.collectionName,
-          where: [{ field: 'roomId', op: '==', value: this.roomId }]
+          collection: this.collectionName
         }
       });
       if (!res) return [];
@@ -65,13 +64,20 @@ export class PayrollService implements IPayrollService {
 
       console.log("[PayrollService] getRecords parsed object:", parsed);
 
-      if (Array.isArray(parsed)) return parsed;
-      if (Array.isArray(parsed?.records)) return parsed.records;
-      if (Array.isArray(parsed?.result?.records)) return parsed.result.records;
-      if (Array.isArray(parsed?.result)) return parsed.result;
-      if (Array.isArray(parsed?.items)) return parsed.items;
-      if (Array.isArray(parsed?.data)) return parsed.data;
-      return [];
+      let recordsList: any[] = [];
+      if (Array.isArray(parsed)) recordsList = parsed;
+      else if (Array.isArray(parsed?.records)) recordsList = parsed.records;
+      else if (Array.isArray(parsed?.result?.records)) recordsList = parsed.result.records;
+      else if (Array.isArray(parsed?.result)) recordsList = parsed.result;
+      else if (Array.isArray(parsed?.items)) recordsList = parsed.items;
+      else if (Array.isArray(parsed?.data)) recordsList = parsed.data;
+
+      if (this.roomId && recordsList.length > 0) {
+        const roomFiltered = recordsList.filter((r: any) => !r.roomId || r.roomId === this.roomId);
+        return roomFiltered.length > 0 ? roomFiltered : recordsList;
+      }
+
+      return recordsList;
     } catch (err) {
       console.error("Failed to fetch payroll records:", err);
       return [];
@@ -85,10 +91,15 @@ export class PayrollService implements IPayrollService {
       
       console.log("[PayrollService] saveRecord data:", { id: record._id, data });
 
-      if (record._id) {
+      // Lookup existing records to determine whether to update or create
+      const existingRecords = await this.getRecords();
+      const existingForEmp = existingRecords.find(r => r.employeeId === record.employeeId || (record._id && r._id === record._id));
+      const targetId = record._id || existingForEmp?._id;
+
+      if (targetId) {
         const res = await this.app.callServerTool({
           name: 'hrm.payroll.update',
-          arguments: { collection: this.collectionName, id: record._id, data }
+          arguments: { collection: this.collectionName, id: targetId, data }
         });
         console.log("[PayrollService] update res:", res);
       } else {
