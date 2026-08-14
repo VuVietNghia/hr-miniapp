@@ -122,11 +122,6 @@ export async function handleMcpMessage(method: string, _id: number, params: any)
 
 		case 'tools/call':
 			if (params?.name?.startsWith('hrm.payroll.')) {
-				const providedPassword = params?.arguments?.password;
-				if (!providedPassword || providedPassword !== process.env.PAYROLL_PASSWORD) {
-					throw new Error('Unauthorized: Invalid Password');
-				}
-				
 				// Map hrm.payroll.* back to privos.db.*
 				const hubToolName = params.name.replace('hrm.payroll.', 'privos.db.');
 				

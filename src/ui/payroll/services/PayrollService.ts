@@ -34,7 +34,7 @@ export class PayrollService implements IPayrollService {
     }
   }
 
-  async getRecords(password: string): Promise<PayrollRecord[]> {
+  async getRecords(password: string = ''): Promise<PayrollRecord[]> {
     try {
       const res: any = await this.app.callServerTool({
         name: 'hrm.payroll.query',
@@ -54,7 +54,7 @@ export class PayrollService implements IPayrollService {
     }
   }
 
-  async saveRecord(record: PayrollRecord, password: string): Promise<void> {
+  async saveRecord(record: PayrollRecord, password: string = ''): Promise<void> {
     const { _id, _createdAt, _updatedAt, ...rest } = record as any;
     const data = { ...rest, roomId: this.roomId };
     
@@ -71,7 +71,7 @@ export class PayrollService implements IPayrollService {
     }
   }
 
-  async deleteRecord(id: string, password: string): Promise<void> {
+  async deleteRecord(id: string, password: string = ''): Promise<void> {
     await this.app.callServerTool({
       name: 'hrm.payroll.delete',
       arguments: { password, collection: this.collectionName, id }
