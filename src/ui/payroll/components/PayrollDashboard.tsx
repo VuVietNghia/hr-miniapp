@@ -95,19 +95,8 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
         payrollService.getRecords()
       ]);
 
-      // DỌN RÁC (Garbage Collection): Xoá bản ghi lương nếu nhân viên không còn tồn tại
-      const activeEmpIds = new Set(empData.map(e => e._id));
-      const orphanedPayrolls = payData.filter(p => !activeEmpIds.has(p.employeeId));
-      
-      if (orphanedPayrolls.length > 0) {
-        console.log(`Tiến hành dọn rác: Xoá ${orphanedPayrolls.length} bản ghi lương mồ côi.`);
-        await Promise.all(orphanedPayrolls.map(p => {
-          if (p._id) return payrollService.deleteRecord(p._id);
-        }));
-      }
-
-      setEmployees(empData);
-      setPayrolls(payData.filter(p => activeEmpIds.has(p.employeeId)));
+      setEmployees(empData || []);
+      setPayrolls(payData || []);
     } catch (error: any) {
       console.error("Lỗi khi tải dữ liệu lương:", error);
       setStatusMsg({ text: `Lỗi khi tải dữ liệu: ${error?.message || String(error)}`, type: 'error' });
@@ -117,10 +106,11 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
   };
 
   const handleEdit = (emp: EmployeeProfile) => {
-    const existing = payrolls.find(p => p.employeeId === emp._id);
-    setEditingId(emp._id);
+    const empId = String(emp._id || emp.id || '').trim();
+    const existing = payrolls.find(p => String(p.employeeId || '').trim() === empId);
+    setEditingId(empId);
     setFormData(existing || {
-      employeeId: emp._id,
+      employeeId: empId,
       baseSalary: 0,
       taxId: '',
       bankAccount: '',
@@ -533,8 +523,9 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
           </thead>
           <tbody>
             {filteredEmployees.map(emp => {
-              const pay = payrolls.find(p => p.employeeId === emp._id);
-              const isEditing = editingId === emp._id;
+              const empId = String(emp._id || emp.id || '').trim();
+              const pay = payrolls.find(p => String(p.employeeId || '').trim() === empId);
+              const isEditing = editingId === empId;
               const hasConfiguredSalary = pay && (pay.baseSalary ?? 0) > 0;
               const initials = getInitials(emp.name);
               
