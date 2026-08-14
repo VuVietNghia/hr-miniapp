@@ -50,7 +50,7 @@ export class PayrollService implements IPayrollService {
       return parsed.records || [];
     } catch (err) {
       console.error("Failed to fetch payroll records:", err);
-      throw err;
+      return [];
     }
   }
 
