@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { EmployeeProfile, PassedCandidate } from '../types';
 
 interface CreateProfileFormProps {
-  onSubmit: (data: Omit<EmployeeProfile, '_id' | 'status'>) => Promise<void>;
+  onSubmit: (data: Omit<EmployeeProfile, '_id' | 'status'> & { attachedFileObj?: any }) => Promise<void>;
   onCancel: () => void;
   passedCandidates?: PassedCandidate[];
   isLoadingCandidates?: boolean;

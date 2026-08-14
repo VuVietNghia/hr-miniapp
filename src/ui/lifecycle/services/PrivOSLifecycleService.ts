@@ -66,147 +66,17 @@ export class PrivOSLifecycleService implements ILifecycleService {
     }
   }
 
-  private async getOrCreateFolder(roomId: string, folderName: string, parentId: string | null): Promise<string | null> {
-    try {
-      const parentQuery = parentId ? { folderId: parentId } : { channelId: roomId };
-      const toolName = parentId ? 'privos.folders.getContent' : 'privos.folders.getRootContent';
 
-      const contentRes: any = await this.app.callServerTool({
-        name: toolName,
-        arguments: parentQuery
-      });
-      const contentData = JSON.parse(contentRes?.content?.[0]?.text || '{"folders":[]}');
-      const folder = contentData.folders?.find((f: any) => f.name.toLowerCase() === folderName.toLowerCase());
 
-      if (folder) {
-        return folder._id || folder.id;
-      } else {
-        const createArgs: any = { channelId: roomId, name: folderName };
-        if (parentId) createArgs.parentId = parentId;
-
-        const createRes: any = await this.app.callServerTool({
-          name: 'privos.folders.create',
-          arguments: createArgs
-        });
-        const createdFolder = JSON.parse(createRes?.content?.[0]?.text || '{}');
-        return createdFolder._id || createdFolder.id;
-      }
-    } catch (err) {
-      console.warn(`[PrivOSLifecycleService] Lỗi tạo folder ${folderName}:`, err);
-      return null;
-    }
-  }
-
-  private async ensureEmployeeFolder(roomId: string, data: Partial<EmployeeProfile>): Promise<string | null> {
-    try {
-      // 1. Thư mục gốc: employees
-      let employeesFolderId = await this.getOrCreateFolder(roomId, 'employees', null);
-      if (!employeesFolderId) return null;
-
-      // 2. Thư mục vị trí (position)
-      const positionName = data.position || 'Chung';
-      let positionFolderId = await this.getOrCreateFolder(roomId, positionName, employeesFolderId);
-      if (!positionFolderId) return employeesFolderId; // fallback
-
-      // 3. Thư mục cá nhân nhân sự
-      const empFolderName = data.name ? data.name.replace(/\s+/g, '_') : 'Unknown_Profile';
-      let empFolderId = await this.getOrCreateFolder(roomId, empFolderName, positionFolderId);
-
-      return empFolderId || positionFolderId;
-    } catch (err) {
-      console.warn('[PrivOSLifecycleService] Error ensuring employee folders:', err);
-      return null;
-    }
-  }
-
-  async createProfile(roomId: string, data: Omit<EmployeeProfile, '_id' | 'status'>): Promise<EmployeeProfile> {
+  async createProfile(roomId: string, data: Omit<EmployeeProfile, '_id' | 'status'> & { attachedFileObj?: any }): Promise<EmployeeProfile> {
     try {
       const list = await this.ensureValidList(roomId);
       if (list) {
         const customFields = this.buildCustomFieldsForCreation(data, list.fieldDefinitions);
 
-        let fileId = null;
-        let fileObjToSave = null;
-        let fileDownloadUrl = null;
+        let fileObjToSave = data.attachedFileObj || null;
+        let fileDownloadUrl = fileObjToSave?.downloadUrl || fileObjToSave?.url || null;
         const debugLog: string[] = [];
-
-        // Tạo thông tin MD
-        const markdownLines = [
-          `# Hồ sơ: ${data.name}`,
-          `- Số điện thoại: ${data.phone || 'Chưa cập nhật'}`,
-          `- Email: ${data.email || 'Chưa cập nhật'}`,
-          `- Vị trí: ${data.position || 'Chưa xác định'}`,
-          `- Phòng ban: ${data.department || 'Chưa xác định'}`,
-          `- Ngày bắt đầu: ${data.startDate || 'Chưa xác định'}`
-        ];
-        const markdownContent = markdownLines.join('\n');
-
-        // Base64 encode an toàn với Unicode
-        const base64Data = btoa(unescape(encodeURIComponent(markdownContent)));
-
-        // Lấy folder ID phù hợp (Cấu trúc: employees -> vị trí -> tên nhân sự)
-        const folderId = await this.ensureEmployeeFolder(roomId, data);
-        const safeName = data.name.replace(/\s+/g, '_');
-        const expectedFileName = `HoSo_${safeName}_${Date.now()}.md`;
-
-        // Upload Markdown file lên PrivOS
-        try {
-          const uploadRes: any = await this.app.uploadFile({
-            channelId: roomId,
-            fileName: expectedFileName,
-            base64Data: base64Data, // PrivOS expects raw base64 without prefix
-            mimeType: 'text/markdown',
-            folderId: folderId || undefined,
-            uploadOnly: true // Skip posting message, returns `{ file: { _id, url } }`
-          } as any);
-
-          if (uploadRes) {
-            // Handle both { file: { _id, url } } and { message: { file: { _id } } }
-            const fileObj = uploadRes.file || (uploadRes.message && uploadRes.message.file);
-            let rawFileId = (fileObj && fileObj._id) || uploadRes._id || uploadRes.id;
-
-            // Lấy URL fallback nếu cần
-            fileDownloadUrl = uploadRes.downloadUrl || uploadRes.url || (fileObj && fileObj.url);
-
-            try {
-              // Thêm delay 1 giây để File Management kịp đồng bộ từ Rocket.Chat
-              await new Promise(resolve => setTimeout(resolve, 1000));
-
-              const filesRes: any = await this.app.callServerTool({
-                name: 'privos.files.getByChannel',
-                arguments: { channelId: roomId, folderId: folderId || undefined, limit: 50 }
-              });
-              const filesText = filesRes?.content?.[0]?.text;
-              if (filesText) {
-                const files = JSON.parse(filesText);
-                const targetName = `HoSo_${safeName}_`;
-                // Tìm file vừa upload (có prefix HoSo_Name_)
-                const matchedFile = files.find((f: any) => f.name && f.name.includes(targetName));
-                if (matchedFile && (matchedFile._id || matchedFile.id)) {
-                  fileId = matchedFile._id || matchedFile.id;
-                  fileObjToSave = matchedFile;
-                  fileDownloadUrl = matchedFile.downloadUrl || fileDownloadUrl;
-                  debugLog.push(`✅ Found in FM: ${fileId}`);
-                } else {
-                  fileId = rawFileId; // Fallback
-                  fileObjToSave = { _id: fileId, name: expectedFileName, type: 'text/markdown' };
-                  debugLog.push(`❌ Not found in FM (count: ${files.length}). Fallback to: ${rawFileId}`);
-                }
-              } else {
-                fileId = rawFileId;
-                fileObjToSave = { _id: fileId, name: expectedFileName, type: 'text/markdown' };
-                debugLog.push(`❌ FM query empty. Fallback to: ${rawFileId}`);
-              }
-            } catch (queryErr) {
-              console.warn('[PrivOSLifecycleService] Không thể query File Management, dùng raw ID', queryErr);
-              fileId = rawFileId;
-              fileObjToSave = { _id: fileId, name: expectedFileName, type: 'text/markdown' };
-              debugLog.push(`❌ FM query error. Fallback to: ${rawFileId}`);
-            }
-          }
-        } catch (err) {
-          console.error('[PrivOSLifecycleService] Lỗi khi upload Markdown hồ sơ:', err);
-        }
 
         if (fileObjToSave) {
           // Tìm trường có type là DOCUMENT hoặc tên chứa 'hồ sơ' / 'document'
