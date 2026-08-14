@@ -300,8 +300,7 @@ export class PrivOSLifecycleService implements ILifecycleService {
       { name: "Email", type: "TEXT" },
       { name: "Vị trí", type: "SELECT", options: [{ value: "Developer" }, { value: "Tester" }, { value: "HR" }, { value: "Sales" }] },
       { name: "Phòng ban", type: "SELECT", options: [{ value: "IT" }, { value: "Business" }, { value: "Back-office" }] },
-      { name: "Ngày bắt đầu", type: "DATE" },
-      { name: "Hồ sơ đính kèm", type: "DOCUMENT" }
+      { name: "Ngày bắt đầu", type: "DATE" }
     ];
   }
 
@@ -408,6 +407,7 @@ export class PrivOSLifecycleService implements ILifecycleService {
     else if (fname.includes('vị trí') || fname.includes('position')) profile.position = value;
     else if (fname.includes('phòng')) profile.department = value;
     else if (fname.includes('ngày') || fname.includes('date')) profile.startDate = value;
+    else if (fname.includes('hồ sơ') || fname.includes('document')) profile.attachedFileObj = Array.isArray(value) ? value[0] : value;
   }
 
   private buildCustomFieldsForCreation(data: Omit<EmployeeProfile, '_id' | 'status'>, fieldDefinitions: any[] | undefined): any[] {

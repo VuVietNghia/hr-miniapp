@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { usePrivosContext } from '@privos/app-react';
 import { EmployeeProfile, KANBAN_COLUMNS } from '../types';
 import { getInitials, calculateTimelineInfo } from '../utils';
 
@@ -10,11 +11,43 @@ interface ProfileListViewProps {
 
 export function ProfileListView({ profiles, isLoading, onMoveProfile }: ProfileListViewProps) {
   const [copiedField, setCopiedField] = useState<{ id: string; field: string } | null>(null);
+  const { roomId } = usePrivosContext();
 
   const copyToClipboard = (id: string, text: string, field: string) => {
     navigator.clipboard.writeText(text);
     setCopiedField({ id, field });
     setTimeout(() => setCopiedField(null), 1800);
+  };
+
+  const getFileUrl = (p: EmployeeProfile) => {
+    const obj = p.attachedFileObj;
+    if (!obj) {
+      if ((p as any).attachedFileUrl && (p as any).attachedFileUrl !== 'null') return (p as any).attachedFileUrl;
+      return '#';
+    }
+    
+    if (typeof obj === 'string') {
+      if (obj.startsWith('http') || obj.startsWith('/')) return obj;
+      return `/group/${roomId}/file-viewer/${obj}`;
+    }
+    
+    const id = obj._id || obj.id;
+    if (id) {
+      return `/group/${roomId}/file-viewer/${id}`;
+    }
+    
+    const url = obj.url || obj.downloadUrl || obj.link || obj.fileUrl;
+    if (url) return url;
+    
+    return '#';
+  };
+
+  const getFileName = (p: EmployeeProfile) => {
+    const obj = p.attachedFileObj;
+    if (!obj) return 'Hồ sơ đính kèm';
+    if (typeof obj === 'string') return 'Tài liệu đính kèm';
+    const name = obj.name || obj.title || obj.fileName || 'Hồ sơ đính kèm';
+    return name.length > 25 ? name.substring(0, 25) + '...' : name;
   };
 
   if (isLoading) {
@@ -69,6 +102,23 @@ export function ProfileListView({ profiles, isLoading, onMoveProfile }: ProfileL
                       {profile.startDate && (
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                           Ngày vào: {profile.startDate}
+                        </div>
+                      )}
+                      {profile.attachedFileObj && (
+                        <div style={{ marginTop: '4px' }}>
+                          <a 
+                            href={getFileUrl(profile)} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            style={{ fontSize: '0.75rem', color: 'var(--accent)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}
+                            title={getFileName(profile) || 'Xem tài liệu'}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                              <polyline points="14 2 14 8 20 8"></polyline>
+                            </svg>
+                            {getFileName(profile)}
+                          </a>
                         </div>
                       )}
                     </div>
