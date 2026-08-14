@@ -58,6 +58,32 @@ export function CreateDetailedProfileForm({
 
   const [idPhoto, setIdPhoto] = useState<{ base64: string; filename: string; mimeType: string } | null>(null);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>('');
+
+  const fillMockData = () => {
+    setFormData({
+      fullName: 'Nguyễn Văn ' + Math.floor(Math.random() * 1000),
+      email: `nv${Math.floor(Math.random() * 1000)}@example.com`,
+      phone: '09' + Math.floor(10000000 + Math.random() * 90000000),
+      position: 'Developer',
+      department: 'IT',
+      onboardingDate: new Date().toISOString().split('T')[0],
+      dob: '1995-05-15',
+      idNumber: '001095' + Math.floor(100000 + Math.random() * 900000),
+      idIssueDate: '2020-01-01',
+      idIssuePlace: 'Cục cảnh sát QLHC',
+      permanentAddress: '123 Đường ABC, Phường XYZ, Quận 1, TP.HCM',
+      currentAddress: '456 Đường DEF, Phường GHI, Quận 3, TP.HCM',
+      vehiclePlate: '59P1-123.45',
+      vehicleType: 'Honda Airblade',
+      socialInsurance: '1234567890',
+      taxCode: '8392134589',
+      bankAccount: '1903456789',
+      bankName: 'Techcombank',
+      momoWallet: '0987654321',
+      telegram: '@mockuser',
+      emergencyContact: 'Vợ - 0988888888',
+    });
+  };
   const [errorMsg, setErrorMsg] = useState('');
   const [debugLog, setDebugLog] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -211,21 +237,20 @@ export function CreateDetailedProfileForm({
       let imgLinkStr = idPhoto ? `*Ảnh thẻ và các tài liệu liên quan được lưu trữ cùng thư mục với hồ sơ này.*` : '*Chưa có ảnh đính kèm*';
       mdContent = mdContent.replace('[IMAGE_LINK]', imgLinkStr);
 
-      // 4. Upload Markdown file
+      // 4. Upload Markdown file locally (hr-miniapp local folder)
       const mdFileName = `${new Date().toISOString().split('T')[0]}_PROFILE_${safeName}.md`;
       const mdFilePath = `hr-miniapp/employees/${safeDept}/${safeName}/${mdFileName}`;
       
       await createOrUpdateFile(app, `${roomId}/${mdFilePath}`, mdContent);
       addLog(`Tạo file Markdown thành công. Đang lưu database...`);
 
-      // 4. Update Database
       await onSubmit({
         name: trimmedName,
         phone: trimmedPhone,
         email: trimmedEmail,
-        position: selectedCandidate?.position || 'Unknown',
-        department: getDepartmentForPosition(selectedCandidate?.position || ''),
-        startDate: new Date().toISOString().split('T')[0],
+        position: formData.position || 'Unknown',
+        department: formData.department || 'Unknown',
+        startDate: formData.onboardingDate || new Date().toISOString().split('T')[0],
         sourceCandidateId: selectedCandidate?._id
       });
 
@@ -446,6 +471,9 @@ export function CreateDetailedProfileForm({
             </button>
           ) : (
             <>
+              <button type="button" className="hr-btn" onClick={fillMockData} disabled={isSubmitting}>
+                Mock Data
+              </button>
               <button type="button" className="hr-btn" onClick={onCancel} disabled={isSubmitting}>
                 Hủy bỏ
               </button>
