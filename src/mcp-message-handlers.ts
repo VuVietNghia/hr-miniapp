@@ -88,11 +88,45 @@ export async function handleMcpMessage(method: string, _id: number, params: any)
 						_meta: {
 							ui: { resourceUri: UI_RESOURCE_URI },
 						},
+					},
+					{
+						name: 'hrm.payroll.query',
+						title: 'Query Payroll Data',
+						description: 'Query payroll records',
+						inputSchema: { type: 'object' }
+					},
+					{
+						name: 'hrm.payroll.create',
+						title: 'Create Payroll Data',
+						description: 'Create a payroll record',
+						inputSchema: { type: 'object' }
+					},
+					{
+						name: 'hrm.payroll.update',
+						title: 'Update Payroll Data',
+						description: 'Update a payroll record',
+						inputSchema: { type: 'object' }
+					},
+					{
+						name: 'hrm.payroll.delete',
+						title: 'Delete Payroll Data',
+						description: 'Delete a payroll record',
+						inputSchema: { type: 'object' }
 					}
 				],
 			};
 
 		case 'tools/call':
+			if (params?.name?.startsWith('hrm.payroll.')) {
+				// Map hrm.payroll.* back to privos.db.*
+				const hubToolName = params.name.replace('hrm.payroll.', 'privos.db.');
+				const safeArgs = { ...params.arguments };
+				delete safeArgs.password;
+				
+				const result = await callHubTool(hubToolName, safeArgs);
+				return result;
+			}
+
 			if (params?.name !== TOOL_NAME) {
 				throw new Error(`Unknown tool: ${params?.name || '<missing>'}`);
 			}

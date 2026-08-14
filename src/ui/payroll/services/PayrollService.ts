@@ -37,7 +37,7 @@ export class PayrollService implements IPayrollService {
   async getRecords(): Promise<PayrollRecord[]> {
     try {
       const res: any = await this.app.callServerTool({
-        name: 'privos.db.query',
+        name: 'hrm.payroll.query',
         arguments: {
           collection: this.collectionName,
           where: [{ field: 'roomId', op: '==', value: this.roomId }]
@@ -59,12 +59,12 @@ export class PayrollService implements IPayrollService {
     
     if (record._id) {
       await this.app.callServerTool({
-        name: 'privos.db.update',
+        name: 'hrm.payroll.update',
         arguments: { collection: this.collectionName, id: record._id, data }
       });
     } else {
       await this.app.callServerTool({
-        name: 'privos.db.create',
+        name: 'hrm.payroll.create',
         arguments: { collection: this.collectionName, data }
       });
     }
@@ -72,7 +72,7 @@ export class PayrollService implements IPayrollService {
 
   async deleteRecord(id: string): Promise<void> {
     await this.app.callServerTool({
-      name: 'privos.db.delete',
+      name: 'hrm.payroll.delete',
       arguments: { collection: this.collectionName, id }
     });
   }
