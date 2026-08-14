@@ -109,20 +109,25 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
     const empId = String(emp._id || emp.id || '').trim();
     const existing = payrolls.find(p => String(p.employeeId || '').trim() === empId);
     setEditingId(empId);
-    setFormData(existing || {
+    setFormData({
+      ...(existing || {}),
       employeeId: empId,
-      baseSalary: 0,
-      taxId: '',
-      bankAccount: '',
-      bankName: 'Vietcombank',
-      contractType: 'Chính thức',
-      applyProbationRate: true,
-      probationRate: 85
+      baseSalary: existing?.baseSalary ?? 0,
+      taxId: existing?.taxId ?? '',
+      bankAccount: existing?.bankAccount ?? '',
+      bankName: existing?.bankName || 'Vietcombank',
+      contractType: existing?.contractType || 'Chính thức',
+      applyProbationRate: existing?.applyProbationRate !== false,
+      probationRate: existing?.probationRate ?? 85
     });
   };
 
   const handleSave = async () => {
-    if (!formData.employeeId) return;
+    const targetEmpId = String(formData.employeeId || editingId || '').trim();
+    if (!targetEmpId) {
+      setStatusMsg({ text: 'Không xác định được ID nhân viên.', type: 'error' });
+      return;
+    }
 
     // Validate mức lương (bỏ dấu chấm/phẩy nếu người dùng nhập)
     const rawSalary = formData.baseSalary !== undefined && formData.baseSalary !== null 
@@ -150,6 +155,7 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
     try {
       await payrollService.saveRecord({
         ...formData,
+        employeeId: targetEmpId,
         baseSalary: Number(rawSalary),
         taxId: cleanTaxId,
         bankAccount: cleanBankAcc,
@@ -160,9 +166,9 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
       setStatusMsg({ text: 'Đã cập nhật thông tin lương thành công!', type: 'success' });
       setTimeout(() => setStatusMsg(null), 3000);
       await loadData();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Lỗi khi lưu lương:", error);
-      setStatusMsg({ text: 'Có lỗi xảy ra khi lưu thông tin lương.', type: 'error' });
+      setStatusMsg({ text: `Có lỗi xảy ra khi lưu thông tin lương: ${error?.message || String(error)}`, type: 'error' });
       setTimeout(() => setStatusMsg(null), 4000);
     }
   };
