@@ -120,11 +120,23 @@ export async function handleMcpMessage(method: string, _id: number, params: any)
 			if (params?.name?.startsWith('hrm.payroll.')) {
 				// Map hrm.payroll.* back to privos.db.*
 				const hubToolName = params.name.replace('hrm.payroll.', 'privos.db.');
-				const safeArgs = { ...params.arguments };
+				const safeArgs = { ...(params.arguments || {}) };
 				delete safeArgs.password;
 				
-				const result = await callHubTool(hubToolName, safeArgs);
-				return result;
+				try {
+					const result = await callHubTool(hubToolName, safeArgs);
+					return result;
+				} catch (err: any) {
+					console.error(`[Relay] Error calling Hub tool ${hubToolName}:`, err);
+					return {
+						content: [
+							{
+								type: 'text',
+								text: JSON.stringify({ records: [], error: err?.message || String(err) }),
+							},
+						],
+					};
+				}
 			}
 
 			if (params?.name !== TOOL_NAME) {

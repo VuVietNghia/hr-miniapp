@@ -108,9 +108,9 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
 
       setEmployees(empData);
       setPayrolls(payData.filter(p => activeEmpIds.has(p.employeeId)));
-    } catch (error) {
+    } catch (error: any) {
       console.error("Lỗi khi tải dữ liệu lương:", error);
-      setStatusMsg({ text: 'Lỗi khi tải dữ liệu bảng lương.', type: 'error' });
+      setStatusMsg({ text: `Lỗi khi tải dữ liệu: ${error?.message || String(error)}`, type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -377,8 +377,8 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
               try {
                 const all = await payrollService.getRecords();
                 setDebugData(JSON.stringify(all, null, 2));
-              } catch (e) {
-                setDebugData('Unauthorized to view raw data');
+              } catch (e: any) {
+                setDebugData(`Lỗi truy vấn: ${e?.message || JSON.stringify(e)}`);
               }
             }}
             title="Xem dữ liệu gốc JSON từ Database"

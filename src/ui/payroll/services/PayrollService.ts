@@ -43,37 +43,65 @@ export class PayrollService implements IPayrollService {
           where: [{ field: 'roomId', op: '==', value: this.roomId }]
         }
       });
-      const parsed = typeof res?.content?.[0]?.text === 'string' 
-        ? JSON.parse(res.content[0].text) 
-        : { records: [] };
-      return parsed.records || [];
+      if (!res) return [];
+
+      let parsed: any = {};
+      const rawText = res?.content?.[0]?.text;
+      if (typeof rawText === 'string') {
+        try {
+          parsed = JSON.parse(rawText);
+        } catch (e) {
+          console.warn("Could not parse JSON from response text:", rawText);
+        }
+      } else if (typeof res === 'string') {
+        try {
+          parsed = JSON.parse(res);
+        } catch (e) {}
+      } else {
+        parsed = res;
+      }
+
+      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed?.records)) return parsed.records;
+      if (Array.isArray(parsed?.items)) return parsed.items;
+      if (Array.isArray(parsed?.data)) return parsed.data;
+      return [];
     } catch (err) {
       console.error("Failed to fetch payroll records:", err);
-      throw err;
+      return [];
     }
   }
 
   async saveRecord(record: PayrollRecord): Promise<void> {
-    const { _id, _createdAt, _updatedAt, ...rest } = record as any;
-    const data = { ...rest, roomId: this.roomId };
-    
-    if (record._id) {
-      await this.app.callServerTool({
-        name: 'hrm.payroll.update',
-        arguments: { collection: this.collectionName, id: record._id, data }
-      });
-    } else {
-      await this.app.callServerTool({
-        name: 'hrm.payroll.create',
-        arguments: { collection: this.collectionName, data }
-      });
+    try {
+      const { _id, _createdAt, _updatedAt, ...rest } = record as any;
+      const data = { ...rest, roomId: this.roomId };
+      
+      if (record._id) {
+        await this.app.callServerTool({
+          name: 'hrm.payroll.update',
+          arguments: { collection: this.collectionName, id: record._id, data }
+        });
+      } else {
+        await this.app.callServerTool({
+          name: 'hrm.payroll.create',
+          arguments: { collection: this.collectionName, data }
+        });
+      }
+    } catch (err) {
+      console.error("Failed to save payroll record:", err);
+      throw err;
     }
   }
 
   async deleteRecord(id: string): Promise<void> {
-    await this.app.callServerTool({
-      name: 'hrm.payroll.delete',
-      arguments: { collection: this.collectionName, id }
-    });
+    try {
+      await this.app.callServerTool({
+        name: 'hrm.payroll.delete',
+        arguments: { collection: this.collectionName, id }
+      });
+    } catch (err) {
+      console.error("Failed to delete payroll record:", err);
+    }
   }
 }
