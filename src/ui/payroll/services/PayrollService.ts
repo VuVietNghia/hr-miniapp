@@ -45,6 +45,8 @@ export class PayrollService implements IPayrollService {
       });
       if (!res) return [];
 
+      console.log("[PayrollService] getRecords raw response:", res);
+
       let parsed: any = {};
       const rawText = res?.content?.[0]?.text;
       if (typeof rawText === 'string') {
@@ -61,8 +63,12 @@ export class PayrollService implements IPayrollService {
         parsed = res;
       }
 
+      console.log("[PayrollService] getRecords parsed object:", parsed);
+
       if (Array.isArray(parsed)) return parsed;
       if (Array.isArray(parsed?.records)) return parsed.records;
+      if (Array.isArray(parsed?.result?.records)) return parsed.result.records;
+      if (Array.isArray(parsed?.result)) return parsed.result;
       if (Array.isArray(parsed?.items)) return parsed.items;
       if (Array.isArray(parsed?.data)) return parsed.data;
       return [];
@@ -77,16 +83,20 @@ export class PayrollService implements IPayrollService {
       const { _id, _createdAt, _updatedAt, ...rest } = record as any;
       const data = { ...rest, roomId: this.roomId };
       
+      console.log("[PayrollService] saveRecord data:", { id: record._id, data });
+
       if (record._id) {
-        await this.app.callServerTool({
+        const res = await this.app.callServerTool({
           name: 'hrm.payroll.update',
           arguments: { collection: this.collectionName, id: record._id, data }
         });
+        console.log("[PayrollService] update res:", res);
       } else {
-        await this.app.callServerTool({
+        const res = await this.app.callServerTool({
           name: 'hrm.payroll.create',
           arguments: { collection: this.collectionName, data }
         });
+        console.log("[PayrollService] create res:", res);
       }
     } catch (err) {
       console.error("Failed to save payroll record:", err);

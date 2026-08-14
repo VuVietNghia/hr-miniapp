@@ -123,11 +123,13 @@ export async function handleMcpMessage(method: string, _id: number, params: any)
 				const safeArgs = { ...(params.arguments || {}) };
 				delete safeArgs.password;
 				
+				console.log(`[Payroll Debug] Calling Hub Tool: ${hubToolName}`, JSON.stringify(safeArgs));
 				try {
 					const result = await callHubTool(hubToolName, safeArgs);
+					console.log(`[Payroll Debug] Result from Hub (${hubToolName}):`, JSON.stringify(result));
 					return result;
 				} catch (err: any) {
-					console.error(`[Relay] Error calling Hub tool ${hubToolName}:`, err);
+					console.error(`[Payroll Debug] Error calling Hub tool ${hubToolName}:`, err);
 					return {
 						content: [
 							{
