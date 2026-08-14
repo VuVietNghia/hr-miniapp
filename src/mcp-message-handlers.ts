@@ -14,7 +14,11 @@ const pkg = _pkg as Record<string, any>;
 const TOOL_NAME = 'hr_management_dashboard';
 const UI_RESOURCE_URI = 'ui://demo-hr-management/form.html';
 
-
+if (!process.env.PAYROLL_PASSWORD) {
+	console.error('\n[SECURITY] Thiếu cấu hình PAYROLL_PASSWORD trong file .env');
+	console.error('Vui lòng thêm PAYROLL_PASSWORD vào .env để ứng dụng có thể chạy.');
+	process.exit(1);
+}
 
 /** Read icon as data URI from package.json icon path */
 function getIconDataUri(): string | undefined {
@@ -92,25 +96,25 @@ export async function handleMcpMessage(method: string, _id: number, params: any)
 					{
 						name: 'hrm.payroll.query',
 						title: 'Query Payroll Data',
-						description: 'Query payroll records',
+						description: 'Query payroll records (Requires Password)',
 						inputSchema: { type: 'object' }
 					},
 					{
 						name: 'hrm.payroll.create',
 						title: 'Create Payroll Data',
-						description: 'Create a payroll record',
+						description: 'Create a payroll record (Requires Password)',
 						inputSchema: { type: 'object' }
 					},
 					{
 						name: 'hrm.payroll.update',
 						title: 'Update Payroll Data',
-						description: 'Update a payroll record',
+						description: 'Update a payroll record (Requires Password)',
 						inputSchema: { type: 'object' }
 					},
 					{
 						name: 'hrm.payroll.delete',
 						title: 'Delete Payroll Data',
-						description: 'Delete a payroll record',
+						description: 'Delete a payroll record (Requires Password)',
 						inputSchema: { type: 'object' }
 					}
 				],
@@ -118,27 +122,20 @@ export async function handleMcpMessage(method: string, _id: number, params: any)
 
 		case 'tools/call':
 			if (params?.name?.startsWith('hrm.payroll.')) {
+				const providedPassword = params?.arguments?.password;
+				if (!providedPassword || providedPassword !== process.env.PAYROLL_PASSWORD) {
+					throw new Error('Unauthorized: Invalid Password');
+				}
+				
 				// Map hrm.payroll.* back to privos.db.*
 				const hubToolName = params.name.replace('hrm.payroll.', 'privos.db.');
-				const safeArgs = { ...(params.arguments || {}) };
+				
+				// Remove the password from arguments before sending to the database to keep logs clean
+				const safeArgs = { ...params.arguments };
 				delete safeArgs.password;
 				
-				console.log(`[Payroll Debug] Calling Hub Tool: ${hubToolName}`, JSON.stringify(safeArgs));
-				try {
-					const result = await callHubTool(hubToolName, safeArgs);
-					console.log(`[Payroll Debug] Result from Hub (${hubToolName}):`, JSON.stringify(result));
-					return result;
-				} catch (err: any) {
-					console.error(`[Payroll Debug] Error calling Hub tool ${hubToolName}:`, err);
-					return {
-						content: [
-							{
-								type: 'text',
-								text: JSON.stringify({ records: [], error: err?.message || String(err) }),
-							},
-						],
-					};
-				}
+				const result = await callHubTool(hubToolName, safeArgs);
+				return result;
 			}
 
 			if (params?.name !== TOOL_NAME) {

@@ -54,7 +54,11 @@ const ALLOWED_HR_USERNAMES = ['hr.admin', 'admin'];
 // -------------------------
 
 export function PayrollDashboard({ roomId, payrollService, lifecycleService }: PayrollDashboardProps) {
+  // --- AUTHENTICATION STATES ---
   const currentUsername = 'admin'; // Giả lập: Trong thực tế sẽ lấy từ usePrivosContext()
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [authError, setAuthError] = useState('');
   
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
   const [payrolls, setPayrolls] = useState<PayrollRecord[]>([]);
@@ -83,8 +87,10 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
   }, [app]);
 
   useEffect(() => {
-    loadData();
-  }, [roomId, payrollService, lifecycleService]);
+    if (isAuthorized) {
+      loadData();
+    }
+  }, [roomId, payrollService, lifecycleService, isAuthorized]);
 
   const loadData = async () => {
     setLoading(true);
@@ -92,42 +98,47 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
       // Tải song song danh sách nhân sự từ Kanban và bảng Lương từ DB
       const [empData, payData] = await Promise.all([
         lifecycleService.loadProfiles(roomId),
-        payrollService.getRecords()
+        payrollService.getRecords(passwordInput)
       ]);
 
-      setEmployees(empData || []);
-      setPayrolls(payData || []);
-    } catch (error: any) {
+      // DỌN RÁC (Garbage Collection): Xoá bản ghi lương nếu nhân viên không còn tồn tại
+      const activeEmpIds = new Set(empData.map(e => e._id));
+      const orphanedPayrolls = payData.filter(p => !activeEmpIds.has(p.employeeId));
+      
+      if (orphanedPayrolls.length > 0) {
+        console.log(`Tiến hành dọn rác: Xoá ${orphanedPayrolls.length} bản ghi lương mồ côi.`);
+        await Promise.all(orphanedPayrolls.map(p => {
+          if (p._id) return payrollService.deleteRecord(p._id, passwordInput);
+        }));
+      }
+
+      setEmployees(empData);
+      setPayrolls(payData.filter(p => activeEmpIds.has(p.employeeId)));
+    } catch (error) {
       console.error("Lỗi khi tải dữ liệu lương:", error);
-      setStatusMsg({ text: `Lỗi khi tải dữ liệu: ${error?.message || String(error)}`, type: 'error' });
+      setStatusMsg({ text: 'Lỗi khi tải dữ liệu bảng lương.', type: 'error' });
     } finally {
       setLoading(false);
     }
   };
 
   const handleEdit = (emp: EmployeeProfile) => {
-    const empId = String(emp._id || emp.id || '').trim();
-    const existing = payrolls.find(p => String(p.employeeId || '').trim() === empId);
-    setEditingId(empId);
-    setFormData({
-      ...(existing || {}),
-      employeeId: empId,
-      baseSalary: existing?.baseSalary ?? 0,
-      taxId: existing?.taxId ?? '',
-      bankAccount: existing?.bankAccount ?? '',
-      bankName: existing?.bankName || 'Vietcombank',
-      contractType: existing?.contractType || 'Chính thức',
-      applyProbationRate: existing?.applyProbationRate !== false,
-      probationRate: existing?.probationRate ?? 85
+    const existing = payrolls.find(p => p.employeeId === emp._id);
+    setEditingId(emp._id);
+    setFormData(existing || {
+      employeeId: emp._id,
+      baseSalary: 0,
+      taxId: '',
+      bankAccount: '',
+      bankName: 'Vietcombank',
+      contractType: 'Chính thức',
+      applyProbationRate: true,
+      probationRate: 85
     });
   };
 
   const handleSave = async () => {
-    const targetEmpId = String(formData.employeeId || editingId || '').trim();
-    if (!targetEmpId) {
-      setStatusMsg({ text: 'Không xác định được ID nhân viên.', type: 'error' });
-      return;
-    }
+    if (!formData.employeeId) return;
 
     // Validate mức lương (bỏ dấu chấm/phẩy nếu người dùng nhập)
     const rawSalary = formData.baseSalary !== undefined && formData.baseSalary !== null 
@@ -155,20 +166,19 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
     try {
       await payrollService.saveRecord({
         ...formData,
-        employeeId: targetEmpId,
         baseSalary: Number(rawSalary),
         taxId: cleanTaxId,
         bankAccount: cleanBankAcc,
         applyProbationRate: formData.applyProbationRate !== false,
         probationRate: 85
-      } as PayrollRecord);
+      } as PayrollRecord, passwordInput);
       setEditingId(null);
       setStatusMsg({ text: 'Đã cập nhật thông tin lương thành công!', type: 'success' });
       setTimeout(() => setStatusMsg(null), 3000);
       await loadData();
-    } catch (error: any) {
+    } catch (error) {
       console.error("Lỗi khi lưu lương:", error);
-      setStatusMsg({ text: `Có lỗi xảy ra khi lưu thông tin lương: ${error?.message || String(error)}`, type: 'error' });
+      setStatusMsg({ text: 'Có lỗi xảy ra khi lưu thông tin lương.', type: 'error' });
       setTimeout(() => setStatusMsg(null), 4000);
     }
   };
@@ -319,6 +329,44 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
     );
   }
 
+  if (!isAuthorized) {
+    return (
+      <div className="hr-terminal-ui" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <div style={{ background: 'var(--panel-bg)', padding: '2.5rem 2rem', borderRadius: '12px', border: '1px solid var(--border-color)', width: '100%', maxWidth: '420px', textAlign: 'center', boxShadow: '0 8px 32px rgba(0,0,0,0.08)' }}>
+          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🛡️</div>
+          <h2 style={{ marginBottom: '0.5rem', color: 'var(--text-color)' }}>Xác thực Bảo mật</h2>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '2rem', fontSize: '0.95rem' }}>Vui lòng nhập Mật khẩu cấp 2 để giải mã dữ liệu Lương.</p>
+          
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            setAuthError('');
+            try {
+              // Thử truy vấn dữ liệu với mật khẩu người dùng nhập
+              await payrollService.getRecords(passwordInput);
+              setIsAuthorized(true);
+            } catch (err) {
+              setAuthError('Mật khẩu không chính xác hoặc bị từ chối.');
+            }
+          }}>
+            <input
+              type="password"
+              placeholder="••••••••"
+              className="hr-input"
+              style={{ width: '100%', textAlign: 'center', letterSpacing: '0.4rem', fontSize: '1.2rem', marginBottom: '1rem', padding: '0.75rem', borderRadius: '8px' }}
+              value={passwordInput}
+              onChange={e => setPasswordInput(e.target.value)}
+              autoFocus
+            />
+            {authError && <div style={{ color: 'var(--danger-color, #e53e3e)', fontSize: '0.9rem', marginBottom: '1rem', fontWeight: 500 }}>{authError}</div>}
+            <button type="submit" className="hr-btn hr-btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '0.75rem', fontSize: '1rem' }}>
+              Mở khóa dữ liệu
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="hr-terminal-ui" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300 }}>
@@ -371,10 +419,10 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
             style={{ fontSize: '0.8rem' }}
             onClick={async () => {
               try {
-                const all = await payrollService.getRecords();
+                const all = await payrollService.getRecords(passwordInput);
                 setDebugData(JSON.stringify(all, null, 2));
-              } catch (e: any) {
-                setDebugData(`Lỗi truy vấn: ${e?.message || JSON.stringify(e)}`);
+              } catch (e) {
+                setDebugData('Unauthorized to view raw data');
               }
             }}
             title="Xem dữ liệu gốc JSON từ Database"
@@ -529,9 +577,8 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
           </thead>
           <tbody>
             {filteredEmployees.map(emp => {
-              const empId = String(emp._id || emp.id || '').trim();
-              const pay = payrolls.find(p => String(p.employeeId || '').trim() === empId);
-              const isEditing = editingId === empId;
+              const pay = payrolls.find(p => p.employeeId === emp._id);
+              const isEditing = editingId === emp._id;
               const hasConfiguredSalary = pay && (pay.baseSalary ?? 0) > 0;
               const initials = getInitials(emp.name);
               

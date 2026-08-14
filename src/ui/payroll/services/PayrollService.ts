@@ -34,93 +34,47 @@ export class PayrollService implements IPayrollService {
     }
   }
 
-  async getRecords(): Promise<PayrollRecord[]> {
+  async getRecords(password: string): Promise<PayrollRecord[]> {
     try {
       const res: any = await this.app.callServerTool({
         name: 'hrm.payroll.query',
         arguments: {
-          collection: this.collectionName
+          password,
+          collection: this.collectionName,
+          where: [{ field: 'roomId', op: '==', value: this.roomId }]
         }
       });
-      if (!res) return [];
-
-      console.log("[PayrollService] getRecords raw response:", res);
-
-      let parsed: any = {};
-      const rawText = res?.content?.[0]?.text;
-      if (typeof rawText === 'string') {
-        try {
-          parsed = JSON.parse(rawText);
-        } catch (e) {
-          console.warn("Could not parse JSON from response text:", rawText);
-        }
-      } else if (typeof res === 'string') {
-        try {
-          parsed = JSON.parse(res);
-        } catch (e) {}
-      } else {
-        parsed = res;
-      }
-
-      console.log("[PayrollService] getRecords parsed object:", parsed);
-
-      let recordsList: any[] = [];
-      if (Array.isArray(parsed)) recordsList = parsed;
-      else if (Array.isArray(parsed?.records)) recordsList = parsed.records;
-      else if (Array.isArray(parsed?.result?.records)) recordsList = parsed.result.records;
-      else if (Array.isArray(parsed?.result)) recordsList = parsed.result;
-      else if (Array.isArray(parsed?.items)) recordsList = parsed.items;
-      else if (Array.isArray(parsed?.data)) recordsList = parsed.data;
-
-      return recordsList;
+      const parsed = typeof res?.content?.[0]?.text === 'string' 
+        ? JSON.parse(res.content[0].text) 
+        : { records: [] };
+      return parsed.records || [];
     } catch (err) {
       console.error("Failed to fetch payroll records:", err);
-      return [];
-    }
-  }
-
-  async saveRecord(record: PayrollRecord): Promise<void> {
-    try {
-      const { _id, _createdAt, _updatedAt, ...rest } = record as any;
-      const data = { ...rest, roomId: this.roomId };
-      
-      console.log("[PayrollService] saveRecord data:", { id: record._id, data });
-
-      // Lookup existing records to determine whether to update or create
-      const existingRecords = await this.getRecords();
-      const empIdStr = String(record.employeeId || '').trim();
-      const existingForEmp = existingRecords.find(r => 
-        String(r.employeeId || '').trim() === empIdStr || (record._id && String(r._id || '').trim() === String(record._id || '').trim())
-      );
-      const targetId = record._id || existingForEmp?._id;
-
-      if (targetId) {
-        const res = await this.app.callServerTool({
-          name: 'hrm.payroll.update',
-          arguments: { collection: this.collectionName, id: targetId, data }
-        });
-        console.log("[PayrollService] update res:", res);
-      } else {
-        const res = await this.app.callServerTool({
-          name: 'hrm.payroll.create',
-          arguments: { collection: this.collectionName, data }
-        });
-        console.log("[PayrollService] create res:", res);
-      }
-    } catch (err) {
-      console.error("Failed to save payroll record:", err);
       throw err;
     }
   }
 
-  async deleteRecord(id: string): Promise<void> {
-    try {
+  async saveRecord(record: PayrollRecord, password: string): Promise<void> {
+    const { _id, _createdAt, _updatedAt, ...rest } = record as any;
+    const data = { ...rest, roomId: this.roomId };
+    
+    if (record._id) {
       await this.app.callServerTool({
-        name: 'hrm.payroll.delete',
-        arguments: { collection: this.collectionName, id }
+        name: 'hrm.payroll.update',
+        arguments: { password, collection: this.collectionName, id: record._id, data }
       });
-    } catch (err) {
-      console.error("Failed to delete payroll record:", err);
+    } else {
+      await this.app.callServerTool({
+        name: 'hrm.payroll.create',
+        arguments: { password, collection: this.collectionName, data }
+      });
     }
+  }
+
+  async deleteRecord(id: string, password: string): Promise<void> {
+    await this.app.callServerTool({
+      name: 'hrm.payroll.delete',
+      arguments: { password, collection: this.collectionName, id }
+    });
   }
 }
