@@ -72,11 +72,6 @@ export class PayrollService implements IPayrollService {
       else if (Array.isArray(parsed?.items)) recordsList = parsed.items;
       else if (Array.isArray(parsed?.data)) recordsList = parsed.data;
 
-      if (this.roomId && recordsList.length > 0) {
-        const roomFiltered = recordsList.filter((r: any) => !r.roomId || r.roomId === this.roomId);
-        return roomFiltered.length > 0 ? roomFiltered : recordsList;
-      }
-
       return recordsList;
     } catch (err) {
       console.error("Failed to fetch payroll records:", err);
@@ -93,7 +88,10 @@ export class PayrollService implements IPayrollService {
 
       // Lookup existing records to determine whether to update or create
       const existingRecords = await this.getRecords();
-      const existingForEmp = existingRecords.find(r => r.employeeId === record.employeeId || (record._id && r._id === record._id));
+      const empIdStr = String(record.employeeId || '').trim();
+      const existingForEmp = existingRecords.find(r => 
+        String(r.employeeId || '').trim() === empIdStr || (record._id && String(r._id || '').trim() === String(record._id || '').trim())
+      );
       const targetId = record._id || existingForEmp?._id;
 
       if (targetId) {
