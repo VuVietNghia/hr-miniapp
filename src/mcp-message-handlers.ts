@@ -14,11 +14,7 @@ const pkg = _pkg as Record<string, any>;
 const TOOL_NAME = 'hr_management_dashboard';
 const UI_RESOURCE_URI = 'ui://demo-hr-management/form.html';
 
-if (!process.env.PAYROLL_PASSWORD) {
-	console.error('\n[SECURITY] Thiếu cấu hình PAYROLL_PASSWORD trong file .env');
-	console.error('Vui lòng thêm PAYROLL_PASSWORD vào .env để ứng dụng có thể chạy.');
-	process.exit(1);
-}
+
 
 /** Read icon as data URI from package.json icon path */
 function getIconDataUri(): string | undefined {
@@ -92,47 +88,11 @@ export async function handleMcpMessage(method: string, _id: number, params: any)
 						_meta: {
 							ui: { resourceUri: UI_RESOURCE_URI },
 						},
-					},
-					{
-						name: 'hrm.payroll.query',
-						title: 'Query Payroll Data',
-						description: 'Query payroll records (Requires Password)',
-						inputSchema: { type: 'object' }
-					},
-					{
-						name: 'hrm.payroll.create',
-						title: 'Create Payroll Data',
-						description: 'Create a payroll record (Requires Password)',
-						inputSchema: { type: 'object' }
-					},
-					{
-						name: 'hrm.payroll.update',
-						title: 'Update Payroll Data',
-						description: 'Update a payroll record (Requires Password)',
-						inputSchema: { type: 'object' }
-					},
-					{
-						name: 'hrm.payroll.delete',
-						title: 'Delete Payroll Data',
-						description: 'Delete a payroll record (Requires Password)',
-						inputSchema: { type: 'object' }
 					}
 				],
 			};
 
 		case 'tools/call':
-			if (params?.name?.startsWith('hrm.payroll.')) {
-				// Map hrm.payroll.* back to privos.db.*
-				const hubToolName = params.name.replace('hrm.payroll.', 'privos.db.');
-				
-				// Remove the password from arguments before sending to the database to keep logs clean
-				const safeArgs = { ...params.arguments };
-				delete safeArgs.password;
-				
-				const result = await callHubTool(hubToolName, safeArgs);
-				return result;
-			}
-
 			if (params?.name !== TOOL_NAME) {
 				throw new Error(`Unknown tool: ${params?.name || '<missing>'}`);
 			}
