@@ -300,7 +300,8 @@ export class PrivOSLifecycleService implements ILifecycleService {
       { name: "Email", type: "TEXT" },
       { name: "Vị trí", type: "SELECT", options: [{ value: "Developer" }, { value: "Tester" }, { value: "HR" }, { value: "Sales" }] },
       { name: "Phòng ban", type: "SELECT", options: [{ value: "IT" }, { value: "Business" }, { value: "Back-office" }] },
-      { name: "Ngày bắt đầu", type: "DATE" }
+      { name: "Ngày bắt đầu", type: "DATE" },
+      { name: "Hồ sơ đính kèm", type: "DOCUMENT" }
     ];
   }
 

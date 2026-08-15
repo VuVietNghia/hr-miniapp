@@ -31,11 +31,13 @@ export function ProfileListView({ profiles, isLoading, onMoveProfile }: ProfileL
       return `/group/${roomId}/file-viewer/${obj}`;
     }
     
+    // Prioritize ID-based URL for cross-machine compatibility
     const id = obj._id || obj.id;
     if (id) {
       return `/group/${roomId}/file-viewer/${id}`;
     }
     
+    // Fallback to machine-specific URLs (may not work across machines)
     const url = obj.url || obj.downloadUrl || obj.link || obj.fileUrl;
     if (url) return url;
     
