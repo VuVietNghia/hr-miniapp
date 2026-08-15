@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { usePrivosContext } from '@privos/app-react';
 import { EmployeeProfile, KANBAN_COLUMNS } from '../types';
 import { getInitials, calculateTimelineInfo } from '../utils';
 
@@ -10,6 +11,40 @@ interface ProfileCardProps {
 export function ProfileCard({ profile, onMoveProfile }: ProfileCardProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const { roomId } = usePrivosContext();
+
+  const getFileUrl = (p: EmployeeProfile) => {
+    const obj = p.attachedFileObj;
+    if (!obj) {
+      if ((p as any).attachedFileUrl && (p as any).attachedFileUrl !== 'null') return (p as any).attachedFileUrl;
+      return '#';
+    }
+    
+    if (typeof obj === 'string') {
+      if (obj.startsWith('http') || obj.startsWith('/')) return obj;
+      return `/group/${roomId}/file-viewer/${obj}`;
+    }
+    
+    // Prioritize ID-based URL for cross-machine compatibility
+    const id = obj._id || obj.id;
+    if (id) {
+      return `/group/${roomId}/file-viewer/${id}`;
+    }
+    
+    // Fallback to machine-specific URLs (may not work across machines)
+    const url = obj.url || obj.downloadUrl || obj.link || obj.fileUrl;
+    if (url) return url;
+    
+    return '#';
+  };
+
+  const getFileName = (p: EmployeeProfile) => {
+    const obj = p.attachedFileObj;
+    if (!obj) return 'Hồ sơ đính kèm';
+    if (typeof obj === 'string') return 'Tài liệu đính kèm';
+    const name = obj.name || obj.title || obj.fileName || 'Hồ sơ đính kèm';
+    return name.length > 25 ? name.substring(0, 25) + '...' : name;
+  };
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
     e.dataTransfer.setData('text/plain', profile._id);
@@ -88,7 +123,7 @@ export function ProfileCard({ profile, onMoveProfile }: ProfileCardProps) {
         {profile.department && <span className="dept-badge">{profile.department}</span>}
       </div>
       
-      {(profile.phone || profile.email) && (
+      {(profile.phone || profile.email || profile.attachedFileObj) && (
         <div className="profile-details">
           {profile.phone && (
             <div className="detail-row" style={{ justifyContent: 'space-between' }}>
@@ -149,6 +184,28 @@ export function ProfileCard({ profile, onMoveProfile }: ProfileCardProps) {
                   onClick={(e) => e.stopPropagation()}
                 >
                   Gửi
+                </a>
+              </div>
+            </div>
+          )}
+          {profile.attachedFileObj && (
+            <div className="detail-row" style={{ marginTop: '4px', borderTop: '1px dashed var(--border)', paddingTop: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                <span className="detail-icon" style={{ color: 'var(--accent)' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                  </svg>
+                </span>
+                <a 
+                  href={getFileUrl(profile)} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--accent)', textDecoration: 'none', fontSize: '0.75rem', fontWeight: 500 }}
+                  title={getFileName(profile) || 'Xem tài liệu'}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {getFileName(profile)}
                 </a>
               </div>
             </div>

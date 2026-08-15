@@ -74,7 +74,7 @@ function LifecycleContent() {
     setIsLoading(false);
   };
 
-  const handleCreateSubmit = async (data: Omit<EmployeeProfile, '_id' | 'status'>) => {
+  const handleCreateSubmit = async (data: Omit<EmployeeProfile, '_id' | 'status'> & { attachedFileObj?: any }) => {
     if (!roomId) return;
     setStatusMsg({ text: `Đang khởi tạo hồ sơ cho "${data.name}"...`, type: 'info' });
     

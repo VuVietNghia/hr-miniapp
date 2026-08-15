@@ -108,7 +108,7 @@ export async function ensureFolderPath(app: McpApp, channelId: string, folderNam
   return currentParentId;
 }
 
-export async function createOrUpdateFile(app: McpApp, path: string, content: string): Promise<boolean> {
+export async function createOrUpdateFile(app: McpApp, path: string, content: string): Promise<any> {
   try {
     // path is expected to be `${roomId}/path/to/file`
     const parts = path.split('/');
@@ -137,7 +137,7 @@ export async function createOrUpdateFile(app: McpApp, path: string, content: str
     const res: any = await app.uploadFile(uploadArgs);
     
     if (!res) throw new Error("No response from uploadFile");
-    return true;
+    return res;
   } catch (err: any) {
     console.error('Failed to create/update file', err);
     throw new Error(`Failed to create/update file: ${err.message || err}`);

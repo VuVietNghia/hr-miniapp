@@ -5,7 +5,7 @@ import { ensureFolderPath, createOrUpdateFile } from '../../privos-rest';
 import employeeTemplateRaw from '../../data/employee_template.md?raw';
 
 interface CreateDetailedProfileFormProps {
-  onSubmit: (data: Omit<EmployeeProfile, '_id' | 'status'>) => Promise<void>;
+  onSubmit: (data: Omit<EmployeeProfile, '_id' | 'status'> & { attachedFileObj?: any }) => Promise<void>;
   onCancel: () => void;
   passedCandidates?: PassedCandidate[];
   isLoadingCandidates?: boolean;
@@ -241,7 +241,8 @@ export function CreateDetailedProfileForm({
       const mdFileName = `${new Date().toISOString().split('T')[0]}_PROFILE_${safeName}.md`;
       const mdFilePath = `hr-miniapp/employees/${safeDept}/${safeName}/${mdFileName}`;
       
-      await createOrUpdateFile(app, `${roomId}/${mdFilePath}`, mdContent);
+      const uploadRes: any = await createOrUpdateFile(app, `${roomId}/${mdFilePath}`, mdContent);
+      const fileObj = uploadRes.file || (uploadRes.message && uploadRes.message.file) || uploadRes;
       addLog(`Tạo file Markdown thành công. Đang lưu database...`);
 
       await onSubmit({
@@ -251,7 +252,8 @@ export function CreateDetailedProfileForm({
         position: formData.position || 'Unknown',
         department: formData.department || 'Unknown',
         startDate: formData.onboardingDate || new Date().toISOString().split('T')[0],
-        sourceCandidateId: selectedCandidate?._id
+        sourceCandidateId: selectedCandidate?._id,
+        attachedFileObj: fileObj
       });
 
       setIsSuccess(true);

@@ -14,12 +14,6 @@ const pkg = _pkg as Record<string, any>;
 const TOOL_NAME = 'hr_management_dashboard';
 const UI_RESOURCE_URI = 'ui://demo-hr-management/form.html';
 
-if (!process.env.PAYROLL_PASSWORD) {
-	console.error('\n[SECURITY] Thiếu cấu hình PAYROLL_PASSWORD trong file .env');
-	console.error('Vui lòng thêm PAYROLL_PASSWORD vào .env để ứng dụng có thể chạy.');
-	process.exit(1);
-}
-
 /** Read icon as data URI from package.json icon path */
 function getIconDataUri(): string | undefined {
 	const iconPath = pkg.icon?.startsWith('/') ? path.join(__dirname, '..', pkg.icon) : undefined;
@@ -122,11 +116,6 @@ export async function handleMcpMessage(method: string, _id: number, params: any)
 
 		case 'tools/call':
 			if (params?.name?.startsWith('hrm.payroll.')) {
-				const providedPassword = params?.arguments?.password;
-				if (!providedPassword || providedPassword !== process.env.PAYROLL_PASSWORD) {
-					throw new Error('Unauthorized: Invalid Password');
-				}
-				
 				// Map hrm.payroll.* back to privos.db.*
 				const hubToolName = params.name.replace('hrm.payroll.', 'privos.db.');
 				

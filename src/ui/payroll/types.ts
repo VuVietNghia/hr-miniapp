@@ -13,7 +13,7 @@ export interface PayrollRecord {
 
 export interface IPayrollService {
   initializeSchema(): Promise<void>;
-  getRecords(password: string): Promise<PayrollRecord[]>;
-  saveRecord(record: PayrollRecord, password: string): Promise<void>;
-  deleteRecord(id: string, password: string): Promise<void>;
+  getRecords(): Promise<PayrollRecord[]>;
+  saveRecord(record: PayrollRecord): Promise<void>;
+  deleteRecord(id: string): Promise<void>;
 }

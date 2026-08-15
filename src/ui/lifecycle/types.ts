@@ -8,6 +8,7 @@ export interface EmployeeProfile {
   department?: string;
   startDate?: string;
   sourceCandidateId?: string;
+  attachedFileObj?: any;
 }
 
 export interface KanbanColumnDef {
@@ -38,6 +39,6 @@ export interface PassedCandidate {
 export interface ILifecycleService {
   loadProfiles(roomId: string): Promise<EmployeeProfile[]>;
   loadPassedCandidates(roomId: string): Promise<PassedCandidate[]>;
-  createProfile(roomId: string, data: Omit<EmployeeProfile, '_id' | 'status'>): Promise<EmployeeProfile>;
+  createProfile(roomId: string, data: Omit<EmployeeProfile, '_id' | 'status'> & { attachedFileObj?: any }): Promise<EmployeeProfile>;
   updateProfileStatus(roomId: string, profileId: string, newStatus: string): Promise<void>;
 }
