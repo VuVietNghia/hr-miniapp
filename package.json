@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": false,
   "description": "HR management demo (relay WebSocket) -- connects to Privos via WS, no public URL needed",
-  "title": "HR Mini app",
+  "title": "HR Mini app v3",
   "icon": "/public/icon.svg",
   "scopes": [
     "lists:read",
@@ -53,6 +53,7 @@
     "@emailjs/browser": "^4.4.1",
     "docx": "^9.7.1",
     "dotenv": "^17.3.1",
+    "gitnexus": "^1.6.9",
     "pdfjs-dist": "^6.1.200",
     "ws": "^8.0.0"
   },
