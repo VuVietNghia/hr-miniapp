@@ -76,6 +76,12 @@ export async function handleMcpMessage(method: string, _id: number, params: any)
 			return {
 				tools: [
 					{
+						name: 'debug_log',
+						title: 'Debug Log',
+						description: 'Log to IDE terminal',
+						inputSchema: { type: 'object' }
+					},
+					{
 						name: TOOL_NAME,
 						title: pkg.title || 'Demo HR Management',
 						description: pkg.description || 'HR management dashboard',
@@ -115,6 +121,14 @@ export async function handleMcpMessage(method: string, _id: number, params: any)
 			};
 
 		case 'tools/call':
+			if (params?.name === 'debug_log') {
+				console.log('\n\n--- [FRONTEND DEBUG LOG] ---');
+				console.log(params.arguments?.message);
+				console.log(JSON.stringify(params.arguments?.data, null, 2));
+				console.log('----------------------------\n\n');
+				return { content: [{ type: 'text', text: 'Logged to terminal' }] };
+			}
+
 			if (params?.name?.startsWith('hrm.payroll.')) {
 				// Map hrm.payroll.* back to privos.db.*
 				const hubToolName = params.name.replace('hrm.payroll.', 'privos.db.');

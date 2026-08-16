@@ -24,14 +24,17 @@ export function KanbanBoard({ profiles, isLoading, selectedColumnStatus = 'all',
 
   return (
     <div className="hr-kanban-container">
-      {columnsToDisplay.map(col => (
-        <KanbanColumn 
-          key={col.status}
-          column={col} 
-          profiles={profiles.filter(p => p.status === col.status)}
-          onMoveProfile={onMoveProfile}
-        />
-      ))}
+      {columnsToDisplay.map(col => {
+        const colStatus = (col.status || '').trim().toLowerCase();
+        return (
+          <KanbanColumn 
+            key={col.status}
+            column={col} 
+            profiles={profiles.filter(p => (p.status || '').trim().toLowerCase() === colStatus)}
+            onMoveProfile={onMoveProfile}
+          />
+        );
+      })}
     </div>
   );
 }

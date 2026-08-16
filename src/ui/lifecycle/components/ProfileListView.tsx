@@ -22,6 +22,7 @@ export function ProfileListView({ profiles, isLoading, onMoveProfile }: ProfileL
   const getFileUrl = (p: EmployeeProfile) => {
     const obj = p.attachedFileObj;
     if (!obj) {
+      if ((p as any).attachedFileId) return `/group/${roomId}/file-viewer/${(p as any).attachedFileId}`;
       if ((p as any).attachedFileUrl && (p as any).attachedFileUrl !== 'null') return (p as any).attachedFileUrl;
       return '#';
     }
