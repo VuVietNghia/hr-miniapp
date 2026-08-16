@@ -53,6 +53,12 @@ function ThemedApp() {
     }
   }, [app, roomId]);
 
+  useEffect(() => {
+    if (tab === 'lifecycle') {
+      console.log('[App] Lifecycle tab is active');
+    }
+  }, [tab]);
+
   const handleSelectTab = (selectedTab: Tab) => {
     setTab(selectedTab);
     setVisitedTabs((prev) => {

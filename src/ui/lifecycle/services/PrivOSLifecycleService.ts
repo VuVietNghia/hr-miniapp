@@ -2,7 +2,8 @@ import { McpApp } from '@privos/app-react';
 import { EmployeeProfile, ILifecycleService, PassedCandidate } from '../types';
 
 export class PrivOSLifecycleService implements ILifecycleService {
-  private static readonly LIST_IDENTIFIERS = ['nhan-su', 'nhansu', 'employee', 'lifecycle', 'hồ sơ'];
+  private static readonly SYSTEM_PREFIX = '[HR-MiniApp]';
+  private static readonly LEGACY_EXACT_NAME = 'Hồ sơ nhân sự';
   private static readonly SYSTEM_CONFIG_NAME = '[Hệ thống] Không xoá - Cấu hình Kanban';
   private static readonly DEFAULT_STAGE = 'Mới nhận việc';
 
@@ -75,6 +76,7 @@ export class PrivOSLifecycleService implements ILifecycleService {
         const customFields = this.buildCustomFieldsForCreation(data, list.fieldDefinitions);
 
         let fileObjToSave = data.attachedFileObj || null;
+        let fileId = fileObjToSave?._id || fileObjToSave?.id || null;
         let fileDownloadUrl = fileObjToSave?.downloadUrl || fileObjToSave?.url || null;
         const debugLog: string[] = [];
 
@@ -99,7 +101,9 @@ export class PrivOSLifecycleService implements ILifecycleService {
         if (data.sourceCandidateId) {
           descriptionParts.push(`[sourceCandidateId:${data.sourceCandidateId}]`);
         }
-        if (fileDownloadUrl) {
+        if (fileId) {
+          descriptionParts.push(`[fileId:${fileId}]`);
+        } else if (fileDownloadUrl) {
           descriptionParts.push(`[fileUrl:${fileDownloadUrl}]`);
         }
 
@@ -177,7 +181,9 @@ export class PrivOSLifecycleService implements ILifecycleService {
   }
 
   private async ensureValidList(roomId: string): Promise<any | null> {
+    console.log('[PrivOSLifecycleService] ensureValidList called for roomId:', roomId);
     let list = await this.findExistingList(roomId);
+    console.log('[PrivOSLifecycleService] findExistingList result:', list ? 'found' : 'not found');
 
     if (list) {
       list = await this.enrichListWithStagesOrDelete(list);
@@ -192,22 +198,29 @@ export class PrivOSLifecycleService implements ILifecycleService {
   }
 
   private async findExistingList(roomId: string): Promise<any | null> {
+    console.log('[PrivOSLifecycleService] findExistingList called for roomId:', roomId);
     const res: any = await this.app.callServerTool({
       name: 'privos.lists.getAll',
       arguments: { roomId }
     });
 
     const text = res?.content?.[0]?.text;
-    if (!text) return null;
+    if (!text) {
+      console.log('[PrivOSLifecycleService] No text in response');
+      return null;
+    }
 
     const parsed = JSON.parse(text);
     const lists = Array.isArray(parsed) ? parsed : (parsed?.lists || []);
+    console.log('[PrivOSLifecycleService] Total lists found:', lists.length);
 
-    return lists.find((l: any) =>
-      PrivOSLifecycleService.LIST_IDENTIFIERS.some(kw =>
-        (l.name || '').toLowerCase().includes(kw)
-      )
-    ) || null;
+    // Chuyển sang dùng Exact Match hoặc System Prefix thay vì fuzzy search (.includes)
+    const foundList = lists.find((l: any) => {
+      const name = l.name || '';
+      return name.startsWith(PrivOSLifecycleService.SYSTEM_PREFIX) || name === PrivOSLifecycleService.LEGACY_EXACT_NAME;
+    }) || null;
+    console.log('[PrivOSLifecycleService] Found matching list:', foundList ? foundList.name : 'none');
+    return foundList;
   }
 
   private async enrichListWithStagesOrDelete(list: any): Promise<any | null> {
@@ -262,7 +275,7 @@ export class PrivOSLifecycleService implements ILifecycleService {
         name: 'privos.lists.create',
         arguments: {
           roomId,
-          name: 'Hồ sơ nhân sự',
+          name: `${PrivOSLifecycleService.SYSTEM_PREFIX} Hồ sơ nhân sự`,
           fieldDefinitions: this.getInitialFieldDefinitions(),
           stages: this.getInitialStages()
         }
@@ -345,14 +358,20 @@ export class PrivOSLifecycleService implements ILifecycleService {
     };
 
     if (item.description) {
-      const match = item.description.match(/\[sourceCandidateId:([^\]]+)\]/);
-      if (match) {
-        profile.sourceCandidateId = match[1];
-      }
-      const urlMatch = item.description.match(/\[fileUrl:([^\]]+)\]/);
-      if (urlMatch) {
-        profile.attachedFileUrl = urlMatch[1];
-      }
+        const sourceMatch = item.description.match(/\[sourceCandidateId:(.+?)\]/);
+        if (sourceMatch) {
+          profile.sourceCandidateId = sourceMatch[1];
+        }
+
+        const fileIdMatch = item.description.match(/\[fileId:(.+?)\]/);
+        if (fileIdMatch) {
+          profile.attachedFileId = fileIdMatch[1];
+        }
+
+        const fileMatch = item.description.match(/\[fileUrl:(.+?)\]/);
+        if (fileMatch) {
+          profile.attachedFileUrl = fileMatch[1];
+        }
     }
 
     if (item.customFields) {
@@ -370,10 +389,31 @@ export class PrivOSLifecycleService implements ILifecycleService {
         return matchedStage.name;
       }
     }
-    if (typeof item.stage === 'string') return item.stage;
-    if (typeof item.status === 'string') return item.status;
-    if (item.stage?.name) return item.stage.name;
-    return PrivOSLifecycleService.DEFAULT_STAGE;
+    
+    // Helper to validate if a string is a valid Kanban status
+    const isValidStatus = (statusStr: string) => {
+      return Array.isArray(stages) && stages.some(s => s.name === statusStr);
+    };
+
+    let resolvedStatus = PrivOSLifecycleService.DEFAULT_STAGE;
+    if (typeof item.stage === 'string' && isValidStatus(item.stage)) resolvedStatus = item.stage;
+    else if (typeof item.status === 'string' && isValidStatus(item.status)) resolvedStatus = item.status;
+    else if (item.stage?.name && isValidStatus(item.stage.name)) resolvedStatus = item.stage.name;
+    
+    console.warn(`[PrivOSLifecycleService] Item ${item._id} mapped to status: "${resolvedStatus}". Raw item info:`, { stageId, stage: item.stage, status: item.status, stages });
+    
+    // Also send log to backend IDE terminal
+    try {
+      this.app.callServerTool({
+        name: 'debug_log',
+        arguments: {
+          message: `Item ${item._id} mapped to status: "${resolvedStatus}"`,
+          data: { stageId, stage: item.stage, status: item.status, stages }
+        }
+      }).catch(err => console.error("Failed to send debug log", err));
+    } catch(e) {}
+
+    return resolvedStatus;
   }
 
   private extractCustomFields(profile: any, customFieldsData: any, fieldDefMap: Map<string, any>): void {
