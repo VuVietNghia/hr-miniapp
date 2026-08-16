@@ -3,3 +3,6 @@ dist/
 .env
 *.tsbuildinfo
 .test-outputs
+AGENTS.md
+CLAUDE.md
+tools_files.md

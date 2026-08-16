@@ -795,6 +795,10 @@ ${content}
     const fileMonth = fileMonthMatch ? fileMonthMatch[1] : new Date().toISOString().slice(0, 7);
 
     const processPaths = [
+      `${this.roomId}/hr-miniapp/jds/${baseName}`,
+      `hr-miniapp/jds/${baseName}`,
+      `${this.roomId}/hr-miniapp/jds/${sanitizedBaseName}`,
+      `hr-miniapp/jds/${sanitizedBaseName}`,
       `${this.roomId}/hr-miniapp/outputs-cv/${fileMonth}/03-deep_reviewed/${baseName}`,
       `${this.roomId}/hr-miniapp/outputs-cv/${fileMonth}/02-passed_screening/${baseName}`,
       `${this.roomId}/hr-miniapp/outputs-cv/${fileMonth}/01-failed/${baseName}`,

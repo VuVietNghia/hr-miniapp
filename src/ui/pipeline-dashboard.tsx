@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { usePrivosApp, usePrivosContext } from '@privos/app-react';
 import { PipelineService, CVFile, ProcessingStatus } from './pipeline-service';
 import { MarkdownPathContextBuilder } from './cv-context-builder';
-import { createOrUpdateFile } from './privos-rest';
+import { createOrUpdateFile, getFileContent } from './privos-rest';
 
 // Dependency Injection Interface
 // Swap implementation easily in the future (e.g. mock for testing)
@@ -197,6 +197,158 @@ function CVResultCard({ s }: { s: ProcessingStatus }) {
   );
 }
 
+function renderInlineStyles(text: string) {
+  const parts = text.split(/(\*\*.*?\*\*|\*.*?\*|`.*?`)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+      return (
+        <strong key={i} style={{ fontWeight: 700, color: 'var(--text)' }}>
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+      return <em key={i} style={{ fontStyle: 'italic' }}>{part.slice(1, -1)}</em>;
+    }
+    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
+      return (
+        <code
+          key={i}
+          style={{
+            fontFamily: 'DM Mono, monospace',
+            fontSize: '12px',
+            background: 'rgba(21,111,245,0.08)',
+            padding: '2px 6px',
+            borderRadius: '4px',
+            color: 'var(--accent)',
+          }}
+        >
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    return part;
+  });
+}
+
+function renderFormattedMarkdown(mdText: string) {
+  if (!mdText) return null;
+  const lines = mdText.split('\n');
+  return (
+    <div
+      className="pl-markdown-body"
+      style={{
+        fontSize: '13.5px',
+        lineHeight: '1.7',
+        color: 'var(--text)',
+        fontFamily: "'Inter', 'DM Sans', system-ui, -apple-system, sans-serif",
+      }}
+    >
+      {lines.map((line, idx) => {
+        const trimmed = line.trim();
+
+        if (trimmed.startsWith('# ')) {
+          return (
+            <h1
+              key={idx}
+              style={{
+                fontSize: '18px',
+                fontWeight: 700,
+                margin: '16px 0 8px 0',
+                color: 'var(--accent)',
+                borderBottom: '1px solid var(--border-light)',
+                paddingBottom: '6px',
+              }}
+            >
+              {renderInlineStyles(trimmed.slice(2))}
+            </h1>
+          );
+        }
+
+        if (trimmed.startsWith('## ')) {
+          return (
+            <h2
+              key={idx}
+              style={{
+                fontSize: '15.5px',
+                fontWeight: 700,
+                margin: '14px 0 6px 0',
+                color: 'var(--text)',
+                letterSpacing: '-0.1px',
+              }}
+            >
+              {renderInlineStyles(trimmed.slice(3))}
+            </h2>
+          );
+        }
+
+        if (trimmed.startsWith('### ')) {
+          return (
+            <h3
+              key={idx}
+              style={{
+                fontSize: '14px',
+                fontWeight: 600,
+                margin: '12px 0 4px 0',
+                color: 'var(--text)',
+              }}
+            >
+              {renderInlineStyles(trimmed.slice(4))}
+            </h3>
+          );
+        }
+
+        if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+          return (
+            <div
+              key={idx}
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '8px',
+                margin: '4px 0 4px 8px',
+              }}
+            >
+              <span style={{ color: 'var(--accent)', fontSize: '14px', lineHeight: '1.4', flexShrink: 0 }}>•</span>
+              <span>{renderInlineStyles(trimmed.slice(2))}</span>
+            </div>
+          );
+        }
+
+        const numMatch = trimmed.match(/^(\d+)\.\s+(.*)/);
+        if (numMatch) {
+          return (
+            <div
+              key={idx}
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '8px',
+                margin: '4px 0 4px 8px',
+              }}
+            >
+              <span style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '13px', flexShrink: 0 }}>
+                {numMatch[1]}.
+              </span>
+              <span>{renderInlineStyles(numMatch[2])}</span>
+            </div>
+          );
+        }
+
+        if (!trimmed) {
+          return <div key={idx} style={{ height: '8px' }} />;
+        }
+
+        return (
+          <p key={idx} style={{ margin: '4px 0' }}>
+            {renderInlineStyles(line)}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 // Main Component
 
 const AI_GREETING_MESSAGE = {
@@ -215,6 +367,8 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   const [processing, setProcessing] = useState(false);
   const [jdContent, setJdContent] = useState('');
   const [jdName, setJdName] = useState('');
+  const [jdModalOpen, setJdModalOpen] = useState(false);
+  const [jdLoadingContent, setJdLoadingContent] = useState(false);
   const [availableJDs, setAvailableJDs] = useState<CVFile[]>([]);
   const [jdLoading, setJdLoading] = useState(false);
   const [jdDropdownOpen, setJdDropdownOpen] = useState(false);
@@ -235,6 +389,145 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   const jdDropdownRef = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const serviceRef = useRef<IPipelineService | null>(null);
+
+  const loadJdContent = async (name: string, fileId?: string) => {
+    if (!name) return '';
+    setJdLoadingContent(true);
+    try {
+      const baseName = name.split('/').pop()?.split('\\').pop() || name;
+      const targetFile = availableJDs.find(f => f.name === name || f.name === baseName || (fileId && f._id === fileId));
+
+      // Method 1: Download directly via presigned downloadUrl if available on CVFile
+      if (targetFile?.downloadUrl) {
+        try {
+          const resp = await fetch(targetFile.downloadUrl);
+          if (resp.ok) {
+            const text = await resp.text();
+            if (text && text.trim()) {
+              setJdContent(text);
+              return text;
+            }
+          }
+        } catch (e) {
+          console.warn('[JD Load] Fetch targetFile.downloadUrl failed:', e);
+        }
+      }
+
+      // Method 2: Call privos.files.get to retrieve file details & downloadUrl
+      const resolvedFileId = fileId || targetFile?._id;
+      if (resolvedFileId) {
+        try {
+          const getRes: any = await app.callServerTool({
+            name: 'privos.files.get',
+            arguments: { fileId: resolvedFileId }
+          });
+          let url: string | undefined = getRes?.downloadUrl;
+          if (!url && getRes?.content?.[0]?.text) {
+            try {
+              const parsed = JSON.parse(getRes.content[0].text);
+              url = parsed?.downloadUrl;
+            } catch (e) {}
+          }
+          if (url) {
+            const resp = await fetch(url);
+            if (resp.ok) {
+              const text = await resp.text();
+              if (text && text.trim()) {
+                setJdContent(text);
+                return text;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[JD Load] privos.files.get failed:', e);
+        }
+      }
+
+      // Method 3: Call privos.files.search to search file by name in channel
+      try {
+        const searchRes: any = await app.callServerTool({
+          name: 'privos.files.search',
+          arguments: { channelId: roomId, query: baseName }
+        });
+        let searchList: any[] = [];
+        if (searchRes?.content?.[0]?.text) {
+          try {
+            const parsed = JSON.parse(searchRes.content[0].text);
+            searchList = Array.isArray(parsed) ? parsed : (parsed?.files || []);
+          } catch (e) {}
+        } else {
+          searchList = Array.isArray(searchRes) ? searchRes : (searchRes?.files || []);
+        }
+        const matched = searchList.find((f: any) => f.name === baseName || f.name === name);
+        if (matched?.downloadUrl) {
+          const resp = await fetch(matched.downloadUrl);
+          if (resp.ok) {
+            const text = await resp.text();
+            if (text && text.trim()) {
+              setJdContent(text);
+              return text;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[JD Load] privos.files.search failed:', e);
+      }
+
+      // Method 4: Fallback to getMarkdownContent in PipelineService
+      if (serviceRef.current) {
+        const fetched = await serviceRef.current.getMarkdownContent(baseName);
+        if (fetched && fetched.trim()) {
+          setJdContent(fetched);
+          return fetched;
+        }
+      }
+
+      // Method 5: Fallback to getFileContent via REST API
+      const pathsToTry = [
+        `${roomId}/hr-miniapp/jds/${baseName}`,
+        `hr-miniapp/jds/${baseName}`,
+        `${roomId}/hr-miniapp/jds/${name}`,
+        `hr-miniapp/jds/${name}`,
+      ];
+      for (const p of pathsToTry) {
+        try {
+          const res = await getFileContent(app, p);
+          if (res && res.trim()) {
+            setJdContent(res);
+            return res;
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    } catch (err) {
+      console.error('Lỗi khi nạp nội dung JD:', err);
+    } finally {
+      setJdLoadingContent(false);
+    }
+    return '';
+  };
+
+  const handleOpenJdModal = async () => {
+    if (!jdName) return;
+    setJdModalOpen(true);
+    if (!jdContent || jdContent.startsWith('Selected JD:')) {
+      await loadJdContent(jdName);
+    }
+  };
+
+  const handleDownloadJd = () => {
+    if (!jdContent || !jdName) return;
+    const blob = new Blob([jdContent], { type: 'text/markdown;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', jdName.endsWith('.md') ? jdName : `${jdName}.md`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
 
   // Note: localStorage is forbidden in Privos sandboxed iframe without allow-same-origin.
@@ -402,32 +695,13 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
     if (!fileId) {
       setJdContent('');
       setJdName('');
+      setJdModalOpen(false);
       return;
     }
     const jdFile = jdList.find(f => f._id === fileId);
     if (!jdFile) return;
-    try {
-      setJdName(jdFile.name);
-      if (serviceRef.current) {
-        const path = `hr-miniapp/jds/${jdFile.name}`;
-        const content = await app.callServerTool({
-          name: 'privos.files.getContent',
-          arguments: { path }
-        }).catch(async () => {
-          return await serviceRef.current!.getMarkdownContent(jdFile.name);
-        });
-
-        if (typeof content === 'string' && content.trim()) {
-          setJdContent(content);
-        } else if (content?.data) {
-          setJdContent(content.data);
-        } else {
-          setJdContent(`Selected JD: ${jdFile.name}`);
-        }
-      }
-    } catch (err: any) {
-      alert('L\u1ed7i khi t\u1ea3i n\u1ed9i dung JD: ' + err.message);
-    }
+    setJdName(jdFile.name);
+    await loadJdContent(jdFile.name, jdFile._id);
   };
 
   const handleGenerateJD = async () => {
@@ -805,6 +1079,27 @@ REQUIRED:
         .pl-dropdown-menu { scrollbar-width: none; -ms-overflow-style: none; }
         .pl-dropdown-menu::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
+        .pl-jd-link-btn {
+          margin-left: 8px;
+          padding: 2px 8px;
+          border: 1px solid rgba(21,111,245,0.25);
+          border-radius: 12px;
+          background: rgba(21,111,245,0.06);
+          color: var(--accent);
+          font-weight: 500;
+          font-size: 12px;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          transition: all 0.15s ease;
+        }
+        .pl-jd-link-btn:hover {
+          background: rgba(21,111,245,0.14) !important;
+          border-color: var(--accent) !important;
+          box-shadow: 0 2px 8px rgba(21,111,245,0.18);
+        }
+
 
         .pl-toast {
           position: fixed; top: 20px; right: 24px; z-index: 1300;
@@ -893,9 +1188,20 @@ REQUIRED:
             <h1 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.2px' }}>
               CV Pipeline
             </h1>
-            <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
-              {'X\u1eed l\u00fd & ch\u1ea5m \u0111i\u1ec3m CV t\u1ef1 \u0111\u1ed9ng'}
-              {jdName && <span style={{ marginLeft: '8px', color: 'var(--accent)', fontWeight: 500 }}>{'\u00b7'} {jdName}</span>}
+            <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+              <span>{'X\u1eed l\u00fd & ch\u1ea5m \u0111i\u1ec3m CV t\u1ef1 \u0111\u1ed9ng'}</span>
+              {jdName && (
+                <button
+                  type="button"
+                  onClick={handleOpenJdModal}
+                  className="pl-jd-link-btn"
+                  title={`Xem n\u1ed9i dung file RoomFiles/hr-miniapp/jds/${jdName}`}
+                >
+                  <span style={{ fontSize: '11px' }}>{'\u00b7'}</span>
+                  <span>{jdName}</span>
+                  <span style={{ fontSize: '11px', opacity: 0.85 }}>📄 Xem JD</span>
+                </button>
+              )}
             </p>
           </div>
         </header>
@@ -1252,6 +1558,112 @@ REQUIRED:
                     Gửi
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* JD Content Modal Popup */}
+        {jdModalOpen && (
+          <div className="pl-modal-backdrop" onClick={() => setJdModalOpen(false)}>
+            <div
+              className="pl-modal"
+              style={{ maxWidth: '820px', display: 'flex', flexDirection: 'column', maxHeight: '85vh' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                className="pl-modal-header"
+                style={{
+                  flexShrink: 0,
+                  borderBottom: '1px solid var(--border-light)',
+                  paddingBottom: '14px',
+                  marginBottom: '14px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                }}
+              >
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '18px' }}>📄</span>
+                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: 'var(--text)' }}>
+                      {jdName}
+                    </h3>
+                  </div>
+                  <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'DM Mono, monospace' }}>
+                    RoomFiles/hr-miniapp/jds/{jdName}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="pl-btn"
+                  style={{ padding: '6px 10px' }}
+                  onClick={() => setJdModalOpen(false)}
+                  aria-label="Đóng modal"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: 'auto',
+                  padding: '20px 22px',
+                  background: 'var(--bg)',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--border-light)',
+                  color: 'var(--text)',
+                }}
+              >
+                {jdLoadingContent ? (
+                  <p style={{ color: 'var(--text-muted)', textAlign: 'center', margin: '20px 0' }}>
+                    Đang tải nội dung file JD...
+                  </p>
+                ) : jdContent && !jdContent.startsWith('Selected JD:') ? (
+                  renderFormattedMarkdown(jdContent)
+                ) : (
+                  <p style={{ color: 'var(--text-muted)', textAlign: 'center', margin: '20px 0' }}>
+                    Chưa nạp được nội dung file JD từ RoomFiles/hr-miniapp/jds/{jdName}.
+                  </p>
+                )}
+              </div>
+
+              <div
+                className="pl-modal-actions"
+                style={{
+                  flexShrink: 0,
+                  marginTop: '14px',
+                  paddingTop: '12px',
+                  display: 'flex',
+                  justify: 'flex-end',
+                  gap: '10px',
+                }}
+              >
+                <button
+                  type="button"
+                  className="pl-btn"
+                  onClick={handleDownloadJd}
+                  disabled={!jdContent || jdContent.startsWith('Selected JD:')}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    borderColor: 'var(--accent)',
+                    color: 'var(--accent)',
+                    fontWeight: 600,
+                  }}
+                >
+                  <span>📥</span>
+                  <span>Tải về JD (.md)</span>
+                </button>
+                <button
+                  type="button"
+                  className="pl-btn pl-btn-primary"
+                  onClick={() => setJdModalOpen(false)}
+                >
+                  Đóng
+                </button>
               </div>
             </div>
           </div>
