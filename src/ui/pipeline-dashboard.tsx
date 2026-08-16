@@ -1636,7 +1636,7 @@ REQUIRED:
                   marginTop: '14px',
                   paddingTop: '12px',
                   display: 'flex',
-                  justify: 'flex-end',
+                  justifyContent: 'flex-end',
                   gap: '10px',
                 }}
               >
