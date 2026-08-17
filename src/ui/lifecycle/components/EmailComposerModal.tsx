@@ -94,56 +94,59 @@ export function EmailComposerModal({ isOpen, onClose, profile }: EmailComposerMo
 
   return (
     <div className="bot-template-modal-overlay">
-      <div className="bot-template-modal-content" style={{ width: 550, height: 'auto', minHeight: 450 }}>
+      <div className="bot-template-modal-content" style={{ width: 800, height: 'auto', minHeight: 450, display: 'flex', flexDirection: 'column' }}>
         <div className="bot-template-modal-header">
           <h3>✉️ Gửi Email cho {profile.name}</h3>
           <button className="bot-template-close-btn" onClick={onClose}>×</button>
         </div>
         
-        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16, flex: 1 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text)' }}>Mẫu thư (Template):</label>
-            <select 
-              value={selectedTemplate} 
-              onChange={handleTemplateChange} 
-              style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)', outline: 'none' }}
-            >
-              <option value="">-- Chọn mẫu thư --</option>
-              {TEMPLATES.map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
+        <div style={{ padding: 20, display: 'flex', gap: 24, flex: 1 }}>
+          {/* Cột trái: Các trường nhập liệu cơ bản */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text)' }}>Mẫu thư (Template):</label>
+              <select 
+                value={selectedTemplate} 
+                onChange={handleTemplateChange} 
+                style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)', outline: 'none' }}
+              >
+                <option value="">-- Chọn mẫu thư --</option>
+                {TEMPLATES.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text)' }}>Người nhận:</label>
+              <input 
+                type="text" 
+                value={profile.email || 'Chưa có email'} 
+                disabled 
+                style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-hover)', color: 'var(--text-muted)' }} 
+              />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text)' }}>Tiêu đề:</label>
+              <input 
+                type="text" 
+                value={subject} 
+                onChange={e => setSubject(e.target.value)} 
+                placeholder="Nhập tiêu đề thư..."
+                style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)', outline: 'none' }} 
+              />
+            </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text)' }}>Người nhận:</label>
-            <input 
-              type="text" 
-              value={profile.email || 'Chưa có email'} 
-              disabled 
-              style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-hover)', color: 'var(--text-muted)' }} 
-            />
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text)' }}>Tiêu đề:</label>
-            <input 
-              type="text" 
-              value={subject} 
-              onChange={e => setSubject(e.target.value)} 
-              placeholder="Nhập tiêu đề thư..."
-              style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)', outline: 'none' }} 
-            />
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+          {/* Cột phải: Nội dung thư */}
+          <div style={{ flex: 1.5, display: 'flex', flexDirection: 'column', gap: 6 }}>
             <label style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text)' }}>Nội dung:</label>
             <textarea 
               value={content} 
               onChange={e => setContent(e.target.value)} 
               placeholder="Nhập nội dung..."
-              rows={8}
-              style={{ padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', outline: 'none', resize: 'vertical', minHeight: '150px', fontFamily: 'inherit' }} 
+              style={{ padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', outline: 'none', resize: 'none', flex: 1, fontFamily: 'inherit' }} 
             />
           </div>
         </div>
