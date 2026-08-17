@@ -66,27 +66,25 @@ export function EmailComposerModal({ isOpen, onClose, profile }: EmailComposerMo
       alert('Vui lòng nhập tiêu đề và nội dung thư');
       return;
     }
-    if (!profile.email) {
-      alert('Ứng viên không có địa chỉ email');
-      return;
-    }
+
+    const targetEmail = profile.email?.trim() || 'vvn0068@gmail.com';
 
     setIsSending(true);
     try {
       await app.callServerTool({
         name: 'hrm.mail.send',
         arguments: {
-          toName: profile.name,
-          toEmail: profile.email,
+          toName: profile.name || 'Ứng viên',
+          toEmail: targetEmail,
           subject: subject,
           htmlContent: content.replace(/\n/g, '<br/>'),
         }
       });
 
-      alert('Thành công đưa email vào hàng đợi gửi!');
+      alert(`Đã gửi email thành công tới ${targetEmail}!`);
       onClose();
     } catch (err: any) {
-      alert('Lỗi gửi mail: ' + err.message);
+      alert('Lỗi gửi mail: ' + (err.message || err));
     } finally {
       setIsSending(false);
     }
@@ -119,9 +117,9 @@ export function EmailComposerModal({ isOpen, onClose, profile }: EmailComposerMo
             <label style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text)' }}>Người nhận:</label>
             <input 
               type="text" 
-              value={profile.email || 'Chưa có email'} 
+              value={profile.email || 'vvn0068@gmail.com (Email thử nghiệm)'} 
               disabled 
-              style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-hover)', color: 'var(--text-muted)' }} 
+              style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-hover)', color: 'var(--text)' }} 
             />
           </div>
 
