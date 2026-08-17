@@ -1,4 +1,4 @@
-import { DraftingTemplate } from '../types';
+import { DraftingTemplate } from '../../types';;
 
 export const probationContractTemplate: DraftingTemplate = {
   id: 'probation-contract',

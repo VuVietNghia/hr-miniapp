@@ -1,4 +1,4 @@
-export type TemplateCategory = 'onboarding' | 'personnel' | 'admin' | 'legal';
+export type TemplateCategory = 'thoathuan' | 'chidao' | 'kehoach' | 'thongtin' | 'phutro';
 export type TemplateTrack = 'nd30_administrative' | 'modern_enterprise';
 
 export type DraftingActionType =
