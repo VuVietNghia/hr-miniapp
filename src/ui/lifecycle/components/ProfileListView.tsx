@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { usePrivosContext } from '@privos/app-react';
 import { EmployeeProfile, KANBAN_COLUMNS } from '../types';
 import { getInitials, calculateTimelineInfo } from '../utils';
+import { EmailComposerModal } from './EmailComposerModal';
 
 interface ProfileListViewProps {
   profiles: EmployeeProfile[];
@@ -11,6 +12,7 @@ interface ProfileListViewProps {
 
 export function ProfileListView({ profiles, isLoading, onMoveProfile }: ProfileListViewProps) {
   const [copiedField, setCopiedField] = useState<{ id: string; field: string } | null>(null);
+  const [emailProfile, setEmailProfile] = useState<EmployeeProfile | null>(null);
   const { roomId } = usePrivosContext();
 
   const copyToClipboard = (id: string, text: string, field: string) => {
@@ -209,6 +211,15 @@ export function ProfileListView({ profiles, isLoading, onMoveProfile }: ProfileL
                         >
                           {copiedField?.id === profile._id && copiedField?.field === 'email' ? '✓ Đã chép' : '📋'}
                         </button>
+                        <button
+                          type="button"
+                          className="hr-icon-btn"
+                          onClick={() => setEmailProfile(profile)}
+                          title="Gửi Email"
+                          style={{ padding: '1px 5px', fontSize: '0.7rem', marginLeft: '4px' }}
+                        >
+                          ✉️
+                        </button>
                       </div>
                     )}
                   </div>
@@ -234,6 +245,14 @@ export function ProfileListView({ profiles, isLoading, onMoveProfile }: ProfileL
           })}
         </tbody>
       </table>
+      
+      {emailProfile && (
+        <EmailComposerModal 
+          isOpen={true} 
+          onClose={() => setEmailProfile(null)} 
+          profile={emailProfile} 
+        />
+      )}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import path from 'path';
 
 import _pkg from '../package.json';
 import { callHubTool } from './relay-client';
+import { mailService } from './services/MailService';
 
 const pkg = _pkg as Record<string, any>;
 const TOOL_NAME = 'hr_management_dashboard';
@@ -47,6 +48,8 @@ export function invalidateUiCache(): void {
 
 /** Handle an incoming MCP JSON-RPC request and return the result */
 export async function handleMcpMessage(method: string, _id: number, params: any): Promise<any> {
+	console.log(`[MCP INCOMING] method: ${method}, name: ${params?.name}`);
+
 	switch (method) {
 		case 'initialize':
 			return {
@@ -100,6 +103,21 @@ export async function handleMcpMessage(method: string, _id: number, params: any)
 						inputSchema: { type: 'object' }
 					},
 					{
+						name: 'hrm.mail.send',
+						title: 'Send Email via HR System',
+						description: 'Send an email to a candidate or employee using the backend email service and queue to avoid rate limits.',
+						inputSchema: {
+							type: 'object',
+							properties: {
+								toName: { type: 'string', description: 'Name of the recipient' },
+								toEmail: { type: 'string', description: 'Email address of the recipient' },
+								subject: { type: 'string', description: 'Subject of the email' },
+								htmlContent: { type: 'string', description: 'HTML content of the email' }
+							},
+							required: ['toName', 'toEmail', 'subject', 'htmlContent']
+						}
+					},
+					{
 						name: 'hrm.payroll.create',
 						title: 'Create Payroll Data',
 						description: 'Create a payroll record (Requires Password)',
@@ -139,6 +157,31 @@ export async function handleMcpMessage(method: string, _id: number, params: any)
 				
 				const result = await callHubTool(hubToolName, safeArgs);
 				return result;
+			}
+
+			if (params?.name === 'hrm.mail.send') {
+				const args = params.arguments;
+				console.log('[MCP DEBUG] Đã nhận yêu cầu hrm.mail.send:', { toEmail: args?.toEmail, subject: args?.subject });
+				
+				if (!args?.toName || !args?.toEmail || !args?.subject || !args?.htmlContent) {
+					throw new Error('Missing required arguments for hrm.mail.send');
+				}
+				
+				// Đẩy vào queue để gửi dần
+				mailService.queueMail({
+					toName: args.toName,
+					toEmail: args.toEmail,
+					subject: args.subject,
+					htmlContent: args.htmlContent
+				}).catch(err => {
+					console.error('[MailHandler] Lỗi gửi thư trong background:', err);
+				});
+
+				return {
+					content: [
+						{ type: 'text', text: 'Email has been successfully queued for sending.' }
+					]
+				};
 			}
 
 			if (params?.name !== TOOL_NAME) {
