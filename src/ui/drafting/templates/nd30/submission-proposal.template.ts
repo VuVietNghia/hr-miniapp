@@ -1,4 +1,4 @@
-import { DraftingTemplate } from '../types';
+import { DraftingTemplate } from '../../types';
 
 export const submissionProposalTemplate: DraftingTemplate = {
   id: 'submission-proposal',
