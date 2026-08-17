@@ -19,7 +19,19 @@ const CV_COLUMNS = [
   { status: '07_CV_Cu', label: 'CV cũ', color: '#9ca3af' },
 ];
 
-function CVCard({ cv, onMove, onInvite }: { cv: CVProfile, onMove: (id: string, newStatus: string) => void, onInvite: (cv: CVProfile, posName?: string) => void }) {
+function CVCard({ 
+  cv, 
+  listName,
+  onMove, 
+  onInvite,
+  onSelectDetail 
+}: { 
+  cv: CVProfile, 
+  listName: string,
+  onMove: (id: string, newStatus: string) => void, 
+  onInvite: (cv: CVProfile, posName?: string) => void,
+  onSelectDetail: (cv: CVProfile, listName: string) => void
+}) {
   const [isDragging, setIsDragging] = useState(false);
   const initials = cv.name.substring(0, 2).toUpperCase();
   const displayName = cv.name.length > 27 ? cv.name.substring(0, 27) + '...' : cv.name;
@@ -36,14 +48,16 @@ function CVCard({ cv, onMove, onInvite }: { cv: CVProfile, onMove: (id: string, 
       draggable={true}
       onDragStart={handleDragStart}
       onDragEnd={() => setIsDragging(false)}
-      title="Kéo thả CV"
+      onClick={() => onSelectDetail(cv, listName)}
+      title="Bấm để xem thông tin chi tiết & nhận xét AI (hoặc Kéo thả CV)"
+      style={{ cursor: 'pointer', transition: 'transform 0.15s ease, box-shadow 0.15s ease' }}
     >
       <div className="profile-card-header">
         <div className="profile-name-row" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <div className="profile-avatar" style={{ backgroundColor: 'var(--accent)', flexShrink: 0 }}>{initials}</div>
           <div style={{ overflow: 'hidden', minWidth: 0, flex: 1 }}>
             <div className="profile-name" style={{ whiteSpace: 'nowrap', overflow: 'hidden' }} title={cv.name}>{displayName}</div>
-            <div style={{ marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <span className="badge-tenure">Điểm: {cv.score ?? 'N/A'}</span>
               {cv.category && (() => {
                 let badgeStyle: React.CSSProperties = { fontSize: '10px', padding: '2px 6px' };
@@ -88,14 +102,28 @@ function CVCard({ cv, onMove, onInvite }: { cv: CVProfile, onMove: (id: string, 
       </div>
       {cv.reason && (
         <div className="profile-details" style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
-          {cv.reason.length > 200 ? cv.reason.substring(0, 200) + '...' : cv.reason}
+          {cv.reason.length > 180 ? cv.reason.substring(0, 180) + '...' : cv.reason}
         </div>
       )}
     </div>
   );
 }
 
-function CVColumn({ column, cvs, onMove, onInvite }: { column: typeof CV_COLUMNS[0], cvs: CVProfile[], onMove: (id: string, newStatus: string) => void, onInvite: (cv: CVProfile, posName?: string) => void }) {
+function CVColumn({ 
+  column, 
+  cvs, 
+  listName,
+  onMove, 
+  onInvite,
+  onSelectDetail
+}: { 
+  column: typeof CV_COLUMNS[0], 
+  cvs: CVProfile[], 
+  listName: string,
+  onMove: (id: string, newStatus: string) => void, 
+  onInvite: (cv: CVProfile, posName?: string) => void,
+  onSelectDetail: (cv: CVProfile, listName: string) => void
+}) {
   const [isDragOver, setIsDragOver] = useState(false);
 
   const handleDrop = (e: React.DragEvent) => {
@@ -130,7 +158,16 @@ function CVColumn({ column, cvs, onMove, onInvite }: { column: typeof CV_COLUMNS
         {cvs.length === 0 ? (
           <p className="empty-state">{isDragOver ? 'Thả CV vào đây' : 'Trống'}</p>
         ) : (
-          cvs.map(cv => <CVCard key={cv._id} cv={cv} onMove={onMove} onInvite={onInvite} />)
+          cvs.map(cv => (
+            <CVCard 
+              key={cv._id} 
+              cv={cv} 
+              listName={listName}
+              onMove={onMove} 
+              onInvite={onInvite} 
+              onSelectDetail={onSelectDetail}
+            />
+          ))
         )}
       </div>
     </div>
@@ -144,7 +181,17 @@ export interface CVBoardData {
   cvs: CVProfile[];
 }
 
-function CVBoard({ board, onMove, onInvite }: { board: CVBoardData, onMove: (listId: string, id: string, newStatus: string) => void, onInvite: (cv: CVProfile, posName?: string) => void }) {
+function CVBoard({ 
+  board, 
+  onMove, 
+  onInvite,
+  onSelectDetail
+}: { 
+  board: CVBoardData, 
+  onMove: (listId: string, id: string, newStatus: string) => void, 
+  onInvite: (cv: CVProfile, posName?: string) => void,
+  onSelectDetail: (cv: CVProfile, listName: string) => void
+}) {
   return (
     <div style={{ marginBottom: '40px' }}>
       <div style={{ width: '100%', padding: '0 10px', marginBottom: '16px' }}>
@@ -156,11 +203,69 @@ function CVBoard({ board, onMove, onInvite }: { board: CVBoardData, onMove: (lis
             key={col.status} 
             column={col} 
             cvs={board.cvs.filter(cv => cv.status === col.status || (col.status === '07_CV_Cu' && cv.status === '10_CV_Cu'))} 
+            listName={board.listName}
             onMove={(id, newStatus) => onMove(board.listId, id, newStatus)} 
             onInvite={(cv) => onInvite(cv, board.listName.replace(/^JD\s+/i, ''))}
+            onSelectDetail={onSelectDetail}
           />
         ))}
       </div>
+    </div>
+  );
+}
+
+function renderInlineBold(text: string) {
+  const parts = text.split(/(\*\*.*?\*\*|\*.*?\*|`.*?`)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+      return (
+        <strong key={i} style={{ fontWeight: 700, color: 'var(--text)' }}>
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+      return <em key={i} style={{ fontStyle: 'italic' }}>{part.slice(1, -1)}</em>;
+    }
+    return part;
+  });
+}
+
+function renderFormattedReason(reasonText: string) {
+  if (!reasonText) return <p style={{ color: 'var(--text-muted)', fontStyle: 'italic', margin: 0 }}>Chưa có nhận xét chi tiết từ hệ thống AI.</p>;
+  
+  const lines = reasonText.split('\n');
+  return (
+    <div style={{ fontSize: '13.5px', lineHeight: '1.68', color: 'var(--text)', fontFamily: "'Inter', 'DM Sans', system-ui, sans-serif" }}>
+      {lines.map((line, idx) => {
+        const trimmed = line.trim();
+        if (!trimmed) return <div key={idx} style={{ height: '6px' }} />;
+        
+        if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('• ')) {
+          return (
+            <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', margin: '4px 0 4px 6px' }}>
+              <span style={{ color: 'var(--accent, #156FF5)', fontSize: '14px', flexShrink: 0 }}>•</span>
+              <div>{renderInlineBold(trimmed.replace(/^[-*•]\s*/, ''))}</div>
+            </div>
+          );
+        }
+
+        const numMatch = trimmed.match(/^(\d+)\.\s+(.*)/);
+        if (numMatch) {
+          return (
+            <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', margin: '4px 0 4px 6px' }}>
+              <span style={{ color: 'var(--accent, #156FF5)', fontWeight: 600, fontSize: '13px', flexShrink: 0 }}>{numMatch[1]}.</span>
+              <div>{renderInlineBold(numMatch[2])}</div>
+            </div>
+          );
+        }
+
+        return (
+          <p key={idx} style={{ margin: '4px 0' }}>
+            {renderInlineBold(line)}
+          </p>
+        );
+      })}
     </div>
   );
 }
@@ -173,6 +278,9 @@ export default function CVScoredTab() {
   const [boards, setBoards] = useState<CVBoardData[]>([]);
   const [loading, setLoading] = useState(false);
   
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [selectedCVForDetail, setSelectedCVForDetail] = useState<{ cv: CVProfile; listName: string } | null>(null);
+
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [selectedCVForInvite, setSelectedCVForInvite] = useState<CVProfile | null>(null);
   
@@ -465,8 +573,153 @@ Trân trọng,
                 setInviteDate('');
                 setInviteModalOpen(true);
               }}
+              onSelectDetail={(cv, listName) => {
+                setSelectedCVForDetail({ cv, listName });
+                setDetailModalOpen(true);
+              }}
             />
           ))}
+        </div>
+      )}
+
+      {/* CV Detail & AI Scoring Modal Popup */}
+      {detailModalOpen && selectedCVForDetail && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundColor: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+          onClick={() => setDetailModalOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '800px',
+              maxWidth: '95%',
+              maxHeight: '88vh',
+              backgroundColor: 'var(--bg-card, #fff)',
+              borderRadius: '16px',
+              padding: '24px',
+              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.25)',
+              border: '1px solid var(--border)',
+              display: 'flex',
+              flexDirection: 'column',
+              zIndex: 10000,
+              overflow: 'hidden'
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border-light, #e2e8f0)', paddingBottom: '16px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div
+                  style={{
+                    width: '46px',
+                    height: '46px',
+                    borderRadius: '12px',
+                    backgroundColor: 'var(--accent, #156FF5)',
+                    color: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 700,
+                    fontSize: '18px',
+                    boxShadow: '0 4px 12px rgba(21,111,245,0.25)'
+                  }}
+                >
+                  {selectedCVForDetail.cv.name.substring(0, 2).toUpperCase()}
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text)' }}>
+                    {selectedCVForDetail.cv.name}
+                  </h3>
+                  <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
+                    Đợt tuyển dụng: <strong>{selectedCVForDetail.listName}</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setDetailModalOpen(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '18px',
+                  color: 'var(--text-muted)',
+                  padding: '4px 8px',
+                  borderRadius: '6px'
+                }}
+                title="Đóng"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Stats Summary Cards Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '18px' }}>
+              <div style={{ background: 'var(--bg-subtle, var(--bg-card))', padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--border-light, var(--border))' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.5px' }}>
+                  Tổng điểm AI
+                </span>
+                <div style={{ fontSize: '20px', fontWeight: 800, color: selectedCVForDetail.cv.score && Number(selectedCVForDetail.cv.score) >= 75 ? '#22c55e' : selectedCVForDetail.cv.score && Number(selectedCVForDetail.cv.score) >= 50 ? '#eab308' : '#ef4444', marginTop: '2px' }}>
+                  {selectedCVForDetail.cv.score !== undefined ? `${selectedCVForDetail.cv.score}/100` : 'N/A'}
+                </div>
+              </div>
+
+              <div style={{ background: 'var(--bg-subtle, var(--bg-card))', padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--border-light, var(--border))' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.5px' }}>
+                  Phân loại AI
+                </span>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text)', marginTop: '4px' }}>
+                  {selectedCVForDetail.cv.category || 'Chưa phân loại'}
+                </div>
+              </div>
+
+              <div style={{ background: 'var(--bg-subtle, var(--bg-card))', padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--border-light, var(--border))' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.5px' }}>
+                  Trạng thái Kanban
+                </span>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text)', marginTop: '4px' }}>
+                  {CV_COLUMNS.find(c => c.status === selectedCVForDetail.cv.status)?.label || selectedCVForDetail.cv.status}
+                </div>
+              </div>
+            </div>
+
+            {/* AI Detailed Assessment Content Container */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                <span style={{ fontSize: '15px' }}>🤖</span>
+                <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: 'var(--text)' }}>
+                  Mô tả AI chấm điểm & nhận xét chi tiết CV
+                </h4>
+              </div>
+              <div
+                className="pl-no-scrollbar"
+                style={{
+                  flex: 1,
+                  overflowY: 'auto',
+                  scrollbarWidth: 'none',
+                  msOverflowStyle: 'none',
+                  padding: '16px 18px',
+                  backgroundColor: 'var(--bg-subtle, var(--bg-card))',
+                  borderRadius: '10px',
+                  border: '1px solid var(--border-light, var(--border))',
+                  color: 'var(--text)',
+                }}
+              >
+                {renderFormattedReason(selectedCVForDetail.cv.reason || '')}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

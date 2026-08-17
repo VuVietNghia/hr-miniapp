@@ -369,6 +369,9 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   const [jdName, setJdName] = useState('');
   const [jdModalOpen, setJdModalOpen] = useState(false);
   const [jdLoadingContent, setJdLoadingContent] = useState(false);
+  const [isEditingJd, setIsEditingJd] = useState(false);
+  const [jdEditDraft, setJdEditDraft] = useState('');
+  const [isSavingJd, setIsSavingJd] = useState(false);
   const [availableJDs, setAvailableJDs] = useState<CVFile[]>([]);
   const [jdLoading, setJdLoading] = useState(false);
   const [jdDropdownOpen, setJdDropdownOpen] = useState(false);
@@ -510,9 +513,32 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
 
   const handleOpenJdModal = async () => {
     if (!jdName) return;
+    setIsEditingJd(false);
     setJdModalOpen(true);
     if (!jdContent || jdContent.startsWith('Selected JD:')) {
-      await loadJdContent(jdName);
+      const text = await loadJdContent(jdName);
+      setJdEditDraft(text || '');
+    } else {
+      setJdEditDraft(jdContent);
+    }
+  };
+
+  const handleSaveJdContent = async () => {
+    if (!jdName || !jdEditDraft.trim() || !app || !roomId) return;
+    setIsSavingJd(true);
+    try {
+      const fullPath = `${roomId}/hr-miniapp/jds/${jdName}`;
+      await createOrUpdateFile(app, fullPath, jdEditDraft);
+      setJdContent(jdEditDraft);
+      setIsEditingJd(false);
+      showToast(`Đã lưu thay đổi vào file RoomFiles/hr-miniapp/jds/${jdName}`, 'success');
+      addLog(`[JD Editor] Đã cập nhật file JD: hr-miniapp/jds/${jdName}`);
+    } catch (err: any) {
+      console.error('Lỗi khi lưu file JD:', err);
+      showToast(`Lỗi khi lưu file JD: ${err.message || err}`, 'error');
+      addLog(`[LỖI] Không thể lưu file JD: ${err.message || err}`);
+    } finally {
+      setIsSavingJd(false);
     }
   };
 
@@ -1100,6 +1126,16 @@ REQUIRED:
           box-shadow: 0 2px 8px rgba(21,111,245,0.18);
         }
 
+        .pl-no-scrollbar {
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+        .pl-no-scrollbar::-webkit-scrollbar {
+          width: 0;
+          height: 0;
+          display: none;
+        }
+
 
         .pl-toast {
           position: fixed; top: 20px; right: 24px; z-index: 1300;
@@ -1584,11 +1620,37 @@ REQUIRED:
                 }}
               >
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '18px' }}>📄</span>
-                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: 'var(--text)' }}>
-                      {jdName}
-                    </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '18px' }}>📄</span>
+                      <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: 'var(--text)' }}>
+                        {jdName}
+                      </h3>
+                    </div>
+                    {!isEditingJd && (
+                      <button
+                        type="button"
+                        className="pl-btn"
+                        onClick={() => {
+                          setJdEditDraft(jdContent);
+                          setIsEditingJd(true);
+                        }}
+                        title="Chỉnh sửa nội dung file JD"
+                        style={{
+                          padding: '3px 9px',
+                          fontSize: '12px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          color: 'var(--accent)',
+                          borderColor: 'var(--accent)',
+                          borderRadius: '8px',
+                        }}
+                      >
+                        <span>✏️</span>
+                        <span>Sửa JD</span>
+                      </button>
+                    )}
                   </div>
                   <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'DM Mono, monospace' }}>
                     RoomFiles/hr-miniapp/jds/{jdName}
@@ -1598,7 +1660,10 @@ REQUIRED:
                   type="button"
                   className="pl-btn"
                   style={{ padding: '6px 10px' }}
-                  onClick={() => setJdModalOpen(false)}
+                  onClick={() => {
+                    setIsEditingJd(false);
+                    setJdModalOpen(false);
+                  }}
                   aria-label="Đóng modal"
                 >
                   ✕
@@ -1606,17 +1671,58 @@ REQUIRED:
               </div>
 
               <div
+                className="pl-no-scrollbar"
                 style={{
                   flex: 1,
                   overflowY: 'auto',
-                  padding: '20px 22px',
+                  scrollbarWidth: 'none',
+                  msOverflowStyle: 'none',
+                  padding: isEditingJd ? '14px' : '20px 22px',
                   background: 'var(--bg)',
                   borderRadius: 'var(--radius-md)',
                   border: '1px solid var(--border-light)',
                   color: 'var(--text)',
+                  display: 'flex',
+                  flexDirection: 'column',
                 }}
               >
-                {jdLoadingContent ? (
+                {isEditingJd ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent)' }}>
+                        📝 Chế độ chỉnh sửa Markdown
+                      </span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                        Hỗ trợ định dạng Markdown (H1, H2, Bold, List...)
+                      </span>
+                    </div>
+                    <textarea
+                      className="pl-textarea pl-no-scrollbar"
+                      value={jdEditDraft}
+                      onChange={(e) => setJdEditDraft(e.target.value)}
+                      disabled={isSavingJd}
+                      style={{
+                        flex: 1,
+                        minHeight: '380px',
+                        width: '100%',
+                        fontFamily: 'DM Mono, monospace',
+                        fontSize: '13px',
+                        lineHeight: '1.6',
+                        padding: '14px 16px',
+                        borderRadius: 'var(--radius-md)',
+                        border: '1px solid var(--accent)',
+                        background: 'var(--bg-card)',
+                        color: 'var(--text)',
+                        resize: 'vertical',
+                        outline: 'none',
+                        boxShadow: '0 0 0 3px rgba(21,111,245,0.12)',
+                        scrollbarWidth: 'none',
+                        msOverflowStyle: 'none',
+                      }}
+                      placeholder="Nhập nội dung JD (định dạng Markdown)..."
+                    />
+                  </div>
+                ) : jdLoadingContent ? (
                   <p style={{ color: 'var(--text-muted)', textAlign: 'center', margin: '20px 0' }}>
                     Đang tải nội dung file JD...
                   </p>
@@ -1640,30 +1746,58 @@ REQUIRED:
                   gap: '10px',
                 }}
               >
-                <button
-                  type="button"
-                  className="pl-btn"
-                  onClick={handleDownloadJd}
-                  disabled={!jdContent || jdContent.startsWith('Selected JD:')}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    borderColor: 'var(--accent)',
-                    color: 'var(--accent)',
-                    fontWeight: 600,
-                  }}
-                >
-                  <span>📥</span>
-                  <span>Tải về JD (.md)</span>
-                </button>
-                <button
-                  type="button"
-                  className="pl-btn pl-btn-primary"
-                  onClick={() => setJdModalOpen(false)}
-                >
-                  Đóng
-                </button>
+                {isEditingJd ? (
+                  <>
+                    <button
+                      type="button"
+                      className="pl-btn"
+                      onClick={() => {
+                        setIsEditingJd(false);
+                        setJdEditDraft(jdContent);
+                      }}
+                      disabled={isSavingJd}
+                    >
+                      Hủy
+                    </button>
+                    <button
+                      type="button"
+                      className="pl-btn pl-btn-primary"
+                      onClick={handleSaveJdContent}
+                      disabled={isSavingJd || !jdEditDraft.trim()}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <span>💾</span>
+                      <span>{isSavingJd ? 'Đang lưu...' : 'Lưu thay đổi'}</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="pl-btn"
+                      onClick={handleDownloadJd}
+                      disabled={!jdContent || jdContent.startsWith('Selected JD:')}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        borderColor: 'var(--accent)',
+                        color: 'var(--accent)',
+                        fontWeight: 600,
+                      }}
+                    >
+                      <span>📥</span>
+                      <span>Tải về JD (.md)</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="pl-btn pl-btn-primary"
+                      onClick={() => setJdModalOpen(false)}
+                    >
+                      Đóng
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
