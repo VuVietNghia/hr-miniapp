@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { usePrivosContext } from '@privos/app-react';
 import { EmployeeProfile, KANBAN_COLUMNS } from '../types';
 import { getInitials, calculateTimelineInfo } from '../utils';
+import { EmailComposerModal } from './EmailComposerModal';
 
 interface ProfileCardProps {
   profile: EmployeeProfile;
@@ -11,6 +12,7 @@ interface ProfileCardProps {
 export function ProfileCard({ profile, onMoveProfile }: ProfileCardProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const { roomId } = usePrivosContext();
 
   const getFileUrl = (p: EmployeeProfile) => {
@@ -76,13 +78,14 @@ export function ProfileCard({ profile, onMoveProfile }: ProfileCardProps) {
   const timeline = calculateTimelineInfo(profile.status, profile.startDate);
 
   return (
-    <div 
-      className={`hr-card ${isDragging ? 'is-dragging' : ''}`}
-      draggable={true}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-      title="Kéo thẻ để chuyển trạng thái nhân sự"
-    >
+    <>
+      <div 
+        className={`hr-card ${isDragging ? 'is-dragging' : ''}`}
+        draggable={true}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        title="Kéo thẻ để chuyển trạng thái nhân sự"
+      >
       <div className="profile-card-header">
         <div className="profile-name-row">
           <div className="profile-avatar">{initials}</div>
@@ -178,14 +181,17 @@ export function ProfileCard({ profile, onMoveProfile }: ProfileCardProps) {
                 >
                   {copiedField === 'email' ? 'Đã chép' : 'Chép'}
                 </button>
-                <a 
-                  href={`mailto:${profile.email}`} 
+                <button 
+                  type="button"
                   className="hr-icon-btn" 
                   title="Gửi Email"
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsEmailModalOpen(true);
+                  }}
                 >
                   Gửi
-                </a>
+                </button>
               </div>
             </div>
           )}
@@ -245,5 +251,12 @@ export function ProfileCard({ profile, onMoveProfile }: ProfileCardProps) {
         </div>
       )}
     </div>
+
+    <EmailComposerModal 
+        isOpen={isEmailModalOpen} 
+        onClose={() => setIsEmailModalOpen(false)} 
+        profile={profile} 
+      />
+    </>
   );
 }
