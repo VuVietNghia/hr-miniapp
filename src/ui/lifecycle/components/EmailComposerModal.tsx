@@ -137,28 +137,8 @@ export function EmailComposerModal({ isOpen, onClose, profile }: EmailComposerMo
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text)' }}>Người nhận:</label>
-            <input 
-              type="text" 
-              value={profile.email || 'vvn0068@gmail.com (Email thử nghiệm)'} 
-              disabled 
-              style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-hover)', color: 'var(--text)' }} 
-            />
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text)' }}>Tiêu đề:</label>
-            <input 
-              type="text" 
-              value={subject} 
-              onChange={e => setSubject(e.target.value)} 
-              placeholder="Nhập tiêu đề thư..."
-              style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)', outline: 'none' }} 
-            />
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+          {/* Cột phải: Nội dung thư */}
+          <div style={{ flex: 1.5, display: 'flex', flexDirection: 'column', gap: 6 }}>
             <label style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text)' }}>Nội dung:</label>
             <textarea 
               value={content} 
