@@ -66,27 +66,25 @@ export function EmailComposerModal({ isOpen, onClose, profile }: EmailComposerMo
       alert('Vui lòng nhập tiêu đề và nội dung thư');
       return;
     }
-    if (!profile.email) {
-      alert('Ứng viên không có địa chỉ email');
-      return;
-    }
+
+    const targetEmail = profile.email?.trim() || 'vvn0068@gmail.com';
 
     setIsSending(true);
     try {
       await app.callServerTool({
         name: 'hrm.mail.send',
         arguments: {
-          toName: profile.name,
-          toEmail: profile.email,
+          toName: profile.name || 'Ứng viên',
+          toEmail: targetEmail,
           subject: subject,
           htmlContent: content.replace(/\n/g, '<br/>'),
         }
       });
 
-      alert('Thành công đưa email vào hàng đợi gửi!');
+      alert(`Đã gửi email thành công tới ${targetEmail}!`);
       onClose();
     } catch (err: any) {
-      alert('Lỗi gửi mail: ' + err.message);
+      alert('Lỗi gửi mail: ' + (err.message || err));
     } finally {
       setIsSending(false);
     }
@@ -139,8 +137,28 @@ export function EmailComposerModal({ isOpen, onClose, profile }: EmailComposerMo
             </div>
           </div>
 
-          {/* Cột phải: Nội dung thư */}
-          <div style={{ flex: 1.5, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text)' }}>Người nhận:</label>
+            <input 
+              type="text" 
+              value={profile.email || 'vvn0068@gmail.com (Email thử nghiệm)'} 
+              disabled 
+              style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-hover)', color: 'var(--text)' }} 
+            />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text)' }}>Tiêu đề:</label>
+            <input 
+              type="text" 
+              value={subject} 
+              onChange={e => setSubject(e.target.value)} 
+              placeholder="Nhập tiêu đề thư..."
+              style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)', outline: 'none' }} 
+            />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
             <label style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text)' }}>Nội dung:</label>
             <textarea 
               value={content} 

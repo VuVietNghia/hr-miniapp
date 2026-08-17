@@ -287,10 +287,41 @@ export default function CVScoredTab() {
   const [inviteCandidateName, setInviteCandidateName] = useState('');
   const [invitePosition, setInvitePosition] = useState('');
   const [inviteCompany, setInviteCompany] = useState('');
-  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('vvn0068@gmail.com');
   const [inviteDate, setInviteDate] = useState('');
   const [inviteSubject, setInviteSubject] = useState('');
   const [inviteEmailBody, setInviteEmailBody] = useState('');
+  const [isSendingInvite, setIsSendingInvite] = useState(false);
+
+  const handleSendInviteEmail = async () => {
+    if (!app) return;
+    const targetEmail = inviteEmail.trim() || 'vvn0068@gmail.com';
+    
+    if (!inviteSubject.trim() || !inviteEmailBody.trim()) {
+      alert('Vui lòng nhập tiêu đề và nội dung thư mời');
+      return;
+    }
+
+    setIsSendingInvite(true);
+    try {
+      await app.callServerTool({
+        name: 'hrm.mail.send',
+        arguments: {
+          toName: inviteCandidateName || 'Ứng viên',
+          toEmail: targetEmail,
+          subject: inviteSubject,
+          htmlContent: inviteEmailBody.replace(/\n/g, '<br/>')
+        }
+      });
+      alert(`Đã gửi email mời phỏng vấn thành công tới ${targetEmail}!`);
+      setInviteModalOpen(false);
+    } catch (err: any) {
+      console.error('Lỗi gửi email:', err);
+      alert('Lỗi gửi email: ' + (err.message || err));
+    } finally {
+      setIsSendingInvite(false);
+    }
+  };
 
   const inviteDateRef = React.useRef<HTMLInputElement>(null);
   const requestRef = React.useRef(0);
@@ -569,7 +600,7 @@ Trân trọng,
                 setInviteCandidateName(cleanName);
                 setInvitePosition(cleanPos);
                 setInviteCompany('Công ty ABC');
-                setInviteEmail('');
+                setInviteEmail('vvn0068@gmail.com');
                 setInviteDate('');
                 setInviteModalOpen(true);
               }}
@@ -837,10 +868,14 @@ Trân trọng,
               <button className="hr-btn" onClick={() => {
                 alert('Đã tải nội dung email!');
               }}>Tải email về</button>
-              <button className="hr-btn hr-btn-primary" style={{ backgroundColor: '#156FF5', color: '#fff', borderColor: '#156FF5' }} onClick={() => {
-                alert('Đã gửi email mời phỏng vấn!');
-                setInviteModalOpen(false);
-              }}>Gửi</button>
+              <button 
+                className="hr-btn hr-btn-primary" 
+                disabled={isSendingInvite} 
+                style={{ backgroundColor: '#156FF5', color: '#fff', borderColor: '#156FF5' }} 
+                onClick={handleSendInviteEmail}
+              >
+                {isSendingInvite ? 'Đang gửi...' : 'Gửi email'}
+              </button>
             </div>
           </div>
         </div>
