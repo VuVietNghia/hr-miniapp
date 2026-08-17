@@ -9,7 +9,7 @@ async function testDocx() {
   
   for (const tpl of DRAFTING_TEMPLATES) {
     const renderedText = renderDraftingTemplate(tpl.templateText, tpl.defaultData);
-    const doc = DocxExportService.createDocumentFromMarkdown(tpl.title, renderedText);
+    const doc = DocxExportService.createDocumentFromMarkdown(renderedText);
     const buffer = await Packer.toBuffer(doc);
     
     const outDir = path.resolve(__dirname, '../../test-outputs');
