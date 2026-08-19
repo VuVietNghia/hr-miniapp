@@ -6,8 +6,9 @@
     "jsx": "react-jsx",
     "strict": true,
     "esModuleInterop": true,
+    "types": ["node"],
     "skipLibCheck": true,
     "outDir": "dist"
   },
-  "include": ["src"]
+  "include": ["src", "tests"]
 }

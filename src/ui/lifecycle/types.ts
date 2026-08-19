@@ -34,6 +34,8 @@ export interface PassedCandidate {
   stageName?: string;
   reason?: string;
   position?: string;
+  email?: string;
+  phone?: string;
 }
 
 export interface ILifecycleService {

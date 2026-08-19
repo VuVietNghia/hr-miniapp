@@ -579,6 +579,8 @@ export class PrivOSLifecycleService implements ILifecycleService {
     const scoreVal = this.extractFieldValue(item.customFields, ['tong_diem', 'điểm', 'score', 'diem']);
     const categoryVal = this.extractFieldValue(item.customFields, ['phan_loai', 'loại', 'category', 'ket_qua']);
     const reasonVal = this.extractFieldValue(item.customFields, ['ly_do', 'lý do', 'reason', 'nhan_xet']);
+    const emailVal = this.extractFieldValue(item.customFields, ['email', 'thu_dien_tu']);
+    const phoneVal = this.extractFieldValue(item.customFields, ['sdt', 'sđt', 'phone', 'dien_thoai', 'điện thoại']);
 
     return {
       _id: item._id || item.id,
@@ -590,6 +592,8 @@ export class PrivOSLifecycleService implements ILifecycleService {
       stageName: this.getStageName(item, list.stages || []),
       reason: reasonVal ? String(reasonVal) : (item.description || undefined),
       position: parsedNameInfo.position,
+      email: emailVal ? String(emailVal).trim() : undefined,
+      phone: phoneVal ? String(phoneVal).trim() : undefined,
     };
   }
 

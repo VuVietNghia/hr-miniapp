@@ -27,6 +27,8 @@ export interface ProcessingStatus {
   fileId: string;
   originalName: string;
   normalizedName?: string;
+  email?: string;
+  sdt?: string;
   status: 'pending' | 'uploading' | 'renaming' | 'scoring' | 'completed' | 'error';
   score?: number;
   category?: string;
@@ -372,6 +374,7 @@ export class PipelineService {
           arguments: { fileId, name: newName }
         }
       });
+      return true;
     } catch (err) {
       console.error('Failed to rename file', err);
       return false;

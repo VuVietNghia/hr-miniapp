@@ -109,6 +109,8 @@ export function CreateDetailedProfileForm({
     setFormData(prev => ({
       ...prev,
       fullName: candidate.name,
+      email: candidate.email || prev.email,
+      phone: candidate.phone || prev.phone,
       position: matchedPosition,
       department: matchedDepartment
     }));
