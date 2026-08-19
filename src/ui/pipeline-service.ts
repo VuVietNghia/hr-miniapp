@@ -379,17 +379,36 @@ export class PipelineService {
   }
 
   private extractCandidateEmail(text: string): string {
-  if (!text) return '';
-  const gmailMatches = text.match(/[a-zA-Z0-9._%+-]+@gmail\.com/gi);
-  if (gmailMatches && gmailMatches.length > 0) {
-    return gmailMatches[0].toLowerCase();
+    if (!text) return '';
+    const gmailMatches = text.match(/[a-zA-Z0-9._%+-]+@gmail\.com/gi);
+    if (gmailMatches && gmailMatches.length > 0) {
+      return gmailMatches[0].toLowerCase();
+    }
+    const generalMatches = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi);
+    if (generalMatches && generalMatches.length > 0) {
+      return generalMatches[0].toLowerCase();
+    }
+    return '';
   }
-  const generalMatches = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi);
-  if (generalMatches && generalMatches.length > 0) {
-    return generalMatches[0].toLowerCase();
+
+  private extractCandidatePhone(text: string): string {
+    if (!text) return '';
+    const phoneMatches = text.match(/(?:\+84|84|0)[35789][0-9\s\.\-]{8,12}\b/g);
+    if (phoneMatches && phoneMatches.length > 0) {
+      const cleaned = phoneMatches[0].replace(/[^\d+]/g, '');
+      if (cleaned.length >= 9 && cleaned.length <= 13) {
+        return cleaned;
+      }
+    }
+    const generalMatches = text.match(/(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g);
+    if (generalMatches && generalMatches.length > 0) {
+      const cleaned = generalMatches[0].replace(/[^\d+]/g, '');
+      if (cleaned.length >= 9 && cleaned.length <= 14) {
+        return cleaned;
+      }
+    }
+    return '';
   }
-  return '';
-}
 
   async processCV(
     cv: CVFile,
@@ -451,6 +470,7 @@ KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ:
   "category": "ĐẠT" | "CÂN NHẮC" | "KHÔNG ĐẠT" | "KHÔNG TUYỂN VỊ TRÍ NÀY" | "SAI JD",
   "reason": "[lý do ngắn gọn]",
   "email": "[địa chỉ email của ứng viên tìm thấy trong CV, ưu tiên đuôi @gmail.com]",
+  "sdt": "[số điện thoại của ứng viên tìm thấy trong CV]",
   "extracted_evidence": ["[trích dẫn 1]", "[trích dẫn 2]"]
 }
 \`\`\`
@@ -562,8 +582,13 @@ KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ:
       }
 
       const candidateEmail = result.email || this.extractCandidateEmail(extractedMarkdown) || this.extractCandidateEmail(aiProcessRes.text) || this.extractCandidateEmail(cv.name) || '';
+      const candidatePhone = result.sdt || result.phone || this.extractCandidatePhone(extractedMarkdown) || this.extractCandidatePhone(aiProcessRes.text) || '';
+      
       if (onLog && candidateEmail) {
         onLog(`[Email Candidate] Đã trích xuất email ứng viên: ${candidateEmail}`);
+      }
+      if (onLog && candidatePhone) {
+        onLog(`[SĐT Candidate] Đã trích xuất SĐT ứng viên: ${candidatePhone}`);
       }
 
       updateStatus({
@@ -572,6 +597,7 @@ KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ:
         category: result.category || 'KHÔNG XÁC ĐỊNH',
         reason: finalReason,
         email: candidateEmail,
+        sdt: candidatePhone,
         markdownContent: extractedMarkdown
       });
 
@@ -892,7 +918,7 @@ ${content}
    * Được gọi từ UI sau khi toàn bộ CV đã được chấm xong.
    */
   async createKanbanBatchViaAI(
-    results: Array<{ originalName: string; normalizedName?: string; score?: number; category?: string; reason?: string }>,
+    results: Array<{ originalName: string; normalizedName?: string; score?: number; category?: string; reason?: string; email?: string; sdt?: string; phone?: string }>,
     jdName: string,
     onLog?: (msg: string) => void
   ): Promise<void> {
@@ -932,6 +958,7 @@ ${content}
       { _id: 'phan_loai', name: 'Phân loại', type: 'TEXT' },
       { _id: 'ly_do', name: 'Lý do', type: 'TEXTAREA' },
       { _id: 'email', name: 'Email', type: 'TEXT' },
+      { _id: 'sdt', name: 'SĐT', type: 'TEXT' },
     ];
     const stages = [
       { name: '01_Dau_Vao', color: '#6b7280' },
@@ -999,7 +1026,7 @@ ${content}
             console.warn('Failed to load existing stages', e);
           }
 
-          // Đảm bảo List đã tồn tại cũng có định nghĩa trường "Email"
+          // Đảm bảo List đã tồn tại cũng có định nghĩa trường "Email" và "SĐT"
           const hasEmailField = Array.isArray(existingList.fieldDefinitions) && existingList.fieldDefinitions.some((fd: any) => fd._id === 'email' || (fd.name || '').toLowerCase() === 'email');
           if (!hasEmailField) {
             try {
@@ -1015,6 +1042,24 @@ ${content}
               if (onLog) onLog('[Kanban] Đã tự động bổ sung định nghĩa trường "Email" vào List.');
             } catch (fieldErr) {
               console.warn('Không thể thêm trường email vào list cũ', fieldErr);
+            }
+          }
+
+          const hasSdtField = Array.isArray(existingList.fieldDefinitions) && existingList.fieldDefinitions.some((fd: any) => fd._id === 'sdt' || (fd.name || '').toLowerCase().includes('sđt') || (fd.name || '').toLowerCase().includes('phone') || (fd.name || '').toLowerCase().includes('điện thoại'));
+          if (!hasSdtField) {
+            try {
+              await this.app.callServerTool({
+                name: 'privos.lists.addField',
+                arguments: {
+                  listId: existingList._id,
+                  fieldId: 'sdt',
+                  name: 'SĐT',
+                  type: 'TEXT'
+                }
+              });
+              if (onLog) onLog('[Kanban] Đã tự động bổ sung định nghĩa trường "SĐT" vào List.');
+            } catch (fieldErr) {
+              console.warn('Không thể thêm trường sdt vào list cũ', fieldErr);
             }
           }
 
@@ -1058,6 +1103,7 @@ ${content}
             { fieldId: 'phan_loai', value: r.category || 'KHÔNG XÁC ĐỊNH' },
             { fieldId: 'ly_do', value: r.reason || '' },
             { fieldId: 'email', value: r.email || '' },
+            { fieldId: 'sdt', value: r.sdt || r.phone || '' },
           ],
         };
       });

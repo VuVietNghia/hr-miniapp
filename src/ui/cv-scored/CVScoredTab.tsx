@@ -10,6 +10,7 @@ export interface CVProfile {
   category?: string;
   reason?: string;
   email?: string;
+  sdt?: string;
 }
 
 const CV_COLUMNS = [
@@ -438,7 +439,7 @@ Trân trọng,
         items = items.filter((item: any) => !(item.name || item.title || '').includes('[Hệ thống] Không xoá'));
 
         const loadedCvs: CVProfile[] = items.map((item: any) => {
-          let score, category, reason, email;
+          let score, category, reason, email, sdt;
           if (Array.isArray(item.customFields)) {
             item.customFields.forEach((cf: any) => {
               const fieldIdStr = cf.fieldId || cf.fieldDefinitionId;
@@ -447,6 +448,7 @@ Trân trọng,
               else if (fieldName.includes('phân loại') || fieldName.includes('phan_loai') || fieldName.includes('loại')) category = cf.value;
               else if (fieldName.includes('lý do') || fieldName.includes('ly_do') || fieldName.includes('nhận xét')) reason = cf.value;
               else if (fieldName.includes('email') || fieldName.includes('thu_dien_tu')) email = cf.value;
+              else if (fieldName.includes('sdt') || fieldName.includes('sđt') || fieldName.includes('phone') || fieldName.includes('điện thoại')) sdt = cf.value;
             });
           } else if (item.customFields && typeof item.customFields === 'object') {
             Object.keys(item.customFields).forEach(key => {
@@ -456,12 +458,13 @@ Trân trọng,
               else if (fieldName.includes('phân loại') || fieldName.includes('phan_loai') || fieldName.includes('loại')) category = val;
               else if (fieldName.includes('lý do') || fieldName.includes('ly_do') || fieldName.includes('nhận xét')) reason = val;
               else if (fieldName.includes('email') || fieldName.includes('thu_dien_tu')) email = val;
+              else if (fieldName.includes('sdt') || fieldName.includes('sđt') || fieldName.includes('phone') || fieldName.includes('điện thoại')) sdt = val;
             });
           }
 
           // Fallback: scanner for candidate email if not present in customFields
+          const textToScan = `${item.name || ''} ${item.title || ''} ${reason || ''} ${item.description || ''}`;
           if (!email) {
-            const textToScan = `${item.name || ''} ${item.title || ''} ${reason || ''} ${item.description || ''}`;
             const gmailMatch = textToScan.match(/[a-zA-Z0-9._%+-]+@gmail\.com/i);
             if (gmailMatch) {
               email = gmailMatch[0].toLowerCase();
@@ -470,6 +473,13 @@ Trân trọng,
               if (generalMatch) {
                 email = generalMatch[0].toLowerCase();
               }
+            }
+          }
+
+          if (!sdt) {
+            const phoneMatch = textToScan.match(/(?:\+84|84|0)[35789][0-9\s\.\-]{8,12}\b/);
+            if (phoneMatch) {
+              sdt = phoneMatch[0].replace(/[^\d+]/g, '');
             }
           }
 
@@ -494,7 +504,8 @@ Trân trọng,
             score,
             category,
             reason,
-            email: email || ''
+            email: email || '',
+            sdt: sdt || ''
           };
         });
 
@@ -697,8 +708,10 @@ Trân trọng,
                   <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text)' }}>
                     {selectedCVForDetail.cv.name}
                   </h3>
-                  <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
-                    Đợt tuyển dụng: <strong>{selectedCVForDetail.listName}</strong>
+                  <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--text-muted)', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span>Đợt tuyển dụng: <strong>{selectedCVForDetail.listName}</strong></span>
+                    {selectedCVForDetail.cv.email && <span>✉️ Email: <strong>{selectedCVForDetail.cv.email}</strong></span>}
+                    {selectedCVForDetail.cv.sdt && <span>📞 SĐT: <strong>{selectedCVForDetail.cv.sdt}</strong></span>}
                   </p>
                 </div>
               </div>
