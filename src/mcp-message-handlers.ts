@@ -8,6 +8,7 @@ import fs from 'fs';
 import path from 'path';
 
 import _pkg from '../package.json';
+import { contractMcpController, CONTRACT_TOOL_DEFINITIONS, isContractTool } from './contracts';
 import { callHubTool } from './relay-client';
 import { mailService } from './services/MailService';
 import { isValidEmailAddress } from './utils/email-validation';
@@ -135,11 +136,16 @@ export async function handleMcpMessage(method: string, _id: number, params: any)
 						title: 'Delete Payroll Data',
 						description: 'Delete a payroll record (Requires Password)',
 						inputSchema: { type: 'object' }
-					}
+					},
+					...CONTRACT_TOOL_DEFINITIONS,
 				],
 			};
 
 		case 'tools/call':
+			if (isContractTool(params?.name)) {
+				return contractMcpController.handle(params.name, params.arguments, params);
+			}
+
 			if (params?.name === 'debug_log') {
 				console.log('\n\n--- [FRONTEND DEBUG LOG] ---');
 				console.log(params.arguments?.message);

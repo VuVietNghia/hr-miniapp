@@ -41,6 +41,21 @@ test('provider renders employee data and editable placeholders', () => {
   assert.match(draft?.content ?? '', /\[BỔ SUNG: danh mục hồ sơ cần hoàn thiện\]/u);
 });
 
+test('contract email renders type and period from contract context', () => {
+  const provider = new BuiltinEmployeeEmailTemplateProvider();
+  const draft = provider.getTemplateById('CONTRACT_SIGNATURE_OR_RENEWAL')?.createDraft(profile, {
+    contractNumber: 'HD-2026-001',
+    contractType: 'Hợp đồng xác định thời hạn',
+    startDate: '2026-09-01',
+    endDate: '2027-08-31',
+    signedDate: '2026-08-28',
+  });
+
+  assert.match(draft?.content ?? '', /HD-2026-001/u);
+  assert.match(draft?.content ?? '', /Hợp đồng xác định thời hạn/u);
+  assert.match(draft?.content ?? '', /2026-09-01 - 2027-08-31/u);
+});
+
 test('provider interface accepts a replacement template source', () => {
   const customTemplate: EmployeeEmailTemplate = {
     id: 'CUSTOM_NOTICE',

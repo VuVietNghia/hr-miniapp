@@ -46,7 +46,7 @@
   },
   "scripts": {
     "build": "vite build",
-    "test": "tsx --test tests/employee-email-template-provider.test.ts",
+    "test": "tsx --test tests/*.test.ts",
     "dev": "PRIVOS_DEV_UI=1 tsx src/server.ts",
     "start": "vite build && tsx src/server.ts"
   },

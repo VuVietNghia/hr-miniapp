@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
 import { KanbanColumnDef, EmployeeProfile } from '../types';
 import { ProfileCard } from './ProfileCard';
+import type { ContractSummary } from '../../../contracts/types';
 
 interface KanbanColumnProps {
   column: KanbanColumnDef;
   profiles: EmployeeProfile[];
+  contractSummaries?: Map<string, ContractSummary>;
   onMoveProfile?: (profileId: string, newStatus: string) => void;
+  onOpenProfile?: (profile: EmployeeProfile) => void;
 }
 
-export function KanbanColumn({ column, profiles, onMoveProfile }: KanbanColumnProps) {
+export function KanbanColumn({ column, profiles, contractSummaries, onMoveProfile, onOpenProfile }: KanbanColumnProps) {
   const [isDragOver, setIsDragOver] = useState(false);
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
@@ -76,7 +79,9 @@ export function KanbanColumn({ column, profiles, onMoveProfile }: KanbanColumnPr
             <ProfileCard 
               key={p._id} 
               profile={p} 
+              contractSummary={contractSummaries?.get(p._id)}
               onMoveProfile={onMoveProfile}
+              onOpenProfile={onOpenProfile}
             />
           ))
         )}

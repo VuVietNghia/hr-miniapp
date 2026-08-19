@@ -1,14 +1,17 @@
 import { EmployeeProfile, KANBAN_COLUMNS } from '../types';
 import { KanbanColumn } from './KanbanColumn';
+import type { ContractSummary } from '../../../contracts/types';
 
 interface KanbanBoardProps {
   profiles: EmployeeProfile[];
   isLoading: boolean;
+  contractSummaries?: Map<string, ContractSummary>;
   selectedColumnStatus?: string;
   onMoveProfile?: (profileId: string, newStatus: string) => void;
+  onOpenProfile?: (profile: EmployeeProfile) => void;
 }
 
-export function KanbanBoard({ profiles, isLoading, selectedColumnStatus = 'all', onMoveProfile }: KanbanBoardProps) {
+export function KanbanBoard({ profiles, isLoading, contractSummaries, selectedColumnStatus = 'all', onMoveProfile, onOpenProfile }: KanbanBoardProps) {
   if (isLoading) {
     return (
       <div className="kanban-loading">
@@ -31,7 +34,9 @@ export function KanbanBoard({ profiles, isLoading, selectedColumnStatus = 'all',
             key={col.status}
             column={col} 
             profiles={profiles.filter(p => (p.status || '').trim().toLowerCase() === colStatus)}
+            contractSummaries={contractSummaries}
             onMoveProfile={onMoveProfile}
+            onOpenProfile={onOpenProfile}
           />
         );
       })}

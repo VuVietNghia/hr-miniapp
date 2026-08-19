@@ -84,34 +84,17 @@ export async function loadEmployeeProfiles(app: McpApp, roomId: string): Promise
 }
 
 export async function createEmployeeProfile(app: McpApp, roomId: string, name: string): Promise<EmployeeProfile> {
-  const newProfile: EmployeeProfile = {
-    _id: `local-${Date.now()}`,
-    name,
-    status: 'Mới nhận việc'
-  };
+  let listId = await getHrListId(app, roomId);
+  if (!listId) listId = await createHrList(app, roomId);
+  if (!listId) throw new Error('Không thể khởi tạo danh sách hồ sơ nhân sự.');
 
-  try {
-    let listId = await getHrListId(app, roomId);
-    if (!listId) {
-      listId = await createHrList(app, roomId);
-    }
+  const response: any = await app.callServerTool({
+    name: 'privos.lists.createItem',
+    arguments: { listId, title: name }
+  });
+  const persisted = JSON.parse(response?.content?.[0]?.text || '{}');
+  const persistedId = persisted._id || persisted.id;
+  if (!persistedId) throw new Error('PrivOS không trả về mã hồ sơ đã lưu.');
 
-    if (listId) {
-      await app.callServerTool({
-        name: 'privos.lists.create_item',
-        arguments: {
-          listId,
-          item: {
-            title: name,
-            name: name,
-            status: 'Mới nhận việc',
-            stage: 'Mới nhận việc'
-          }
-        }
-      });
-    }
-  } catch (err) {
-    console.warn(`[Lifecycle] Lỗi kết nối khi tạo hồ sơ. Fallback local.`, err);
-  }
-  return newProfile;
+  return { _id: persistedId, name, status: 'Mới nhận việc' };
 }

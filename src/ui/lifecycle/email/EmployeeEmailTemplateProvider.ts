@@ -5,10 +5,18 @@ export interface EmailDraft {
   content: string;
 }
 
+export interface ContractEmailContext {
+  contractNumber: string;
+  contractType: string;
+  startDate: string;
+  endDate?: string;
+  signedDate?: string;
+}
+
 export interface EmployeeEmailTemplate {
   id: string;
   name: string;
-  createDraft(profile: EmployeeProfile): EmailDraft;
+  createDraft(profile: EmployeeProfile, contract?: ContractEmailContext): EmailDraft;
 }
 
 export interface IEmployeeEmailTemplateProvider {
@@ -54,14 +62,16 @@ Phòng Nhân sự`
   {
     id: 'CONTRACT_SIGNATURE_OR_RENEWAL',
     name: 'Thông báo ký/gia hạn hợp đồng',
-    createDraft: profile => ({
+    createDraft: (profile, contract) => ({
       subject: `Thông báo ký/gia hạn hợp đồng - ${profile.name}`,
       content: `Chào ${employeeName(profile)},
 
 Phòng Nhân sự thông báo về thủ tục ký hoặc gia hạn hợp đồng lao động của Anh/Chị tại vị trí ${position(profile)}.
 
-Loại hợp đồng: [BỔ SUNG: loại hợp đồng]
-Thời gian ký hoặc gia hạn: [BỔ SUNG: thời gian]
+Số hợp đồng: ${contract?.contractNumber || '[BỔ SUNG: số hợp đồng]'}
+Loại hợp đồng: ${contract?.contractType || '[BỔ SUNG: loại hợp đồng]'}
+Thời hạn: ${contract ? formatContractPeriod(contract) : '[BỔ SUNG: thời hạn]'}
+Thời gian ký hoặc gia hạn: ${contract?.signedDate || '[BỔ SUNG: thời gian]'}
 Địa điểm hoặc hình thức thực hiện: [BỔ SUNG: địa điểm/hình thức]
 
 Vui lòng liên hệ Phòng Nhân sự nếu cần hỗ trợ.
@@ -120,4 +130,10 @@ function position(profile: EmployeeProfile): string {
 
 function department(profile: EmployeeProfile): string {
   return profile.department || '[BỔ SUNG: phòng ban]';
+}
+
+function formatContractPeriod(contract: ContractEmailContext): string {
+  return contract.endDate
+    ? `${contract.startDate} - ${contract.endDate}`
+    : `Từ ${contract.startDate}, không xác định thời hạn`;
 }

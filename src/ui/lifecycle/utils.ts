@@ -15,11 +15,15 @@ export interface TimelineInfo {
 }
 
 /**
- * Calculates probation remaining days or employment tenure
+ * Calculates lifecycle display information without inferring a fixed probation duration.
  */
 export function calculateTimelineInfo(status: string, startDateStr?: string): TimelineInfo | null {
   if (status === 'Nghỉ việc') {
-    return { type: 'resigned', text: 'Đã kết thúc hợp đồng' };
+    return { type: 'resigned', text: 'Đã nghỉ việc' };
+  }
+
+  if (status === 'Đang thử việc') {
+    return { type: 'probation', text: 'Đang trong thời gian thử việc' };
   }
 
   if (!startDateStr) return null;
@@ -30,17 +34,6 @@ export function calculateTimelineInfo(status: string, startDateStr?: string): Ti
   const diffTime = now.getTime() - start.getTime();
   const elapsedDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
-  if (status === 'Đang thử việc') {
-    const probationLength = 60; // Chuẩn 60 ngày thử việc
-    const remainingDays = Math.max(0, probationLength - elapsedDays);
-    const isUrgent = remainingDays <= 7;
-    return {
-      type: 'probation',
-      text: remainingDays === 0 ? 'Hết hạn thử việc' : `Còn ${remainingDays} ngày thử việc`,
-      isUrgent,
-    };
-  }
-
   if (status === 'Chính thức') {
     if (elapsedDays < 30) {
       return { type: 'tenure', text: 'Mới chính thức' };
@@ -50,7 +43,7 @@ export function calculateTimelineInfo(status: string, startDateStr?: string): Ti
       return { type: 'tenure', text: `${months} tháng làm việc` };
     }
     const years = (elapsedDays / 365).toFixed(1);
-    return { type: 'tenure', text: `${years} năm cống hiến` };
+    return { type: 'tenure', text: `${years} năm làm việc` };
   }
 
   return null;

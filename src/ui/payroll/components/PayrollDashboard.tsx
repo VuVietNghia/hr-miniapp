@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { usePrivosApp } from '@privos/app-react';
 import { IPayrollService, PayrollRecord } from '../types';
 import { EmployeeProfile, ILifecycleService } from '../../lifecycle/types';
+import type { EmployeeContract } from '../../../contracts/types';
+import type { IContractApiClient } from '../../lifecycle/contracts/services/ContractApiClient';
 import { 
   formatCurrency, 
   calculateNetSalary, 
@@ -13,6 +14,7 @@ interface PayrollDashboardProps {
   roomId: string;
   payrollService: IPayrollService;
   lifecycleService: ILifecycleService;
+  contractClient: IContractApiClient;
 }
 
 const BANK_OPTIONS = [
@@ -29,6 +31,8 @@ const BANK_OPTIONS = [
 
 const CONTRACT_OPTIONS = [
   'Chính thức',
+  'Hợp đồng xác định thời hạn',
+  'Hợp đồng không xác định thời hạn',
   'Thử việc (85%)',
   'Thực tập',
   'Cộng tác viên'
@@ -49,9 +53,16 @@ const SALARY_REGEX = /^\d{1,12}$/;
 const TAX_ID_REGEX = /^(?:\d{10}|\d{12}|\d{10}-?\d{3})$/;
 const BANK_ACCOUNT_REGEX = /^[0-9-]{6,24}$/;
 
-export function PayrollDashboard({ roomId, payrollService, lifecycleService }: PayrollDashboardProps) {
+function getContractTypeLabel(contract: EmployeeContract): string {
+  return contract.contractType === 'FIXED_TERM'
+    ? 'Hợp đồng xác định thời hạn'
+    : 'Hợp đồng không xác định thời hạn';
+}
+
+export function PayrollDashboard({ roomId, payrollService, lifecycleService, contractClient }: PayrollDashboardProps) {
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
   const [payrolls, setPayrolls] = useState<PayrollRecord[]>([]);
+  const [contractManagedEmployeeIds, setContractManagedEmployeeIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   
   // States cho form thêm/sửa lương
@@ -67,18 +78,9 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [selectedDept, setSelectedDept] = useState<string>('all');
   
-  const app = usePrivosApp();
-
-  // Test gửi request lên Backend
-  useEffect(() => {
-    app.callServerTool({ name: 'test_auth', arguments: { hello: 'world' } })
-      .then((res: any) => console.log('Test Auth Result:', res))
-      .catch((err: any) => console.error('Test Auth Error:', err));
-  }, [app]);
-
   useEffect(() => {
     loadData();
-  }, [roomId, payrollService, lifecycleService]);
+  }, [roomId, payrollService, lifecycleService, contractClient]);
 
   const loadData = async () => {
     setLoading(true);
@@ -89,19 +91,38 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
         payrollService.getRecords()
       ]);
 
-      // DỌN RÁC (Garbage Collection): Xoá bản ghi lương nếu nhân viên không còn tồn tại
       const activeEmpIds = new Set(empData.map(e => e._id));
-      const orphanedPayrolls = payData.filter(p => !activeEmpIds.has(p.employeeId));
-      
-      if (orphanedPayrolls.length > 0) {
-        console.log(`Tiến hành dọn rác: Xoá ${orphanedPayrolls.length} bản ghi lương mồ côi.`);
-        await Promise.all(orphanedPayrolls.map(p => {
-          if (p._id) return payrollService.deleteRecord(p._id);
-        }));
-      }
+      const contractResults = await Promise.allSettled(
+        empData.map(employee => contractClient.listByEmployee(roomId, employee._id))
+      );
+      const activeContracts = new Map<string, EmployeeContract>();
+      contractResults.forEach((result, index) => {
+        if (result.status !== 'fulfilled') return;
+        const activeContract = result.value.find(contract => contract.status === 'ACTIVE');
+        if (activeContract) activeContracts.set(empData[index]._id, activeContract);
+      });
+
+      const visiblePayrolls = payData.filter(p => activeEmpIds.has(p.employeeId));
+      const payrollByEmployee = new Map(visiblePayrolls.map(record => [record.employeeId, record]));
+      activeContracts.forEach((contract, employeeId) => {
+        const legacy = payrollByEmployee.get(employeeId);
+        payrollByEmployee.set(employeeId, {
+          employeeId,
+          baseSalary: contract.baseSalary,
+          contractType: getContractTypeLabel(contract),
+          taxId: legacy?.taxId ?? '',
+          bankAccount: legacy?.bankAccount ?? '',
+          bankName: legacy?.bankName,
+          applyProbationRate: false,
+          probationRate: legacy?.probationRate,
+          roomId: legacy?.roomId,
+          _id: legacy?._id,
+        });
+      });
 
       setEmployees(empData);
-      setPayrolls(payData.filter(p => activeEmpIds.has(p.employeeId)));
+      setPayrolls(Array.from(payrollByEmployee.values()));
+      setContractManagedEmployeeIds(new Set(activeContracts.keys()));
     } catch (error) {
       console.error("Lỗi khi tải dữ liệu lương:", error);
       setStatusMsg({ text: 'Lỗi khi tải dữ liệu bảng lương.', type: 'error' });
@@ -545,6 +566,7 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
                           className="hr-select"
                           value={formData.contractType || 'Chính thức'}
                           onChange={e => setFormData({ ...formData, contractType: e.target.value })}
+                          disabled={contractManagedEmployeeIds.has(emp._id)}
                           style={{ width: '100%' }}
                         >
                           {CONTRACT_OPTIONS.map(opt => (
@@ -572,10 +594,14 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
                           type="number" 
                           value={formData.baseSalary || ''}
                           onChange={e => setFormData({...formData, baseSalary: Number(e.target.value)})}
+                          disabled={contractManagedEmployeeIds.has(emp._id)}
                           className="hr-input"
                           placeholder="Mức lương cơ bản"
                           style={{ padding: '6px 10px', fontSize: '0.85rem' }}
                         />
+                        {contractManagedEmployeeIds.has(emp._id) && (
+                          <span className="hr-input-preview">Đồng bộ một chiều từ hợp đồng đang hiệu lực</span>
+                        )}
                         {/* Real-time currency preview */}
                         {formatCurrencyPreview(formData.baseSalary) && (
                           <span className="hr-input-preview">

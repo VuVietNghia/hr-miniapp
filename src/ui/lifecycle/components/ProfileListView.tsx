@@ -3,14 +3,18 @@ import { usePrivosContext } from '@privos/app-react';
 import { EmployeeProfile, KANBAN_COLUMNS } from '../types';
 import { getInitials, calculateTimelineInfo } from '../utils';
 import { EmailComposerModal } from './EmailComposerModal';
+import type { ContractSummary } from '../../../contracts/types';
+import { ContractStatusBadge } from '../contracts/components/ContractStatusBadge';
 
 interface ProfileListViewProps {
   profiles: EmployeeProfile[];
   isLoading: boolean;
+  contractSummaries?: Map<string, ContractSummary>;
   onMoveProfile?: (profileId: string, newStatus: string) => void;
+  onOpenProfile?: (profile: EmployeeProfile) => void;
 }
 
-export function ProfileListView({ profiles, isLoading, onMoveProfile }: ProfileListViewProps) {
+export function ProfileListView({ profiles, isLoading, contractSummaries, onMoveProfile, onOpenProfile }: ProfileListViewProps) {
   const [copiedField, setCopiedField] = useState<{ id: string; field: string } | null>(null);
   const [emailProfile, setEmailProfile] = useState<EmployeeProfile | null>(null);
   const { roomId } = usePrivosContext();
@@ -95,7 +99,7 @@ export function ProfileListView({ profiles, isLoading, onMoveProfile }: ProfileL
               : null;
 
             return (
-              <tr key={profile._id}>
+              <tr key={profile._id} onClick={() => onOpenProfile?.(profile)} style={{ cursor: onOpenProfile ? 'pointer' : undefined }}>
                 {/* Name & Avatar */}
                 <td>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -109,6 +113,7 @@ export function ProfileListView({ profiles, isLoading, onMoveProfile }: ProfileL
                           Ngày vào: {profile.startDate}
                         </div>
                       )}
+                      <div style={{ marginTop: '4px' }}><ContractStatusBadge summary={contractSummaries?.get(profile._id)} /></div>
                       {profile.attachedFileObj && (
                         <div style={{ marginTop: '4px' }}>
                           <a 
@@ -185,7 +190,7 @@ export function ProfileListView({ profiles, isLoading, onMoveProfile }: ProfileL
                         <button
                           type="button"
                           className="hr-icon-btn"
-                          onClick={() => copyToClipboard(profile._id, profile.phone!, 'phone')}
+                          onClick={(event) => { event.stopPropagation(); copyToClipboard(profile._id, profile.phone!, 'phone'); }}
                           title="Sao chép SĐT"
                           style={{ padding: '1px 5px', fontSize: '0.7rem' }}
                         >
@@ -205,7 +210,7 @@ export function ProfileListView({ profiles, isLoading, onMoveProfile }: ProfileL
                         <button
                           type="button"
                           className="hr-icon-btn"
-                          onClick={() => copyToClipboard(profile._id, profile.email!, 'email')}
+                          onClick={(event) => { event.stopPropagation(); copyToClipboard(profile._id, profile.email!, 'email'); }}
                           title="Sao chép Email"
                           style={{ padding: '1px 5px', fontSize: '0.7rem' }}
                         >
@@ -214,7 +219,7 @@ export function ProfileListView({ profiles, isLoading, onMoveProfile }: ProfileL
                         <button
                           type="button"
                           className="hr-icon-btn"
-                          onClick={() => setEmailProfile(profile)}
+                          onClick={(event) => { event.stopPropagation(); setEmailProfile(profile); }}
                           title="Gửi Email"
                           style={{ padding: '1px 5px', fontSize: '0.7rem', marginLeft: '4px' }}
                         >
@@ -232,7 +237,7 @@ export function ProfileListView({ profiles, isLoading, onMoveProfile }: ProfileL
                       <button
                         type="button"
                         className="hr-btn-mini hr-btn-mini-accent"
-                        onClick={() => onMoveProfile(profile._id, nextColumn.status)}
+                        onClick={(event) => { event.stopPropagation(); onMoveProfile(profile._id, nextColumn.status); }}
                         title={`Chuyển sang [${nextColumn.status}]`}
                       >
                         → {nextColumn.status}

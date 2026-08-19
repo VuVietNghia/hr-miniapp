@@ -72,7 +72,10 @@ export class PrivOSLifecycleService implements ILifecycleService {
   async createProfile(roomId: string, data: Omit<EmployeeProfile, '_id' | 'status'> & { attachedFileObj?: any }): Promise<EmployeeProfile> {
     try {
       const list = await this.ensureValidList(roomId);
-      if (list) {
+      if (!list) {
+        throw new Error('Không thể khởi tạo danh sách hồ sơ nhân sự.');
+      }
+
         const customFields = this.buildCustomFieldsForCreation(data, list.fieldDefinitions);
 
         let fileObjToSave = data.attachedFileObj || null;
@@ -118,22 +121,19 @@ export class PrivOSLifecycleService implements ILifecycleService {
         });
 
         const parsed = JSON.parse(res?.content?.[0]?.text || '{}');
+        const persistedId = parsed._id || parsed.id;
+        if (!persistedId) {
+          throw new Error('PrivOS không trả về mã hồ sơ đã lưu.');
+        }
         return {
           ...data,
-          _id: parsed._id || parsed.id || this.generateLocalId(),
+          _id: persistedId,
           status: PrivOSLifecycleService.DEFAULT_STAGE
         };
-      }
     } catch (err) {
       console.error('[PrivOSLifecycleService] Connection error when creating profile:', err);
+      throw err;
     }
-
-    // Fallback if failed
-    return {
-      ...data,
-      _id: this.generateLocalId(),
-      status: PrivOSLifecycleService.DEFAULT_STAGE
-    };
   }
 
   async updateProfileStatus(roomId: string, profileId: string, newStatus: string): Promise<void> {
@@ -176,17 +176,13 @@ export class PrivOSLifecycleService implements ILifecycleService {
 
   // --- Private Helper Methods ---
 
-  private generateLocalId(): string {
-    return `local-${Date.now()}`;
-  }
-
   private async ensureValidList(roomId: string): Promise<any | null> {
     console.log('[PrivOSLifecycleService] ensureValidList called for roomId:', roomId);
     let list = await this.findExistingList(roomId);
     console.log('[PrivOSLifecycleService] findExistingList result:', list ? 'found' : 'not found');
 
     if (list) {
-      list = await this.enrichListWithStagesOrDelete(list);
+      list = await this.enrichListWithStages(list);
     }
 
     if (!list) {
@@ -223,7 +219,7 @@ export class PrivOSLifecycleService implements ILifecycleService {
     return foundList;
   }
 
-  private async enrichListWithStagesOrDelete(list: any): Promise<any | null> {
+  private async enrichListWithStages(list: any): Promise<any> {
     const configItem = await this.fetchSystemConfigItem(list._id || list.id);
 
     if (configItem && configItem.description) {
@@ -238,10 +234,16 @@ export class PrivOSLifecycleService implements ILifecycleService {
       return list;
     }
 
-    // List is corrupted or missing stages config -> delete and return null to trigger recreation
-    console.log('[PrivOSLifecycleService] List is old/corrupted (no stages). Deleting to clean up...');
-    await this.deleteList(list._id || list.id);
-    return null;
+    const persistedStages = await this.fetchListStages(list._id || list.id);
+    if (this.isValidStagesArray(persistedStages)) {
+      list.stages = persistedStages;
+      return list;
+    }
+
+    // Không xóa dữ liệu người dùng khi cấu hình stage bị thiếu hoặc tạm thời không đọc được.
+    console.warn('[PrivOSLifecycleService] Existing HR list has no readable stages; preserving the list.');
+    list.stages = [];
+    return list;
   }
 
   private isValidStagesArray(stages: any): boolean {
@@ -260,13 +262,6 @@ export class PrivOSLifecycleService implements ILifecycleService {
 
   private isSystemConfigItem(item: any): boolean {
     return (item.name || item.title || '').includes('[Hệ thống]');
-  }
-
-  private async deleteList(listId: string): Promise<void> {
-    await this.app.callServerTool({
-      name: 'privos.lists.deleteMany',
-      arguments: { listIds: [listId] }
-    });
   }
 
   private async createNewList(roomId: string): Promise<any | null> {
@@ -328,16 +323,29 @@ export class PrivOSLifecycleService implements ILifecycleService {
   }
 
   private async fetchListItems(listId: string): Promise<any[]> {
-    const res: any = await this.app.callServerTool({
-      name: 'privos.lists.getItems',
-      arguments: { listId, count: 100 }
-    });
+    const pageSize = 100;
+    const items: any[] = [];
+    let offset = 0;
 
-    const text = res?.content?.[0]?.text;
-    if (!text) return [];
+    while (true) {
+      const res: any = await this.app.callServerTool({
+        name: 'privos.lists.getItems',
+        arguments: { listId, offset, count: pageSize }
+      });
 
-    const parsed = JSON.parse(text);
-    return Array.isArray(parsed) ? parsed : (parsed?.items || []);
+      const text = res?.content?.[0]?.text;
+      if (!text) break;
+
+      const parsed = JSON.parse(text);
+      const page = Array.isArray(parsed) ? parsed : (parsed?.items || []);
+      items.push(...page);
+
+      const total = Array.isArray(parsed) ? undefined : parsed?.total;
+      if (page.length < pageSize || (typeof total === 'number' && items.length >= total)) break;
+      offset += page.length;
+    }
+
+    return items;
   }
 
   private createFieldDefinitionMap(fieldDefinitions: any[] | undefined): Map<string, any> {

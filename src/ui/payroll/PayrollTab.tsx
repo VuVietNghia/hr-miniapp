@@ -3,14 +3,15 @@ import { usePrivosApp, usePrivosContext } from '@privos/app-react';
 import { PayrollDashboard } from './components/PayrollDashboard';
 import { PayrollService } from './services/PayrollService';
 import { PrivOSLifecycleService } from '../lifecycle/services/PrivOSLifecycleService';
+import { ContractApiClient } from '../lifecycle/contracts/services/ContractApiClient';
 
 export default function PayrollTab() {
   const app = usePrivosApp();
   const { roomId } = usePrivosContext();
   const [schemaInitialized, setSchemaInitialized] = useState(false);
 
-  const { payrollService, lifecycleService } = useMemo(() => {
-    if (!app || !roomId) return { payrollService: null, lifecycleService: null };
+  const { payrollService, lifecycleService, contractClient } = useMemo(() => {
+    if (!app || !roomId) return { payrollService: null, lifecycleService: null, contractClient: null };
     
     // Dependency Injection: Pass the app and roomId into PayrollService
     const ps = new PayrollService(app, roomId);
@@ -18,7 +19,7 @@ export default function PayrollTab() {
     // LifecycleService needs app
     const ls = new PrivOSLifecycleService(app);
     
-    return { payrollService: ps, lifecycleService: ls };
+    return { payrollService: ps, lifecycleService: ls, contractClient: new ContractApiClient(app) };
   }, [app, roomId]);
 
   useEffect(() => {
@@ -29,7 +30,7 @@ export default function PayrollTab() {
     }
   }, [payrollService]);
 
-  if (!app || !roomId || !payrollService || !lifecycleService || !schemaInitialized) {
+  if (!app || !roomId || !payrollService || !lifecycleService || !contractClient || !schemaInitialized) {
     return (
       <div className="p-4 flex justify-center items-center h-full">
         <div className="spinner"></div>
@@ -43,6 +44,7 @@ export default function PayrollTab() {
       roomId={roomId} 
       payrollService={payrollService} 
       lifecycleService={lifecycleService} 
+      contractClient={contractClient}
     />
   );
 }

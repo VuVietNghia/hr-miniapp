@@ -10,6 +10,9 @@ import { ProfileListView } from './components/ProfileListView';
 import { CreateProfileForm } from './components/CreateProfileForm';
 import { CreateDetailedProfileForm } from './components/CreateDetailedProfileForm';
 import { usePolling } from '../hooks/usePolling';
+import type { ContractSummary } from '../../contracts/types';
+import { ContractApiClient } from './contracts/services/ContractApiClient';
+import { EmployeeDetailDrawer } from './contracts/components/EmployeeDetailDrawer';
 import '../hr-premium-styles.css';
 
 function areCandidatesEqual(prev: PassedCandidate[], next: PassedCandidate[]): boolean {
@@ -29,7 +32,8 @@ function areCandidatesEqual(prev: PassedCandidate[], next: PassedCandidate[]): b
 
 function LifecycleContent() {
   console.log('[LifecycleDashboard] LifecycleContent mounted');
-  const { roomId } = usePrivosContext();
+  const app = usePrivosApp();
+  const { roomId, userRoles } = usePrivosContext();
   const service = useLifecycleService();
   console.log('[LifecycleDashboard] roomId:', roomId, 'service:', !!service);
   
@@ -43,6 +47,40 @@ function LifecycleContent() {
   const [selectedDept, setSelectedDept] = useState('Tất cả');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
+  const [contractSummaries, setContractSummaries] = useState<Map<string, ContractSummary>>(new Map());
+  const [contractContextAvailable, setContractContextAvailable] = useState(true);
+  const [selectedProfile, setSelectedProfile] = useState<EmployeeProfile | null>(null);
+  const contractClient = useMemo(() => new ContractApiClient(app), [app]);
+  const canManageContracts = userRoles.some(role => ['owner', 'moderator'].includes(role.toLowerCase()));
+
+  const refreshContractSummaries = useCallback(async (targetProfiles: EmployeeProfile[]) => {
+    if (!roomId || targetProfiles.length === 0) {
+      setContractSummaries(new Map());
+      return;
+    }
+    try {
+      const summaries = await contractClient.getSummaries(roomId, targetProfiles.map(profile => profile._id));
+      setContractSummaries(new Map(summaries.map(summary => [summary.employeeId, summary])));
+      setContractContextAvailable(true);
+    } catch (error) {
+      console.error('[LifecycleDashboard] Error loading contract summaries:', error);
+      setContractSummaries(new Map());
+      setContractContextAvailable(false);
+    }
+  }, [contractClient, roomId]);
+
+  const refreshProfiles = useCallback(async () => {
+    console.log('[LifecycleDashboard] refreshProfiles called - roomId:', roomId);
+    if (!roomId) return;
+    setIsLoading(true);
+    try {
+      const data = await service.loadProfiles(roomId);
+      setProfiles(data);
+      await refreshContractSummaries(data);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [roomId, service, refreshContractSummaries]);
 
   const refreshCandidates = useCallback(async (isSilent = false) => {
     if (!roomId) return;
@@ -72,38 +110,25 @@ function LifecycleContent() {
     } else {
       console.log('[LifecycleDashboard] roomId is falsy, skipping refresh');
     }
-  }, [roomId, service, refreshCandidates]);
-
-  const refreshProfiles = async () => {
-    console.log('[LifecycleDashboard] refreshProfiles called - roomId:', roomId);
-    if (!roomId) {
-      console.log('[LifecycleDashboard] refreshProfiles: roomId is falsy, returning');
-      return;
-    }
-    setIsLoading(true);
-    console.log('[LifecycleDashboard] Calling service.loadProfiles');
-    const data = await service.loadProfiles(roomId);
-    console.log('[LifecycleDashboard] Loaded profiles count:', data.length);
-    setProfiles(data);
-    setIsLoading(false);
-  };
+  }, [roomId, service, refreshCandidates, refreshProfiles]);
 
   const handleCreateSubmit = async (data: Omit<EmployeeProfile, '_id' | 'status'> & { attachedFileObj?: any }) => {
     if (!roomId) return;
     setStatusMsg({ text: `Đang khởi tạo hồ sơ cho "${data.name}"...`, type: 'info' });
-    
-    // Create via service
-    const newProfile = await service.createProfile(roomId, data);
-    
-    // Optimistic UI update
-    setProfiles(prev => [...prev, newProfile]);
-    setStatusMsg({ text: `Đã thêm hồ sơ "${data.name}" thành công!`, type: 'success' });
-    
-    setTimeout(() => setStatusMsg(null), 3000);
 
-    // Sync from server silently to get real ID and fields
-    const updatedProfiles = await service.loadProfiles(roomId);
-    setProfiles(updatedProfiles);
+    try {
+      const newProfile = await service.createProfile(roomId, data);
+      setProfiles(prev => [...prev, newProfile]);
+      setStatusMsg({ text: `Đã thêm hồ sơ "${data.name}" thành công!`, type: 'success' });
+      setTimeout(() => setStatusMsg(null), 3000);
+
+      const updatedProfiles = await service.loadProfiles(roomId);
+      setProfiles(updatedProfiles);
+      await refreshContractSummaries(updatedProfiles);
+    } catch (error) {
+      console.error('[LifecycleDashboard] Error creating profile:', error);
+      setStatusMsg({ text: `Không thể lưu hồ sơ "${data.name}". Vui lòng thử lại.`, type: 'error' });
+    }
   };
 
   const handleMoveProfile = async (profileId: string, newStatus: string) => {
@@ -158,6 +183,19 @@ function LifecycleContent() {
     };
     return counts;
   }, [profiles]);
+
+  const contractCounts = useMemo(() => {
+    const summaries = profiles.map(profile => contractSummaries.get(profile._id));
+    return {
+      missing: summaries.filter(summary => !summary || summary.status === 'NONE').length,
+      pending: summaries.filter(summary => summary?.status === 'PENDING_SIGNATURE').length,
+      active: summaries.filter(summary => summary?.status === 'ACTIVE' && summary.expiryBucket !== 'EXPIRED').length,
+      due30: summaries.filter(summary => ['DUE_30', 'DUE_15', 'DUE_7'].includes(summary?.expiryBucket ?? '')).length,
+      due15: summaries.filter(summary => ['DUE_15', 'DUE_7'].includes(summary?.expiryBucket ?? '')).length,
+      due7: summaries.filter(summary => summary?.expiryBucket === 'DUE_7').length,
+      expired: summaries.filter(summary => summary?.expiryBucket === 'EXPIRED').length,
+    };
+  }, [profiles, contractSummaries]);
 
   // Filtered profiles based on search, department, and selectedStatus (for list view)
   const filteredProfiles = useMemo(() => {
@@ -248,6 +286,20 @@ function LifecycleContent() {
       {statusMsg && (
         <div className={`hr-status-banner hr-status-${statusMsg.type}`}>
           {statusMsg.text}
+        </div>
+      )}
+
+      {contractContextAvailable ? <div className="contract-metrics" aria-label="Tổng quan hợp đồng lao động">
+        <div><span>Chưa có hợp đồng</span><strong>{contractCounts.missing}</strong></div>
+        <div><span>Chờ ký</span><strong>{contractCounts.pending}</strong></div>
+        <div><span>Đang hiệu lực</span><strong>{contractCounts.active}</strong></div>
+        <div><span>Hết hạn trong 30 ngày</span><strong>{contractCounts.due30}</strong></div>
+        <div><span>Trong 15 ngày</span><strong>{contractCounts.due15}</strong></div>
+        <div><span>Trong 7 ngày</span><strong>{contractCounts.due7}</strong></div>
+        <div><span>Đã hết hạn</span><strong>{contractCounts.expired}</strong></div>
+      </div> : (
+        <div className="contract-access-note">
+          Quản lý hợp đồng đang bị khóa vì PrivOS chưa cung cấp actor context tin cậy cho phiên này.
         </div>
       )}
 
@@ -352,14 +404,30 @@ function LifecycleContent() {
         <KanbanBoard 
           profiles={filteredProfiles} 
           isLoading={isLoading} 
+          contractSummaries={contractSummaries}
           selectedColumnStatus={selectedStatus}
           onMoveProfile={handleMoveProfile}
+          onOpenProfile={setSelectedProfile}
         />
       ) : (
         <ProfileListView 
           profiles={filteredProfiles}
           isLoading={isLoading}
+          contractSummaries={contractSummaries}
           onMoveProfile={handleMoveProfile}
+          onOpenProfile={setSelectedProfile}
+        />
+      )}
+
+      {selectedProfile && (
+        <EmployeeDetailDrawer
+          profile={selectedProfile}
+          summary={contractSummaries.get(selectedProfile._id)}
+          roomId={roomId}
+          canManageContracts={canManageContracts}
+          client={contractClient}
+          onClose={() => setSelectedProfile(null)}
+          onContractsChanged={() => refreshContractSummaries(profiles)}
         />
       )}
     </div>

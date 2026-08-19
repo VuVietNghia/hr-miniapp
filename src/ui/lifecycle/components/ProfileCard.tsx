@@ -3,13 +3,17 @@ import { usePrivosContext } from '@privos/app-react';
 import { EmployeeProfile, KANBAN_COLUMNS } from '../types';
 import { getInitials, calculateTimelineInfo } from '../utils';
 import { EmailComposerModal } from './EmailComposerModal';
+import type { ContractSummary } from '../../../contracts/types';
+import { ContractStatusBadge } from '../contracts/components/ContractStatusBadge';
 
 interface ProfileCardProps {
   profile: EmployeeProfile;
+  contractSummary?: ContractSummary;
   onMoveProfile?: (profileId: string, newStatus: string) => void;
+  onOpenProfile?: (profile: EmployeeProfile) => void;
 }
 
-export function ProfileCard({ profile, onMoveProfile }: ProfileCardProps) {
+export function ProfileCard({ profile, contractSummary, onMoveProfile, onOpenProfile }: ProfileCardProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
@@ -84,6 +88,7 @@ export function ProfileCard({ profile, onMoveProfile }: ProfileCardProps) {
         draggable={true}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
+        onClick={() => onOpenProfile?.(profile)}
         title="Kéo thẻ để chuyển trạng thái nhân sự"
       >
       <div className="profile-card-header">
@@ -125,6 +130,7 @@ export function ProfileCard({ profile, onMoveProfile }: ProfileCardProps) {
       <div className="profile-badge-row">
         {profile.position && <span className="position-badge">{profile.position}</span>}
         {profile.department && <span className="dept-badge">{profile.department}</span>}
+        <ContractStatusBadge summary={contractSummary} />
       </div>
       
       {(profile.phone || profile.email || profile.attachedFileObj) && (

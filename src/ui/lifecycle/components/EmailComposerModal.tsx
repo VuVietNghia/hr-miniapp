@@ -3,14 +3,16 @@ import { EmployeeProfile } from '../types';
 import { usePrivosApp } from '@privos/app-react';
 import { useEmployeeEmailTemplateProvider } from '../di/EmployeeEmailTemplateContext';
 import { isValidEmailAddress } from '../../../utils/email-validation';
+import type { ContractEmailContext } from '../email/EmployeeEmailTemplateProvider';
 
 interface EmailComposerModalProps {
   isOpen: boolean;
   onClose: () => void;
   profile: EmployeeProfile;
+  contractContext?: ContractEmailContext;
 }
 
-export function EmailComposerModal({ isOpen, onClose, profile }: EmailComposerModalProps) {
+export function EmailComposerModal({ isOpen, onClose, profile, contractContext }: EmailComposerModalProps) {
   const app = usePrivosApp();
   const templateProvider = useEmployeeEmailTemplateProvider();
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
@@ -26,7 +28,7 @@ export function EmailComposerModal({ isOpen, onClose, profile }: EmailComposerMo
     
     const tmpl = templateProvider.getTemplateById(tmplId);
     if (tmpl) {
-      const draft = tmpl.createDraft(profile);
+      const draft = tmpl.createDraft(profile, contractContext);
       setSubject(draft.subject);
       setContent(draft.content);
     } else {
