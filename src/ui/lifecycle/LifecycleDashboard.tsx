@@ -3,6 +3,8 @@ import { usePrivosApp, usePrivosContext } from '@privos/app-react';
 import { EmployeeProfile, PassedCandidate } from './types';
 import { PrivOSLifecycleService } from './services/PrivOSLifecycleService';
 import { LifecycleServiceProvider, useLifecycleService } from './di/LifecycleContext';
+import { EmployeeEmailTemplateProvider } from './di/EmployeeEmailTemplateContext';
+import { BuiltinEmployeeEmailTemplateProvider, type IEmployeeEmailTemplateProvider } from './email/EmployeeEmailTemplateProvider';
 import { KanbanBoard } from './components/KanbanBoard';
 import { ProfileListView } from './components/ProfileListView';
 import { CreateProfileForm } from './components/CreateProfileForm';
@@ -364,7 +366,11 @@ function LifecycleContent() {
   );
 }
 
-export default function LifecycleDashboard() {
+export interface LifecycleDashboardProps {
+  emailTemplateProvider?: IEmployeeEmailTemplateProvider;
+}
+
+export default function LifecycleDashboard({ emailTemplateProvider }: LifecycleDashboardProps = {}) {
   console.log('[LifecycleDashboard] Default export mounted');
   const app = usePrivosApp();
   const { roomId } = usePrivosContext();
@@ -375,6 +381,10 @@ export default function LifecycleDashboard() {
     console.log('[LifecycleDashboard] Creating PrivOSLifecycleService');
     return new PrivOSLifecycleService(app);
   }, [app]);
+  const resolvedEmailTemplateProvider = useMemo(
+    () => emailTemplateProvider ?? new BuiltinEmployeeEmailTemplateProvider(),
+    [emailTemplateProvider]
+  );
   console.log('[LifecycleDashboard] Default export - service:', !!service);
 
   if (!app || !roomId || !service) {
@@ -390,7 +400,9 @@ export default function LifecycleDashboard() {
 
   return (
     <LifecycleServiceProvider service={service}>
-      <LifecycleContent />
+      <EmployeeEmailTemplateProvider provider={resolvedEmailTemplateProvider}>
+        <LifecycleContent />
+      </EmployeeEmailTemplateProvider>
     </LifecycleServiceProvider>
   );
 }

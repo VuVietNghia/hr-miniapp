@@ -10,6 +10,7 @@ import path from 'path';
 import _pkg from '../package.json';
 import { callHubTool } from './relay-client';
 import { mailService } from './services/MailService';
+import { isValidEmailAddress } from './utils/email-validation';
 
 const pkg = _pkg as Record<string, any>;
 const TOOL_NAME = 'hr_management_dashboard';
@@ -165,6 +166,9 @@ export async function handleMcpMessage(method: string, _id: number, params: any)
 				
 				if (!args?.toName || !args?.toEmail || !args?.subject || !args?.htmlContent) {
 					throw new Error('Missing required arguments for hrm.mail.send');
+				}
+				if (!isValidEmailAddress(args.toEmail)) {
+					throw new Error('Recipient email is invalid for hrm.mail.send');
 				}
 				
 				// Đẩy vào queue để gửi dần
