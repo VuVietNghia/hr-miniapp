@@ -372,12 +372,24 @@ export class PipelineService {
           arguments: { fileId, name: newName }
         }
       });
-      return true;
     } catch (err) {
       console.error('Failed to rename file', err);
       return false;
     }
   }
+
+  private extractCandidateEmail(text: string): string {
+  if (!text) return '';
+  const gmailMatches = text.match(/[a-zA-Z0-9._%+-]+@gmail\.com/gi);
+  if (gmailMatches && gmailMatches.length > 0) {
+    return gmailMatches[0].toLowerCase();
+  }
+  const generalMatches = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi);
+  if (generalMatches && generalMatches.length > 0) {
+    return generalMatches[0].toLowerCase();
+  }
+  return '';
+}
 
   async processCV(
     cv: CVFile,
@@ -438,6 +450,7 @@ KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ:
   "score": 85,
   "category": "ĐẠT" | "CÂN NHẮC" | "KHÔNG ĐẠT" | "KHÔNG TUYỂN VỊ TRÍ NÀY" | "SAI JD",
   "reason": "[lý do ngắn gọn]",
+  "email": "[địa chỉ email của ứng viên tìm thấy trong CV, ưu tiên đuôi @gmail.com]",
   "extracted_evidence": ["[trích dẫn 1]", "[trích dẫn 2]"]
 }
 \`\`\`
@@ -548,11 +561,17 @@ KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ:
         finalReason += '\n\n[BẰNG CHỨNG TỪ CV]\n- ' + result.extracted_evidence.join('\n- ');
       }
 
+      const candidateEmail = result.email || this.extractCandidateEmail(extractedMarkdown) || this.extractCandidateEmail(aiProcessRes.text) || this.extractCandidateEmail(cv.name) || '';
+      if (onLog && candidateEmail) {
+        onLog(`[Email Candidate] Đã trích xuất email ứng viên: ${candidateEmail}`);
+      }
+
       updateStatus({
         status: 'completed',
         score: result.score || 0,
         category: result.category || 'KHÔNG XÁC ĐỊNH',
         reason: finalReason,
+        email: candidateEmail,
         markdownContent: extractedMarkdown
       });
 
@@ -912,6 +931,7 @@ ${content}
       { _id: 'tong_diem', name: 'Tổng điểm', type: 'NUMBER' },
       { _id: 'phan_loai', name: 'Phân loại', type: 'TEXT' },
       { _id: 'ly_do', name: 'Lý do', type: 'TEXTAREA' },
+      { _id: 'email', name: 'Email', type: 'TEXT' },
     ];
     const stages = [
       { name: '01_Dau_Vao', color: '#6b7280' },
@@ -979,6 +999,25 @@ ${content}
             console.warn('Failed to load existing stages', e);
           }
 
+          // Đảm bảo List đã tồn tại cũng có định nghĩa trường "Email"
+          const hasEmailField = Array.isArray(existingList.fieldDefinitions) && existingList.fieldDefinitions.some((fd: any) => fd._id === 'email' || (fd.name || '').toLowerCase() === 'email');
+          if (!hasEmailField) {
+            try {
+              await this.app.callServerTool({
+                name: 'privos.lists.addField',
+                arguments: {
+                  listId: existingList._id,
+                  fieldId: 'email',
+                  name: 'Email',
+                  type: 'TEXT'
+                }
+              });
+              if (onLog) onLog('[Kanban] Đã tự động bổ sung định nghĩa trường "Email" vào List.');
+            } catch (fieldErr) {
+              console.warn('Không thể thêm trường email vào list cũ', fieldErr);
+            }
+          }
+
           if (onLog) onLog(`[Kanban] Đã tải ${createdStages.length} stages. Sẽ thêm ${results.length} CV vào List này.`);
         }
       }
@@ -1018,6 +1057,7 @@ ${content}
             { fieldId: 'tong_diem', value: r.score ?? 0 },
             { fieldId: 'phan_loai', value: r.category || 'KHÔNG XÁC ĐỊNH' },
             { fieldId: 'ly_do', value: r.reason || '' },
+            { fieldId: 'email', value: r.email || '' },
           ],
         };
       });

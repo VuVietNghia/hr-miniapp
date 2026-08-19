@@ -938,7 +938,7 @@ REQUIRED:
       ...Object.fromEntries(filesToProcess.map(f => [f._id, { fileId: f._id, originalName: f.name, status: 'pending' as const }]))
     }));
 
-    const resultsForKanban: Array<{ originalName: string; normalizedName?: string; score?: number; category?: string; reason?: string }> = [];
+    const resultsForKanban: Array<{ originalName: string; normalizedName?: string; score?: number; category?: string; reason?: string; email?: string }> = [];
 
     for (const cv of filesToProcess) {
       addLog(`\u0110ang x\u1eed l\u00fd: ${cv.name}`);
