@@ -9,6 +9,8 @@ export interface CVProfile {
   score?: number;
   category?: string;
   reason?: string;
+  email?: string;
+  sdt?: string;
 }
 
 const CV_COLUMNS = [
@@ -287,7 +289,7 @@ export default function CVScoredTab() {
   const [inviteCandidateName, setInviteCandidateName] = useState('');
   const [invitePosition, setInvitePosition] = useState('');
   const [inviteCompany, setInviteCompany] = useState('');
-  const [inviteEmail, setInviteEmail] = useState('vvn0068@gmail.com');
+  const [inviteEmail, setInviteEmail] = useState('');
   const [inviteDate, setInviteDate] = useState('');
   const [inviteSubject, setInviteSubject] = useState('');
   const [inviteEmailBody, setInviteEmailBody] = useState('');
@@ -295,8 +297,13 @@ export default function CVScoredTab() {
 
   const handleSendInviteEmail = async () => {
     if (!app) return;
-    const targetEmail = inviteEmail.trim() || 'vvn0068@gmail.com';
+    const targetEmail = inviteEmail.trim();
     
+    if (!targetEmail) {
+      alert('Vui lòng nhập địa chỉ email người nhận!');
+      return;
+    }
+
     if (!inviteSubject.trim() || !inviteEmailBody.trim()) {
       alert('Vui lòng nhập tiêu đề và nội dung thư mời');
       return;
@@ -432,7 +439,7 @@ Trân trọng,
         items = items.filter((item: any) => !(item.name || item.title || '').includes('[Hệ thống] Không xoá'));
 
         const loadedCvs: CVProfile[] = items.map((item: any) => {
-          let score, category, reason;
+          let score, category, reason, email, sdt;
           if (Array.isArray(item.customFields)) {
             item.customFields.forEach((cf: any) => {
               const fieldIdStr = cf.fieldId || cf.fieldDefinitionId;
@@ -440,6 +447,8 @@ Trân trọng,
               if (fieldName.includes('tổng điểm') || fieldName.includes('tong_diem') || fieldName.includes('điểm')) score = cf.value;
               else if (fieldName.includes('phân loại') || fieldName.includes('phan_loai') || fieldName.includes('loại')) category = cf.value;
               else if (fieldName.includes('lý do') || fieldName.includes('ly_do') || fieldName.includes('nhận xét')) reason = cf.value;
+              else if (fieldName.includes('email') || fieldName.includes('thu_dien_tu')) email = cf.value;
+              else if (fieldName.includes('sdt') || fieldName.includes('sđt') || fieldName.includes('phone') || fieldName.includes('điện thoại')) sdt = cf.value;
             });
           } else if (item.customFields && typeof item.customFields === 'object') {
             Object.keys(item.customFields).forEach(key => {
@@ -448,8 +457,32 @@ Trân trọng,
               if (fieldName.includes('tổng điểm') || fieldName.includes('tong_diem') || fieldName.includes('điểm')) score = val;
               else if (fieldName.includes('phân loại') || fieldName.includes('phan_loai') || fieldName.includes('loại')) category = val;
               else if (fieldName.includes('lý do') || fieldName.includes('ly_do') || fieldName.includes('nhận xét')) reason = val;
+              else if (fieldName.includes('email') || fieldName.includes('thu_dien_tu')) email = val;
+              else if (fieldName.includes('sdt') || fieldName.includes('sđt') || fieldName.includes('phone') || fieldName.includes('điện thoại')) sdt = val;
             });
           }
+
+          // Fallback: scanner for candidate email if not present in customFields
+          const textToScan = `${item.name || ''} ${item.title || ''} ${reason || ''} ${item.description || ''}`;
+          if (!email) {
+            const gmailMatch = textToScan.match(/[a-zA-Z0-9._%+-]+@gmail\.com/i);
+            if (gmailMatch) {
+              email = gmailMatch[0].toLowerCase();
+            } else {
+              const generalMatch = textToScan.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i);
+              if (generalMatch) {
+                email = generalMatch[0].toLowerCase();
+              }
+            }
+          }
+
+          if (!sdt) {
+            const phoneMatch = textToScan.match(/(?:\+84|84|0)[35789][0-9\s\.\-]{8,12}\b/);
+            if (phoneMatch) {
+              sdt = phoneMatch[0].replace(/[^\d+]/g, '');
+            }
+          }
+
           // Fallback deduce stageId if sMap is missing this specific stageId
           if (!sMap[item.stageId] && item.stageId && category) {
             const normalized = String(category || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/Đ/g, 'D').trim();
@@ -470,7 +503,9 @@ Trân trọng,
             status: sMap[item.stageId] || item.stage || item.status || '01_Dau_Vao',
             score,
             category,
-            reason
+            reason,
+            email: email || '',
+            sdt: sdt || ''
           };
         });
 
@@ -600,7 +635,7 @@ Trân trọng,
                 setInviteCandidateName(cleanName);
                 setInvitePosition(cleanPos);
                 setInviteCompany('Công ty ABC');
-                setInviteEmail('vvn0068@gmail.com');
+                setInviteEmail(cv.email || '');
                 setInviteDate('');
                 setInviteModalOpen(true);
               }}
@@ -673,8 +708,10 @@ Trân trọng,
                   <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text)' }}>
                     {selectedCVForDetail.cv.name}
                   </h3>
-                  <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
-                    Đợt tuyển dụng: <strong>{selectedCVForDetail.listName}</strong>
+                  <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--text-muted)', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span>Đợt tuyển dụng: <strong>{selectedCVForDetail.listName}</strong></span>
+                    {selectedCVForDetail.cv.email && <span>✉️ Email: <strong>{selectedCVForDetail.cv.email}</strong></span>}
+                    {selectedCVForDetail.cv.sdt && <span>📞 SĐT: <strong>{selectedCVForDetail.cv.sdt}</strong></span>}
                   </p>
                 </div>
               </div>
