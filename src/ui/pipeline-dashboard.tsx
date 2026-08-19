@@ -958,11 +958,19 @@ REQUIRED:
     }
 
     if (serviceRef.current.createKanbanBatchViaAI && resultsForKanban.length > 0) {
-      addLog(`B\u1eaft \u0111\u1ea7u t\u1ea1o List Kanban v\u00e0 l\u01b0u k\u1ebft qu\u1ea3 ${resultsForKanban.length} CV...`);
+      addLog(`Bắt đầu tạo List Kanban và lưu kết quả ${resultsForKanban.length} CV...`);
       try {
         await serviceRef.current.createKanbanBatchViaAI(resultsForKanban, jdName, addLog);
+        
+        // Log thống kê thông tin liên hệ trích xuất được
+        const missingContacts = resultsForKanban.filter(r => !r.email && !(r.sdt || r.phone));
+        if (missingContacts.length > 0) {
+          addLog(`[Cảnh báo] Có ${missingContacts.length}/${resultsForKanban.length} CV không đọc được Email/SĐT: ${missingContacts.map(c => c.originalName).join(', ')}`);
+        } else {
+          addLog(`[Thành công] Đã trích xuất thành công Email/SĐT cho ${resultsForKanban.length} CV!`);
+        }
       } catch (err: any) {
-        addLog(`L\u1ed7i t\u1ea1o Kanban: ${err.message}`);
+        addLog(`Lỗi tạo Kanban: ${err.message}`);
       }
     }
 

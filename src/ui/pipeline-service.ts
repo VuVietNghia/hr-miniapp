@@ -581,8 +581,21 @@ KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ:
         finalReason += '\n\n[BẰNG CHỨNG TỪ CV]\n- ' + result.extracted_evidence.join('\n- ');
       }
 
-      const candidateEmail = result.email || this.extractCandidateEmail(extractedMarkdown) || this.extractCandidateEmail(aiProcessRes.text) || this.extractCandidateEmail(cv.name) || '';
-      const candidatePhone = result.sdt || result.phone || this.extractCandidatePhone(extractedMarkdown) || this.extractCandidatePhone(aiProcessRes.text) || '';
+      const cleanContactVal = (val: any): string => {
+        if (!val || typeof val !== 'string') return '';
+        const trimmed = val.trim();
+        const lower = trimmed.toLowerCase();
+        if (['null', 'none', 'n/a', 'không đề cập', 'không có', 'undefined', 'chưa có', 'không'].includes(lower)) {
+          return '';
+        }
+        return trimmed;
+      };
+
+      const rawEmail = cleanContactVal(result.email);
+      const rawPhone = cleanContactVal(result.sdt || result.phone);
+
+      const candidateEmail = rawEmail || this.extractCandidateEmail(extractedMarkdown) || this.extractCandidateEmail(aiProcessRes.text) || this.extractCandidateEmail(cv.name) || '';
+      const candidatePhone = rawPhone || this.extractCandidatePhone(extractedMarkdown) || this.extractCandidatePhone(aiProcessRes.text) || '';
       
       if (onLog && candidateEmail) {
         onLog(`[Email Candidate] Đã trích xuất email ứng viên: ${candidateEmail}`);

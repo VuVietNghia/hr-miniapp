@@ -76,6 +76,8 @@ Dựa trên yêu cầu của người dùng (Sơ loại hay Deep Review), hãy �
      "score": 85,
      "category": "ĐẠT" | "CÂN NHẮC" | "KHÔNG ĐẠT" | "KHÔNG TUYỂN VỊ TRÍ NÀY",
      "reason": "[lý do ngắn gọn]",
+     "email": "[email ứng viên nếu có, nếu không có trả về null]",
+     "sdt": "[số điện thoại ứng viên nếu có, nếu không có trả về null]",
      "extracted_evidence": ["[trích dẫn 1]", "[trích dẫn 2]"]
    }
    ```
