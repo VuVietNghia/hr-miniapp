@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { EmployeeProfile } from '../types';
 import { usePrivosApp } from '@privos/app-react';
+import { useEmployeeEmailTemplateProvider } from '../di/EmployeeEmailTemplateContext';
+import { isValidEmailAddress } from '../../../utils/email-validation';
 
 interface EmailComposerModalProps {
   isOpen: boolean;
@@ -8,38 +10,9 @@ interface EmailComposerModalProps {
   profile: EmployeeProfile;
 }
 
-const TEMPLATES = [
-  {
-    id: 'OFFER_LETTER',
-    name: 'Thư mời nhận việc (Offer Letter)',
-    subject: 'Thư mời nhận việc - Công ty PrivOS',
-    content: (p: EmployeeProfile) => `Chào ${p.name},
-
-Chúc mừng bạn đã vượt qua vòng phỏng vấn. Chúng tôi rất vui mừng mời bạn gia nhập PrivOS với vị trí ứng tuyển.
-
-Mức lương đề xuất: 
-
-Vui lòng phản hồi email này để xác nhận.
-Trân trọng,
-Nhân sự PrivOS`
-  },
-  {
-    id: 'REJECTION_LETTER',
-    name: 'Thư từ chối (Từ chối khéo)',
-    subject: 'Kết quả phỏng vấn - Công ty PrivOS',
-    content: (p: EmployeeProfile) => `Chào ${p.name},
-
-Cảm ơn bạn đã dành thời gian tham gia phỏng vấn tại PrivOS.
-Mặc dù rất ấn tượng với kỹ năng của bạn, nhưng chúng tôi rất tiếc phải thông báo rằng bạn chưa phù hợp với vị trí hiện tại.
-
-Chúc bạn thành công trong sự nghiệp.
-Trân trọng,
-Nhân sự PrivOS`
-  }
-];
-
 export function EmailComposerModal({ isOpen, onClose, profile }: EmailComposerModalProps) {
   const app = usePrivosApp();
+  const templateProvider = useEmployeeEmailTemplateProvider();
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [subject, setSubject] = useState<string>('');
   const [content, setContent] = useState<string>('');
@@ -51,10 +24,11 @@ export function EmailComposerModal({ isOpen, onClose, profile }: EmailComposerMo
     const tmplId = e.target.value;
     setSelectedTemplate(tmplId);
     
-    const tmpl = TEMPLATES.find(t => t.id === tmplId);
+    const tmpl = templateProvider.getTemplateById(tmplId);
     if (tmpl) {
-      setSubject(tmpl.subject);
-      setContent(tmpl.content(profile));
+      const draft = tmpl.createDraft(profile);
+      setSubject(draft.subject);
+      setContent(draft.content);
     } else {
       setSubject('');
       setContent('');
@@ -67,7 +41,11 @@ export function EmailComposerModal({ isOpen, onClose, profile }: EmailComposerMo
       return;
     }
 
-    const targetEmail = profile.email?.trim() || 'vvn0068@gmail.com';
+    const targetEmail = profile.email?.trim() || '';
+    if (!isValidEmailAddress(targetEmail)) {
+      alert('Hồ sơ nhân sự chưa có email hợp lệ. Vui lòng cập nhật email trước khi gửi.');
+      return;
+    }
 
     setIsSending(true);
     try {
@@ -109,7 +87,7 @@ export function EmailComposerModal({ isOpen, onClose, profile }: EmailComposerMo
                 style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)', outline: 'none' }}
               >
                 <option value="">-- Chọn mẫu thư --</option>
-                {TEMPLATES.map(t => (
+                {templateProvider.getTemplates().map(t => (
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
