@@ -8,6 +8,7 @@ import {
   formatCurrencyPreview, 
   isProbationContract 
 } from '../utils';
+import { formatPayrollDebugOutput } from '../debug-format';
 
 interface PayrollDashboardProps {
   roomId: string;
@@ -107,6 +108,23 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
       setStatusMsg({ text: 'Lỗi khi tải dữ liệu bảng lương.', type: 'error' });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const showRawPayrollDebug = async () => {
+    const request = {
+      name: 'hrm.payroll.query',
+      arguments: {
+        collection: 'payroll_records',
+        where: [{ field: 'roomId', op: '==', value: roomId }]
+      }
+    };
+
+    try {
+      const result = await app.callServerTool(request);
+      setDebugData(formatPayrollDebugOutput({ roomId, request, result }));
+    } catch (error) {
+      setDebugData(formatPayrollDebugOutput({ roomId, request, error }));
     }
   };
 
@@ -357,14 +375,7 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
             type="button"
             className="hr-btn hr-btn-subtle" 
             style={{ fontSize: '0.8rem' }}
-            onClick={async () => {
-              try {
-                const all = await payrollService.getRecords();
-                setDebugData(JSON.stringify(all, null, 2));
-              } catch (e) {
-                setDebugData('Error loading raw data');
-              }
-            }}
+            onClick={showRawPayrollDebug}
             title="Xem dữ liệu gốc JSON từ Database"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
