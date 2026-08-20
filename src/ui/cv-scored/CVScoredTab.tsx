@@ -4,6 +4,8 @@ import '../hr-premium-styles.css';
 import { getKanbanColumnScrollDistance } from './kanban-scroll';
 import { getInviteEmailValidationError } from './invite-email-validation';
 import { getInviteMailButtonState } from './invite-mail-status';
+import { markInviteMailSent, wasInviteMailSent, INVITE_MAIL_SENT_FIELD_ID } from './invite-mail-persistence';
+import { restCall } from '../privos-rest';
 
 export interface CVProfile {
   _id: string;
@@ -14,6 +16,8 @@ export interface CVProfile {
   reason?: string;
   email?: string;
   sdt?: string;
+  customFields?: unknown;
+  inviteMailSent?: boolean;
 }
 
 const CV_COLUMNS = [
@@ -377,10 +381,24 @@ export default function CVScoredTab() {
           htmlContent: inviteEmailBody.replace(/\n/g, '<br/>')
         }
       });
-      alert(`Đã gửi email mời phỏng vấn thành công tới ${targetEmail}!`);
       if (selectedCVForInvite) {
+        const updatedCustomFields = markInviteMailSent(selectedCVForInvite.customFields);
+        await restCall(app, 'POST', 'items.update', {
+          body: {
+            itemId: selectedCVForInvite._id,
+            name: selectedCVForInvite.name,
+            customFields: updatedCustomFields,
+          },
+        });
         setSentInviteCVIds((previous) => new Set(previous).add(selectedCVForInvite._id));
+        setBoards((previous) => previous.map((board) => ({
+          ...board,
+          cvs: board.cvs.map((cv) => cv._id === selectedCVForInvite._id
+            ? { ...cv, customFields: updatedCustomFields, inviteMailSent: true }
+            : cv),
+        })));
       }
+      alert(`Đã gửi email mời phỏng vấn thành công tới ${targetEmail}!`);
       setInviteModalOpen(false);
     } catch (err: any) {
       console.error('Lỗi gửi email:', err);
@@ -455,6 +473,7 @@ Trân trọng,
         
         let sMap: Record<string, string> = {};
         let fMap: Record<string, string> = {};
+        let hasInviteMailSentField = false;
         
         try {
           const detailRes: any = await app.callServerTool({
@@ -484,7 +503,28 @@ Trân trọng,
 
           const fieldsArr = detailParsed.fieldDefinitions || detailParsed.list?.fieldDefinitions || targetList.fieldDefinitions || [];
           if (Array.isArray(fieldsArr)) {
-            fieldsArr.forEach((fd: any) => fMap[fd._id || fd.id] = fd.name);
+            fieldsArr.forEach((fd: any) => {
+              const fieldId = fd._id || fd.id;
+              fMap[fieldId] = fd.name;
+              if (fieldId === INVITE_MAIL_SENT_FIELD_ID) hasInviteMailSentField = true;
+            });
+
+            if (!hasInviteMailSentField) {
+              try {
+                await app.callServerTool({
+                  name: 'privos.lists.addField',
+                  arguments: {
+                    listId: lId,
+                    fieldId: INVITE_MAIL_SENT_FIELD_ID,
+                    name: 'Đã gửi mail phỏng vấn',
+                    type: 'CHECKBOX',
+                  },
+                });
+                fMap[INVITE_MAIL_SENT_FIELD_ID] = 'Đã gửi mail phỏng vấn';
+              } catch (fieldError) {
+                console.warn('Không thể thêm field trạng thái gửi mail', fieldError);
+              }
+            }
           }
         } catch (err) {
           console.error("Failed to fetch full list details for stages", err);
@@ -500,6 +540,7 @@ Trân trọng,
 
         const loadedCvs: CVProfile[] = items.map((item: any) => {
           let score, category, reason, email, sdt;
+          const inviteMailSent = wasInviteMailSent(item.customFields);
           if (Array.isArray(item.customFields)) {
             item.customFields.forEach((cf: any) => {
               const fieldIdStr = cf.fieldId || cf.fieldDefinitionId;
@@ -565,7 +606,9 @@ Trân trọng,
             category,
             reason,
             email: email || '',
-            sdt: sdt || ''
+            sdt: sdt || '',
+            customFields: item.customFields,
+            inviteMailSent,
           };
         });
 
@@ -703,7 +746,9 @@ Trân trọng,
                 setSelectedCVForDetail({ cv, listName });
                 setDetailModalOpen(true);
               }}
-              isInviteSent={(cvId) => sentInviteCVIds.has(cvId)}
+              isInviteSent={(cvId) => sentInviteCVIds.has(cvId) || board.cvs.some((cv) =>
+                cv._id === cvId && cv.inviteMailSent === true,
+              )}
             />
           ))}
         </div>
