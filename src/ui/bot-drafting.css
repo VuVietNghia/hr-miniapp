@@ -287,6 +287,60 @@
   word-break: break-word !important;
 }
 
+.bot-print-paper {
+  display: none;
+}
+
+@page {
+  size: A4;
+  margin: 20mm 20mm 20mm 30mm;
+}
+
+@media print {
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    background: #FFFFFF !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .bot-drafting-ui {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .bot-print-paper,
+  .bot-print-paper * {
+    visibility: visible !important;
+  }
+
+  .bot-print-paper {
+    display: block !important;
+    position: absolute;
+    inset: 0;
+    width: auto !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    zoom: normal !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .bot-print-paper table,
+  .bot-print-paper tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
 .bot-a4-paper table {
   table-layout: fixed;
   width: 100%;

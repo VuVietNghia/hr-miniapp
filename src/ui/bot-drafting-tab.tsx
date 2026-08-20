@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { usePrivosApp, usePrivosContext, type McpApp } from '@privos/app-react';
 import {
   IDraftingTemplateProvider,
@@ -84,8 +84,6 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   }, []);
-
-  const paperRef = useRef<HTMLElement>(null);
 
   // AI Pipeline Execution
   const handleAiAction = async () => {
@@ -441,7 +439,7 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
 
             <div className="bot-action-buttons">
               <button type="button" className="hr-btn" onClick={handleCopy} title="Sao chép nội dung">📋 Copy</button>
-              <button type="button" className="hr-btn" onClick={() => window.print()} title="In văn bản / PDF">🖨️ In</button>
+              {/* Tạm ẩn: PrivOS sandbox có thể chặn hộp thoại in của trình duyệt. */}
               <button type="button" className="hr-btn" onClick={handleDownloadMd} title="Tải file .md">📥 .md</button>
             </div>
           </div>
@@ -456,7 +454,6 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
             ) : viewMode === 'a4' ? (
               <div className="bot-a4-sheet-container">
                 <article
-                  ref={paperRef}
                   className="bot-a4-paper"
                   style={{
                     zoom: zoomLevel !== 100 ? zoomLevel / 100 : undefined
@@ -476,6 +473,12 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
           </div>
         </section>
       </div>
+
+      {documentContent && (
+        <article className="bot-a4-paper bot-print-paper">
+          {renderFormattedA4(documentContent)}
+        </article>
+      )}
 
       {isTemplateModalOpen && (
         <div className="bot-template-modal-overlay" onClick={() => setIsTemplateModalOpen(false)}>
