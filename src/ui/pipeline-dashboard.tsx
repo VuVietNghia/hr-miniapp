@@ -3,6 +3,7 @@ import { usePrivosApp, usePrivosContext } from '@privos/app-react';
 import { PipelineService, CVFile, ProcessingStatus } from './pipeline-service';
 import { MarkdownPathContextBuilder } from './cv-context-builder';
 import { createOrUpdateFile, getFileContent } from './privos-rest';
+import { usePolling } from './hooks/usePolling';
 
 // Dependency Injection Interface
 // Swap implementation easily in the future (e.g. mock for testing)
@@ -72,6 +73,10 @@ const emptyJDForm: JDFormState = {
 
 const hasJDFormValue = (form: JDFormState) =>
   Object.values(form).some(value => value.trim().length > 0);
+
+const haveSameFiles = (current: CVFile[], next: CVFile[]) =>
+  current.length === next.length
+  && current.every((file, index) => file._id === next[index]?._id && file.name === next[index]?.name);
 
 const buildJDPromptFromForm = (form: JDFormState) => {
   const unknown = 'Kh\u00f4ng x\u00e1c \u0111\u1ecbnh';
@@ -653,6 +658,45 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
     finally { setLoading(false); }
   };
 
+  const reconcileSelectedFiles = useCallback(async () => {
+    if (!serviceRef.current || processing) return;
+
+    const [currentFiles, currentJDs] = await Promise.all([
+      serviceRef.current.fetchAvailableFiles(),
+      serviceRef.current.fetchAvailableJDs?.() ?? Promise.resolve([]),
+    ]);
+
+    setFiles(previous => haveSameFiles(previous, currentFiles) ? previous : currentFiles);
+    setAvailableJDs(previous => haveSameFiles(previous, currentJDs) ? previous : currentJDs);
+
+    const currentFileIds = new Set(currentFiles.map(file => file._id));
+    const removedCVIds = [...selectedIds].filter(id => !currentFileIds.has(id));
+    if (removedCVIds.length > 0) {
+      setSelectedIds(previous => new Set([...previous].filter(id => currentFileIds.has(id))));
+      const removedNames = files
+        .filter(file => removedCVIds.includes(file._id))
+        .map(file => file.name);
+      const label = removedNames.length > 0 ? removedNames.join(', ') : `${removedCVIds.length} CV`;
+      addLog(`[CẢNH BÁO] CV đã chọn không còn trong Room Files: ${label}. Đã bỏ khỏi danh sách chấm.`);
+      showToast('Một hoặc nhiều CV đã chọn đã bị xóa. Hệ thống đã bỏ lựa chọn.', 'error');
+    }
+
+    if (jdName && !currentJDs.some(jd => jd.name === jdName)) {
+      setJdName('');
+      setJdContent('');
+      setJdEditDraft('');
+      setJdModalOpen(false);
+      addLog(`[CẢNH BÁO] JD "${jdName}" không còn trong Room Files. Vui lòng chọn lại JD trước khi chấm.`);
+      showToast('JD đã chọn đã bị xóa. Vui lòng chọn lại JD.', 'error');
+    }
+  }, [addLog, files, jdName, processing, selectedIds, showToast]);
+
+  usePolling(reconcileSelectedFiles, {
+    enabled: !processing && (selectedIds.size > 0 || Boolean(jdName)),
+    interval: 1000,
+    immediate: false,
+  });
+
   const handleToggleSelect = (id: string) => {
     setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   };
@@ -940,7 +984,38 @@ REQUIRED:
 
     const resultsForKanban: Array<{ originalName: string; normalizedName?: string; score?: number; category?: string; reason?: string; email?: string; sdt?: string; phone?: string }> = [];
 
+    const checkScoringFiles = async (cv: CVFile): Promise<'available' | 'cv-deleted' | 'jd-deleted'> => {
+      try {
+        const [currentFiles, currentJds] = await Promise.all([
+          serviceRef.current!.fetchAvailableFiles(),
+          serviceRef.current!.fetchAvailableJDs?.() ?? Promise.resolve([]),
+        ]);
+
+        if (!currentJds.some(jd => jd.name === jdName)) return 'jd-deleted';
+        if (!currentFiles.some(file => file._id === cv._id)) return 'cv-deleted';
+        return 'available';
+      } catch (err: any) {
+        addLog(`[Cảnh báo] Không thể kiểm tra trạng thái CV/JD: ${err.message || err}`);
+        return 'available';
+      }
+    };
+
     for (const cv of filesToProcess) {
+      const beforeStatus = await checkScoringFiles(cv);
+      if (beforeStatus === 'jd-deleted') {
+        addLog(`[CẢNH BÁO] JD "${jdName}" đã bị xóa khỏi Room Files. Dừng batch chấm CV.`);
+        break;
+      }
+      if (beforeStatus === 'cv-deleted') {
+        addLog(`[CẢNH BÁO] CV "${cv.name}" đã bị xóa khỏi Room Files. Bỏ qua CV này.`);
+        setStatuses(prev => ({
+          ...prev,
+          [cv._id]: { ...prev[cv._id], status: 'error', errorMsg: 'CV đã bị xóa khỏi Room Files.' }
+        }));
+        setSelectedIds(prev => { const next = new Set(prev); next.delete(cv._id); return next; });
+        continue;
+      }
+
       addLog(`\u0110ang x\u1eed l\u00fd: ${cv.name}`);
       let currentStatus: any = { originalName: cv.name };
       
@@ -952,9 +1027,25 @@ REQUIRED:
         },
         jdContent, jdName, addLog
       );
-      resultsForKanban.push(currentStatus);
+
+      const afterStatus = await checkScoringFiles(cv);
+      if (afterStatus === 'jd-deleted') {
+        addLog(`[CẢNH BÁO] JD "${jdName}" đã bị xóa trong lúc chấm "${cv.name}". Dừng batch chấm CV.`);
+        break;
+      }
+      if (afterStatus === 'cv-deleted') {
+        addLog(`[CẢNH BÁO] CV "${cv.name}" đã bị xóa trong lúc chấm. Bỏ qua kết quả CV này.`);
+        setSelectedIds(prev => { const next = new Set(prev); next.delete(cv._id); return next; });
+        continue;
+      }
+
+      if (currentStatus.status === 'completed') {
+        resultsForKanban.push(currentStatus);
+      } else {
+        addLog(`[CẢNH BÁO] Không lưu kết quả "${cv.name}": ${currentStatus.errorMsg || 'AI không hoàn tất chấm CV.'}`);
+      }
       setSelectedIds(prev => { const n = new Set(prev); n.delete(cv._id); return n; });
-      addLog(`Xong: ${cv.name}`);
+      addLog(currentStatus.status === 'completed' ? `Xong: ${cv.name}` : `Dừng xử lý: ${cv.name}`);
     }
 
     if (serviceRef.current.createKanbanBatchViaAI && resultsForKanban.length > 0) {
@@ -1313,7 +1404,6 @@ REQUIRED:
                       </div>
                     )}
                   </div>
-                  <button className="pl-btn" onClick={() => { setJdDropdownOpen(false); loadJDs(); }} disabled={jdLoading} title={"L\u00e0m m\u1edbi danh s\u00e1ch JD"}>{"\u21bb"}</button>
                 </div>
               </div>
 
@@ -1359,7 +1449,7 @@ REQUIRED:
 
               <div style={{ marginBottom: '16px' }}>
                 <p style={{ fontSize: '13px', fontWeight: 500, margin: '0 0 6px 0' }}>{'CV \u0111\u00e3 upload'}</p>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start' }}>
                   <div className="pl-cv-list">
                     {loading
                       ? <p className="pl-cv-empty" style={{ color: 'var(--text-muted)' }}>{'Vui l\u00f2ng ch\u1edd CV t\u1ea3i l\u00ean'}</p>
@@ -1374,7 +1464,6 @@ REQUIRED:
                         ))
                     }
                   </div>
-                  <button className="pl-btn" onClick={loadFiles} disabled={loading || processing} title={"L\u00e0m m\u1edbi danh s\u00e1ch CV"}>{"\u21bb"}</button>
                 </div>
               </div>
 
