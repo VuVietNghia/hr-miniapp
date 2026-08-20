@@ -248,6 +248,56 @@
   background-color: rgba(0,0,0,0.3);
 }
 
+.cv-kanban-board {
+  position: relative;
+}
+
+.cv-kanban-nav {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border, #d9dee8);
+  border-radius: 50%;
+  background: var(--bg-card, #fff);
+  color: var(--text, #1f2937);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18);
+  cursor: pointer;
+  font-size: 28px;
+  line-height: 28px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.16s ease, background-color 0.16s ease;
+}
+
+.cv-kanban-nav:hover {
+  transform: scale(1.06);
+}
+
+.cv-kanban-nav-zone {
+  position: absolute;
+  top: 40px;
+  bottom: 16px;
+  z-index: 2;
+  width: 48px;
+  display: flex;
+  align-items: center;
+}
+
+.cv-kanban-nav-zone-left {
+  left: 0;
+  justify-content: flex-start;
+}
+
+.cv-kanban-nav-zone-right {
+  right: 0;
+  justify-content: flex-end;
+}
+
+.cv-kanban-nav-zone:hover .cv-kanban-nav,
+.cv-kanban-nav-zone:focus-within .cv-kanban-nav {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .hr-kanban-col {
   flex: 1 1 0;
   min-width: 240px;
@@ -825,6 +875,17 @@
   border-radius: 4px;
   background: rgba(16, 185, 129, 0.1);
   color: #10B981;
+}
+
+.cv-invite-mail-sent {
+  transition: background-color 0.16s ease, color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.cv-invite-mail-sent:hover {
+  background: rgba(16, 185, 129, 0.2);
+  color: #047857;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.22);
 }
 
 .badge-resigned {

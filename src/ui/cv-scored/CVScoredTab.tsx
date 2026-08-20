@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePrivosApp, usePrivosContext } from '@privos/app-react';
 import '../hr-premium-styles.css';
+import { getKanbanColumnScrollDistance } from './kanban-scroll';
+import { getInviteEmailValidationError } from './invite-email-validation';
+import { getInviteMailButtonState } from './invite-mail-status';
 
 export interface CVProfile {
   _id: string;
@@ -26,17 +29,20 @@ function CVCard({
   listName,
   onMove, 
   onInvite,
-  onSelectDetail 
+  onSelectDetail,
+  isInviteSent
 }: { 
   cv: CVProfile, 
   listName: string,
   onMove: (id: string, newStatus: string) => void, 
   onInvite: (cv: CVProfile, posName?: string) => void,
-  onSelectDetail: (cv: CVProfile, listName: string) => void
+  onSelectDetail: (cv: CVProfile, listName: string) => void,
+  isInviteSent: boolean
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const initials = cv.name.substring(0, 2).toUpperCase();
   const displayName = cv.name.length > 27 ? cv.name.substring(0, 27) + '...' : cv.name;
+  const inviteMailButton = getInviteMailButtonState(isInviteSent);
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
     e.dataTransfer.setData('text/plain', cv._id);
@@ -74,28 +80,35 @@ function CVCard({
               {cv.status === '05_Moi_Phong_Van' && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onInvite(cv); }}
-                  className="position-badge"
+                  className={inviteMailButton.className}
+                  disabled={inviteMailButton.disabled}
                   style={{
                     marginLeft: '4px',
                     fontSize: '10px', 
                     padding: '2px 8px', 
-                    border: '1px solid var(--accent, #156FF5)',
-                    backgroundColor: 'rgba(21, 111, 245, 0.08)',
-                    color: 'var(--accent, #156FF5)',
                     borderRadius: '4px',
                     cursor: 'pointer',
-                    transition: 'all 0.2s'
+                    ...(isInviteSent
+                      ? { border: 'none' }
+                      : {
+                          border: '1px solid var(--accent, #156FF5)',
+                          backgroundColor: 'rgba(21, 111, 245, 0.08)',
+                          color: 'var(--accent, #156FF5)',
+                          transition: 'all 0.2s'
+                        })
                   }}
                   onMouseOver={(e) => {
+                    if (isInviteSent) return;
                     e.currentTarget.style.backgroundColor = 'var(--accent, #156FF5)';
                     e.currentTarget.style.color = '#fff';
                   }}
                   onMouseOut={(e) => {
+                    if (isInviteSent) return;
                     e.currentTarget.style.backgroundColor = 'rgba(21, 111, 245, 0.08)';
                     e.currentTarget.style.color = 'var(--accent, #156FF5)';
                   }}
                 >
-                  Gửi mail pv
+                  {inviteMailButton.label}
                 </button>
               )}
             </div>
@@ -117,14 +130,16 @@ function CVColumn({
   listName,
   onMove, 
   onInvite,
-  onSelectDetail
+  onSelectDetail,
+  isInviteSent
 }: { 
   column: typeof CV_COLUMNS[0], 
   cvs: CVProfile[], 
   listName: string,
   onMove: (id: string, newStatus: string) => void, 
   onInvite: (cv: CVProfile, posName?: string) => void,
-  onSelectDetail: (cv: CVProfile, listName: string) => void
+  onSelectDetail: (cv: CVProfile, listName: string) => void,
+  isInviteSent: (id: string) => boolean
 }) {
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -138,7 +153,7 @@ function CVColumn({
   return (
     <div 
       className={`hr-kanban-col ${isDragOver ? 'drag-over' : ''}`}
-      style={{ flex: '0 0 calc((100% - 48px) / 3)', minWidth: '280px' }}
+      style={{ flex: '0 0 calc((100% - 48px) / 3)', minWidth: '280px', alignSelf: 'stretch' }}
       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setIsDragOver(true); }}
       onDragLeave={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node)) {
@@ -168,6 +183,7 @@ function CVColumn({
               onMove={onMove} 
               onInvite={onInvite} 
               onSelectDetail={onSelectDetail}
+              isInviteSent={isInviteSent(cv._id)}
             />
           ))
         )}
@@ -183,23 +199,47 @@ export interface CVBoardData {
   cvs: CVProfile[];
 }
 
-function CVBoard({ 
+export function CVBoard({ 
   board, 
   onMove, 
   onInvite,
-  onSelectDetail
+  onSelectDetail,
+  isInviteSent
 }: { 
   board: CVBoardData, 
   onMove: (listId: string, id: string, newStatus: string) => void, 
   onInvite: (cv: CVProfile, posName?: string) => void,
-  onSelectDetail: (cv: CVProfile, listName: string) => void
+  onSelectDetail: (cv: CVProfile, listName: string) => void,
+  isInviteSent: (id: string) => boolean
 }) {
+  const boardRef = React.useRef<HTMLDivElement>(null);
+
+  const scrollOneColumn = (direction: -1 | 1) => {
+    const container = boardRef.current;
+    const column = container?.querySelector<HTMLElement>('.hr-kanban-col');
+    if (!container || !column) return;
+
+    const gap = Number.parseFloat(getComputedStyle(container).gap) || 24;
+    const distance = getKanbanColumnScrollDistance(column.getBoundingClientRect().width, gap);
+    container.scrollBy({ left: direction * distance, behavior: 'smooth' });
+  };
+
   return (
-    <div style={{ marginBottom: '40px' }}>
+    <div className="cv-kanban-board" style={{ marginBottom: '40px' }}>
       <div style={{ width: '100%', padding: '0 10px', marginBottom: '16px' }}>
         <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: 'var(--text)' }}>{board.listName}</h3>
       </div>
-      <div className="hr-kanban-container" style={{ display: 'flex', gap: '24px', paddingBottom: '16px', overflowX: 'auto' }}>
+      <div className="cv-kanban-nav-zone cv-kanban-nav-zone-left">
+        <button
+          type="button"
+          className="cv-kanban-nav"
+          aria-label="Xem cột Kanban trước"
+          onClick={() => scrollOneColumn(-1)}
+        >
+          ‹
+        </button>
+      </div>
+      <div ref={boardRef} className="hr-kanban-container" style={{ display: 'flex', alignItems: 'stretch', gap: '24px', paddingBottom: '16px', overflowX: 'auto' }}>
         {CV_COLUMNS.map(col => (
           <CVColumn 
             key={col.status} 
@@ -209,8 +249,19 @@ function CVBoard({
             onMove={(id, newStatus) => onMove(board.listId, id, newStatus)} 
             onInvite={(cv) => onInvite(cv, board.listName.replace(/^JD\s+/i, ''))}
             onSelectDetail={onSelectDetail}
+            isInviteSent={isInviteSent}
           />
         ))}
+      </div>
+      <div className="cv-kanban-nav-zone cv-kanban-nav-zone-right">
+        <button
+          type="button"
+          className="cv-kanban-nav"
+          aria-label="Xem cột Kanban tiếp theo"
+          onClick={() => scrollOneColumn(1)}
+        >
+          ›
+        </button>
       </div>
     </div>
   );
@@ -285,6 +336,7 @@ export default function CVScoredTab() {
 
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [selectedCVForInvite, setSelectedCVForInvite] = useState<CVProfile | null>(null);
+  const [sentInviteCVIds, setSentInviteCVIds] = useState<Set<string>>(() => new Set());
   
   const [inviteCandidateName, setInviteCandidateName] = useState('');
   const [invitePosition, setInvitePosition] = useState('');
@@ -295,17 +347,22 @@ export default function CVScoredTab() {
   const [inviteEmailBody, setInviteEmailBody] = useState('');
   const [isSendingInvite, setIsSendingInvite] = useState(false);
 
+  const inviteValidationError = getInviteEmailValidationError({
+    candidateName: inviteCandidateName,
+    email: inviteEmail,
+    position: invitePosition,
+    company: inviteCompany,
+    interviewDate: inviteDate,
+    subject: inviteSubject,
+    body: inviteEmailBody
+  });
+
   const handleSendInviteEmail = async () => {
     if (!app) return;
     const targetEmail = inviteEmail.trim();
-    
-    if (!targetEmail) {
-      alert('Vui lòng nhập địa chỉ email người nhận!');
-      return;
-    }
 
-    if (!inviteSubject.trim() || !inviteEmailBody.trim()) {
-      alert('Vui lòng nhập tiêu đề và nội dung thư mời');
+    if (inviteValidationError) {
+      alert(inviteValidationError);
       return;
     }
 
@@ -321,6 +378,9 @@ export default function CVScoredTab() {
         }
       });
       alert(`Đã gửi email mời phỏng vấn thành công tới ${targetEmail}!`);
+      if (selectedCVForInvite) {
+        setSentInviteCVIds((previous) => new Set(previous).add(selectedCVForInvite._id));
+      }
       setInviteModalOpen(false);
     } catch (err: any) {
       console.error('Lỗi gửi email:', err);
@@ -643,6 +703,7 @@ Trân trọng,
                 setSelectedCVForDetail({ cv, listName });
                 setDetailModalOpen(true);
               }}
+              isInviteSent={(cvId) => sentInviteCVIds.has(cvId)}
             />
           ))}
         </div>
@@ -902,12 +963,17 @@ Trân trọng,
             </div>
             
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+              {inviteValidationError && (
+                <p role="alert" style={{ margin: 0, marginRight: 'auto', alignSelf: 'center', color: '#dc2626', fontSize: '12px' }}>
+                  {inviteValidationError}
+                </p>
+              )}
               <button className="hr-btn" onClick={() => {
                 alert('Đã tải nội dung email!');
               }}>Tải email về</button>
               <button 
                 className="hr-btn hr-btn-primary" 
-                disabled={isSendingInvite} 
+                disabled={isSendingInvite || Boolean(inviteValidationError)} 
                 style={{ backgroundColor: '#156FF5', color: '#fff', borderColor: '#156FF5' }} 
                 onClick={handleSendInviteEmail}
               >
