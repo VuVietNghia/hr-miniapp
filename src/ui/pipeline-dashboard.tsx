@@ -137,6 +137,82 @@ function ProcessingBadge({ status }: { status: ProcessingStatus['status'] }) {
   return <span style={{ fontSize: '12px', color, fontWeight: 500 }}>{label}</span>;
 }
 
+interface BatchProgress {
+  total: number;
+  processed: number;
+  failed: ProcessingStatus[];
+  active?: ProcessingStatus;
+}
+
+function getBatchProgress(
+  batchFileIds: string[],
+  statuses: Record<string, ProcessingStatus>,
+): BatchProgress {
+  const batchStatuses = batchFileIds
+    .map(fileId => statuses[fileId])
+    .filter((status): status is ProcessingStatus => Boolean(status));
+  const failed = batchStatuses.filter(status => status.status === 'error');
+  const processed = batchStatuses.filter(
+    status => status.status === 'completed' || status.status === 'error',
+  ).length;
+  const active = batchStatuses.find(
+    status => status.status === 'uploading' || status.status === 'renaming' || status.status === 'scoring',
+  );
+
+  return { total: batchFileIds.length, processed, failed, active };
+}
+
+function PipelineProgressCard({ progress, isProcessing }: { progress: BatchProgress; isProcessing: boolean }) {
+  const percentage = progress.total === 0 ? 0 : Math.round((progress.processed / progress.total) * 100);
+  const latestError = progress.failed[progress.failed.length - 1];
+  const isStopped = !isProcessing && progress.processed < progress.total;
+  const statusText = progress.active
+    ? `Đang chấm: ${progress.active.originalName}`
+    : isProcessing
+      ? percentage === 100 ? 'Đang lưu kết quả chấm CV...' : 'Đang chuẩn bị chấm CV...'
+      : progress.total === 0
+        ? 'Sẵn sàng chấm CV'
+        : isStopped
+          ? 'Batch đã dừng trước khi xử lý hết CV.'
+          : progress.failed.length > 0
+            ? 'Hoàn thành với lỗi cần kiểm tra.'
+            : 'Đã hoàn thành chấm CV.';
+
+  return (
+    <div className="pl-card" style={{ padding: '16px' }} aria-live="polite">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px' }}>
+        <p className="pl-label" style={{ margin: 0 }}>Tiến trình chấm CV</p>
+        <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 600 }}>
+          {progress.processed}/{progress.total} CV · {percentage}%
+        </span>
+      </div>
+
+      <div
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={progress.total}
+        aria-valuenow={progress.processed}
+        aria-label="Tiến trình chấm CV"
+        style={{ height: '8px', overflow: 'hidden', marginTop: '12px', borderRadius: '999px', background: 'var(--border-light)' }}
+      >
+        <div
+          style={{
+            width: `${percentage}%`, height: '100%', borderRadius: 'inherit', transition: 'width 0.25s ease',
+            background: progress.failed.length > 0 && percentage === 100 ? 'var(--status-warn)' : 'var(--accent)',
+          }}
+        />
+      </div>
+
+      <p style={{ margin: '10px 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>{statusText}</p>
+      {latestError && (
+        <p style={{ margin: '6px 0 0', fontSize: '12px', color: 'var(--status-fail)' }}>
+          {progress.failed.length} CV lỗi · {latestError.originalName}: {latestError.errorMsg || 'Không thể hoàn tất chấm CV.'}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function CVResultCard({ s }: { s: ProcessingStatus }) {
   const [isOpen, setIsOpen] = useState(false);
   const hasDetails = !!(s.reason || s.errorMsg);
@@ -368,6 +444,7 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   const [files, setFiles] = useState<CVFile[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [statuses, setStatuses] = useState<Record<string, ProcessingStatus>>({});
+  const [activeBatchFileIds, setActiveBatchFileIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [jdContent, setJdContent] = useState('');
@@ -389,10 +466,7 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   const [chatMessages, setChatMessages] = useState<{role: 'user'|'ai', content: string}[]>([AI_GREETING_MESSAGE]);
   const [chatInput, setChatInput] = useState('');
   const [isChatting, setIsChatting] = useState(false);
-  const [logs, setLogs] = useState<string[]>([]);
-  const [logOpen, setLogOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const logEndRef = useRef<HTMLDivElement>(null);
   const toastTimerRef = useRef<number | null>(null);
   const jdDropdownRef = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -611,10 +685,6 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   };
 
   useEffect(() => {
-    if (logOpen) logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logs, logOpen]);
-
-  useEffect(() => {
     if (!jdFormOpen) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -635,7 +705,7 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   }, [jdDropdownOpen]);
 
   const addLog = useCallback((msg: string) => {
-    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
+    console.info(`[CV Pipeline] ${msg}`);
   }, []);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
@@ -974,9 +1044,10 @@ REQUIRED:
   const startPipeline = async () => {
     if (!serviceRef.current || selectedIds.size === 0) return;
     if (!jdContent) { alert('Vui l\u00f2ng t\u1ea3i l\u00ean file JD tr\u01b0\u1edbc khi b\u1eaft \u0111\u1ea7u.'); return; }
-    setProcessing(true); setLogs([]); setLogOpen(true);
+    setProcessing(true);
     addLog('\u2014 Pipeline b\u1eaft \u0111\u1ea7u \u2014');
     const filesToProcess = files.filter(f => selectedIds.has(f._id));
+    setActiveBatchFileIds(filesToProcess.map(file => file._id));
     setStatuses(prev => ({
       ...prev,
       ...Object.fromEntries(filesToProcess.map(f => [f._id, { fileId: f._id, originalName: f.name, status: 'pending' as const }]))
@@ -1073,6 +1144,7 @@ REQUIRED:
 
 
   const resultList = Object.values(statuses);
+  const batchProgress = getBatchProgress(activeBatchFileIds, statuses);
   const defaultJDs = availableJDs.filter(jd => jd.name.startsWith('JD_') && !jd.name.startsWith('JD_AI_'));
   const aiGeneratedJDs = availableJDs.filter(jd => !jd.name.startsWith('JD_') || jd.name.startsWith('JD_AI_'));
   const selectedJD = availableJDs.find(jd => jd.name === jdName);
@@ -1294,13 +1366,6 @@ REQUIRED:
         .pl-check { width: 14px; height: 14px; flex-shrink: 0; border: 1.5px solid var(--border); border-radius: 3px; transition: background 0.15s, border-color 0.15s; }
         .pl-file-item.sel .pl-check { background: var(--accent); border-color: var(--accent); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 6l3 3 5-5' stroke='white' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-size: 10px; background-position: center; background-repeat: no-repeat; }
 
-        .pl-log { font-family: 'DM Mono', monospace; font-size: 12px; line-height: 1.65; color: var(--text-secondary); background: var(--surface-2); border-radius: var(--radius-sm); padding: 12px 14px; max-height: 220px; overflow-y: auto; margin-top: 8px; }
-        .pl-log-line { padding: 1px 0; }
-        .pl-log-line:last-child { color: var(--accent); }
-        .pl-log::-webkit-scrollbar { width: 6px; }
-        .pl-log::-webkit-scrollbar-track { background: transparent; }
-        .pl-log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-
         @keyframes pl-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes pl-modal-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
         @keyframes pl-toast-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
@@ -1507,23 +1572,7 @@ REQUIRED:
             }
           </div>
 
-          {/* System Log */}
-          <div className="pl-card" style={{ padding: '14px 16px' }}>
-            <button className="pl-btn" style={{ justifyContent: 'space-between', width: '100%' }} onClick={() => setLogOpen(o => !o)}>
-              <span>{'\ud83d\udccb Nh\u1eadt k\u00fd h\u1ec7 th\u1ed1ng'}</span>
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                {logs.length > 0 ? `${logs.length} d\u00f2ng` : "Tr\u1ed1ng"} {logOpen ? "\u25b2" : "\u25bc"}
-              </span>
-            </button>
-            {logOpen && (
-              <div className="pl-log" style={{ maxHeight: '280px' }}>
-                {logs.length === 0
-                  ? <span style={{ color: 'var(--text-faint)' }}>{'Ch\u01b0a c\u00f3 log\u2026'}</span>
-                  : logs.map((l, i) => <div key={i} className="pl-log-line">{l}</div>)}
-                <div ref={logEndRef} />
-              </div>
-            )}
-          </div>
+          <PipelineProgressCard progress={batchProgress} isProcessing={processing} />
 
         </div>
 
