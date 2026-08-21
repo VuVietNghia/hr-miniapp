@@ -85,14 +85,8 @@ export function CreateDetailedProfileForm({
     });
   };
   const [errorMsg, setErrorMsg] = useState('');
-  const [debugLog, setDebugLog] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-
-  const addLog = (msg: string) => {
-    console.log(msg);
-    setDebugLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
-  };
 
   const selectedCandidate = passedCandidates.find(c => c._id === selectedCandidateId);
 
@@ -188,10 +182,8 @@ export function CreateDetailedProfileForm({
 
       // 2. Upload photo if present
       if (idPhoto) {
-        addLog(`Bắt đầu upload ảnh: ${idPhoto.filename} (Kích thước gốc ước tính: ${Math.round(idPhoto.base64.length * 0.75 / 1024)} KB)`);
-        
         try {
-          const photoRes: any = await Promise.race([
+          await Promise.race([
             app.uploadFile({
               channelId: roomId,
               fileName: idPhoto.filename,
@@ -202,14 +194,10 @@ export function CreateDetailedProfileForm({
             new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout sau 15 giây khi tải ảnh lên')), 15000))
           ]);
           
-          addLog(`Upload ảnh thành công vào thư mục của ${safeName}.`);
-        } catch (uploadErr: any) {
-          addLog(`LỖI UPLOAD ẢNH: ${uploadErr.message}`);
-          throw uploadErr; // Ném ra ngoài để dừng quá trình tạo hồ sơ
+        } catch (uploadError) {
+          throw uploadError;
         }
       }
-      
-      addLog(`Hoàn tất bước ảnh. Bắt đầu tạo file Markdown...`);
 
       // 3. Generate Markdown content
       let mdContent = employeeTemplateRaw;
@@ -245,7 +233,6 @@ export function CreateDetailedProfileForm({
       
       const uploadRes: any = await createOrUpdateFile(app, `${roomId}/${mdFilePath}`, mdContent);
       const fileObj = uploadRes.file || (uploadRes.message && uploadRes.message.file) || uploadRes;
-      addLog(`Tạo file Markdown thành công. Đang lưu database...`);
 
       await onSubmit({
         name: trimmedName,
@@ -259,11 +246,9 @@ export function CreateDetailedProfileForm({
       });
 
       setIsSuccess(true);
-      addLog(`Hoàn tất toàn bộ quy trình! Bạn có thể xem log hoặc đóng form.`);
-    } catch (err: any) {
-      addLog(`LỖI TỔNG: ${err.message}`);
-      console.error('Error in form submission:', err);
-      setErrorMsg(err.message || 'Có lỗi xảy ra khi tạo hồ sơ. Vui lòng thử lại.');
+    } catch {
+      console.error('[CreateDetailedProfileForm] PROFILE_SUBMISSION_FAILED');
+      setErrorMsg('Có lỗi xảy ra khi tạo hồ sơ. Vui lòng thử lại.');
     } finally {
       setIsSubmitting(false);
     }
@@ -458,16 +443,6 @@ export function CreateDetailedProfileForm({
           </div>
         </div>
         
-        {debugLog.length > 0 && (
-          <div className="debug-log-container" style={{
-            marginTop: '15px', padding: '10px', backgroundColor: '#1e1e1e', color: '#00ff00', 
-            borderRadius: '6px', fontSize: '12px', fontFamily: 'monospace', maxHeight: '150px', overflowY: 'auto'
-          }}>
-            <strong>Ghi chú tiến trình (Debug log):</strong>
-            {debugLog.map((log, i) => <div key={i}>{log}</div>)}
-          </div>
-        )}
-
         <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
           {isSuccess ? (
             <button type="button" className="hr-btn hr-btn-accent" onClick={onCancel}>

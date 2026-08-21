@@ -11,6 +11,43 @@ export interface EmployeeProfile {
   attachedFileObj?: any;
 }
 
+export interface ProfileLoadSuccess {
+  status: 'success';
+  records: EmployeeProfile[];
+  isComplete: boolean;
+}
+
+export interface ProfileLoadFailure {
+  status: 'failed';
+  errorCode: 'PROFILE_LOAD_FAILED';
+  message: string;
+}
+
+export interface ProfileLoadDegraded {
+  status: 'degraded';
+  reason: 'configuration_unavailable';
+  records: EmployeeProfile[];
+  isComplete: boolean;
+}
+
+export type ProfileLoadResult = ProfileLoadSuccess | ProfileLoadDegraded | ProfileLoadFailure;
+
+export type LifecycleErrorCode =
+  | 'PROFILE_CONFIGURATION_UNAVAILABLE'
+  | 'PROFILE_CREATE_FAILED'
+  | 'PROFILE_CREATE_STATUS_UNKNOWN';
+
+export class LifecycleOperationError extends Error {
+  constructor(
+    public readonly code: LifecycleErrorCode,
+    message: string,
+    public readonly originalError?: unknown,
+  ) {
+    super(message);
+    this.name = 'LifecycleOperationError';
+  }
+}
+
 export interface KanbanColumnDef {
   status: string;
   label: string;
@@ -39,7 +76,7 @@ export interface PassedCandidate {
 }
 
 export interface ILifecycleService {
-  loadProfiles(roomId: string): Promise<EmployeeProfile[]>;
+  loadProfiles(roomId: string): Promise<ProfileLoadResult>;
   loadPassedCandidates(roomId: string): Promise<PassedCandidate[]>;
   createProfile(roomId: string, data: Omit<EmployeeProfile, '_id' | 'status'> & { attachedFileObj?: any }): Promise<EmployeeProfile>;
   updateProfileStatus(roomId: string, profileId: string, newStatus: string): Promise<void>;

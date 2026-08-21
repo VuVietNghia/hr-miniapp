@@ -1,7 +1,25 @@
 import { McpApp } from '@privos/app-react';
-import { EmployeeProfile, ILifecycleService, PassedCandidate } from '../types';
+import {
+  EmployeeProfile,
+  ILifecycleService,
+  LifecycleOperationError,
+  PassedCandidate,
+  ProfileLoadResult,
+} from '../types';
+
+interface ListItemsPage {
+  items: any[];
+  isComplete: boolean;
+}
+
+interface LifecycleListContext {
+  list: any;
+  configurationStatus: 'ready' | 'unavailable';
+}
 
 export class PrivOSLifecycleService implements ILifecycleService {
+  private static readonly PROFILE_PAGE_SIZE = 100;
+  private static readonly MAX_PROFILE_ITEMS = 500;
   private static readonly SYSTEM_PREFIX = '[HR-MiniApp]';
   private static readonly LEGACY_EXACT_NAME = 'Hồ sơ nhân sự';
   private static readonly SYSTEM_CONFIG_NAME = '[Hệ thống] Không xoá - Cấu hình Kanban';
@@ -9,21 +27,33 @@ export class PrivOSLifecycleService implements ILifecycleService {
 
   constructor(private app: McpApp) { }
 
-  async loadProfiles(roomId: string): Promise<EmployeeProfile[]> {
+  async loadProfiles(roomId: string): Promise<ProfileLoadResult> {
     try {
-      const list = await this.ensureValidList(roomId);
-      if (!list) return [];
+      const context = await this.resolveListContext(roomId);
+      const page = await this.fetchAllListItems(context.list._id || context.list.id);
+      const fieldDefMap = this.createFieldDefinitionMap(context.list.fieldDefinitions);
 
-      const items = await this.fetchListItems(list._id || list.id);
-      const fieldDefMap = this.createFieldDefinitionMap(list.fieldDefinitions);
-
-      // Filter out system items and map to EmployeeProfile
-      return items
+      const records = page.items
         .filter(item => !this.isSystemConfigItem(item))
-        .map(item => this.mapItemToProfile(item, list, fieldDefMap));
-    } catch (err) {
-      console.error('[PrivOSLifecycleService] Error loading profiles:', err);
-      return [];
+        .map(item => this.mapItemToProfile(item, context.list, fieldDefMap));
+
+      if (context.configurationStatus === 'unavailable') {
+        return {
+          status: 'degraded',
+          reason: 'configuration_unavailable',
+          records,
+          isComplete: page.isComplete,
+        };
+      }
+
+      return { status: 'success', records, isComplete: page.isComplete };
+    } catch {
+      console.error('[PrivOSLifecycleService] PROFILE_LOAD_FAILED');
+      return {
+        status: 'failed',
+        errorCode: 'PROFILE_LOAD_FAILED',
+        message: 'Employee profiles are temporarily unavailable.',
+      };
     }
   }
 
@@ -32,9 +62,7 @@ export class PrivOSLifecycleService implements ILifecycleService {
       const allLists = await this.fetchAllLists(roomId);
       const screeningLists = allLists.filter(list => this.isScreeningList(list));
 
-      console.log(`[PrivOSLifecycleService] Found ${allLists.length} lists in room, ${screeningLists.length} candidate lists:`,
-        screeningLists.map(l => l.name)
-      );
+      console.log(`[PrivOSLifecycleService] CANDIDATE_LISTS_LOADED total=${allLists.length} screening=${screeningLists.length}`);
 
       if (screeningLists.length === 0) return [];
 
@@ -49,7 +77,7 @@ export class PrivOSLifecycleService implements ILifecycleService {
         const validItems = items.filter(item => !this.isSystemConfigItem(item));
         const passedItems = validItems.filter(item => this.isPassedCandidateItem(item, stages));
 
-        console.log(`[PrivOSLifecycleService] List "${list.name}" (${listId}): ${validItems.length} total items, ${passedItems.length} stage 05+ candidates`);
+        console.log(`[PrivOSLifecycleService] CANDIDATE_LIST_SCANNED total=${validItems.length} passed=${passedItems.length}`);
 
         return passedItems.map(item => this.mapItemToPassedCandidate(item, { ...list, stages }));
       });
@@ -57,12 +85,12 @@ export class PrivOSLifecycleService implements ILifecycleService {
       const candidatesNested = await Promise.all(candidatesPromises);
       const allCandidates = candidatesNested.flat();
 
-      console.log(`[PrivOSLifecycleService] Total loaded passed candidates (Stage 05+): ${allCandidates.length}`);
+      console.log(`[PrivOSLifecycleService] PASSED_CANDIDATES_LOADED count=${allCandidates.length}`);
 
       // Sort by score descending (highest score first)
       return allCandidates.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-    } catch (err) {
-      console.error('[PrivOSLifecycleService] Error loading passed candidates:', err);
+    } catch {
+      console.error('[PrivOSLifecycleService] PASSED_CANDIDATE_LOAD_FAILED');
       return [];
     }
   }
@@ -71,93 +99,80 @@ export class PrivOSLifecycleService implements ILifecycleService {
 
   async createProfile(roomId: string, data: Omit<EmployeeProfile, '_id' | 'status'> & { attachedFileObj?: any }): Promise<EmployeeProfile> {
     try {
-      const list = await this.ensureValidList(roomId);
-      if (list) {
-        const customFields = this.buildCustomFieldsForCreation(data, list.fieldDefinitions);
-
-        let fileObjToSave = data.attachedFileObj || null;
-        let fileId = fileObjToSave?._id || fileObjToSave?.id || null;
-        let fileDownloadUrl = fileObjToSave?.downloadUrl || fileObjToSave?.url || null;
-        const debugLog: string[] = [];
-
-        if (fileObjToSave) {
-          // Tìm trường có type là DOCUMENT hoặc tên chứa 'hồ sơ' / 'document'
-          const fileFieldDef = (list.fieldDefinitions || []).find((fd: any) =>
-            fd.type === 'DOCUMENT' ||
-            (fd.name || '').toLowerCase().includes('hồ sơ') ||
-            (fd.name || '').toLowerCase().includes('document')
-          );
-          if (fileFieldDef) {
-            customFields.push({ fieldId: fileFieldDef._id || fileFieldDef.id, value: [fileObjToSave] });
-          }
-        }
-
-        const descriptionParts = [];
-        // Hiển thị debug log lên UI
-        if (typeof debugLog !== 'undefined' && debugLog.length > 0) {
-          descriptionParts.push(`**Debug ID:** ${debugLog.join(' | ')}`);
-        }
-
-        if (data.sourceCandidateId) {
-          descriptionParts.push(`[sourceCandidateId:${data.sourceCandidateId}]`);
-        }
-        if (fileId) {
-          descriptionParts.push(`[fileId:${fileId}]`);
-        } else if (fileDownloadUrl) {
-          descriptionParts.push(`[fileUrl:${fileDownloadUrl}]`);
-        }
-
-        const res: any = await this.app.callServerTool({
-          name: 'privos.lists.createItem',
-          arguments: {
-            listId: list._id || list.id,
-            title: data.name,
-            customFields,
-            ...(descriptionParts.length > 0 ? { description: descriptionParts.join('\n\n') } : {})
-          }
-        });
-
-        const parsed = JSON.parse(res?.content?.[0]?.text || '{}');
-        return {
-          ...data,
-          _id: parsed._id || parsed.id || this.generateLocalId(),
-          status: PrivOSLifecycleService.DEFAULT_STAGE
-        };
+      const context = await this.resolveListContext(roomId);
+      if (context.configurationStatus === 'unavailable') {
+        throw new LifecycleOperationError(
+          'PROFILE_CONFIGURATION_UNAVAILABLE',
+          'Cấu hình Hồ sơ NS chưa sẵn sàng. Không thể tạo hồ sơ mới.',
+        );
       }
-    } catch (err) {
-      console.error('[PrivOSLifecycleService] Connection error when creating profile:', err);
-    }
 
-    // Fallback if failed
-    return {
-      ...data,
-      _id: this.generateLocalId(),
-      status: PrivOSLifecycleService.DEFAULT_STAGE
-    };
+      const customFields = this.buildCustomFieldsForCreation(data, context.list.fieldDefinitions);
+      const descriptionParts = this.buildProfileDescription(data);
+      this.appendDocumentField(customFields, data.attachedFileObj, context.list.fieldDefinitions);
+
+      const res: any = await this.app.callServerTool({
+        name: 'privos.lists.createItem',
+        arguments: {
+          listId: context.list._id || context.list.id,
+          title: data.name,
+          customFields,
+          ...(descriptionParts.length > 0 ? { description: descriptionParts.join('\n\n') } : {})
+        }
+      });
+
+      const parsed = JSON.parse(res?.content?.[0]?.text || '{}');
+      const persistedId = parsed._id || parsed.id;
+      if (typeof persistedId !== 'string' || !persistedId.trim()) {
+        throw new LifecycleOperationError(
+          'PROFILE_CREATE_STATUS_UNKNOWN',
+          'Chưa xác nhận được trạng thái lưu hồ sơ. Vui lòng tải lại danh sách trước khi thử lại.',
+        );
+      }
+
+      return {
+        ...data,
+        _id: persistedId,
+        status: PrivOSLifecycleService.DEFAULT_STAGE
+      };
+    } catch (error) {
+      if (error instanceof LifecycleOperationError) throw error;
+      console.error('[PrivOSLifecycleService] PROFILE_CREATE_STATUS_UNKNOWN');
+      throw new LifecycleOperationError(
+        'PROFILE_CREATE_STATUS_UNKNOWN',
+        'Chưa xác nhận được trạng thái lưu hồ sơ. Vui lòng tải lại danh sách trước khi thử lại.',
+        error,
+      );
+    }
   }
 
   async updateProfileStatus(roomId: string, profileId: string, newStatus: string): Promise<void> {
     try {
-      const list = await this.ensureValidList(roomId);
-      if (!list || !Array.isArray(list.stages)) {
-        console.warn('[PrivOSLifecycleService] Cannot update stage: list or stages not found');
-        return;
+      const context = await this.resolveListContext(roomId);
+      if (context.configurationStatus === 'unavailable') {
+        throw new LifecycleOperationError(
+          'PROFILE_CONFIGURATION_UNAVAILABLE',
+          'Cấu hình Hồ sơ NS chưa sẵn sàng. Không thể đổi trạng thái.',
+        );
       }
 
-      // Find stage matching newStatus
-      const targetStage = list.stages.find(
+      const targetStage = context.list.stages.find(
         (s: any) => s.name === newStatus || (s.name || '').toLowerCase() === newStatus.toLowerCase()
       );
 
       if (!targetStage) {
-        console.warn(`[PrivOSLifecycleService] Target stage "${newStatus}" not found in list stages:`, list.stages);
-        return;
+        throw new LifecycleOperationError(
+          'PROFILE_CONFIGURATION_UNAVAILABLE',
+          'Không tìm thấy trạng thái nhân sự phù hợp trong cấu hình.',
+        );
       }
 
       const stageId = targetStage._id || targetStage.id;
       if (!stageId) {
-        console.warn(`[PrivOSLifecycleService] Target stage "${newStatus}" does not have a valid stageId:`, targetStage);
-        return;
+        throw new LifecycleOperationError(
+          'PROFILE_CONFIGURATION_UNAVAILABLE',
+          'Trạng thái nhân sự chưa có định danh hợp lệ.',
+        );
       }
 
       await this.app.callServerTool({
@@ -167,81 +182,92 @@ export class PrivOSLifecycleService implements ILifecycleService {
           stageId
         }
       });
-      console.log(`[PrivOSLifecycleService] Successfully moved profile ${profileId} to stage ${newStatus} (${stageId})`);
-    } catch (err) {
-      console.error('[PrivOSLifecycleService] Failed to move profile to stage:', err);
-      throw err;
+    } catch (error) {
+      console.error('[PrivOSLifecycleService] PROFILE_STATUS_UPDATE_FAILED');
+      throw error;
     }
   }
 
   // --- Private Helper Methods ---
 
-  private generateLocalId(): string {
-    return `local-${Date.now()}`;
+  private buildProfileDescription(
+    data: Omit<EmployeeProfile, '_id' | 'status'> & { attachedFileObj?: any },
+  ): string[] {
+    const descriptionParts: string[] = [];
+    const fileObject = data.attachedFileObj;
+    const fileId = fileObject?._id || fileObject?.id;
+    const fileUrl = fileObject?.downloadUrl || fileObject?.url;
+
+    if (data.sourceCandidateId) descriptionParts.push(`[sourceCandidateId:${data.sourceCandidateId}]`);
+    if (fileId) descriptionParts.push(`[fileId:${fileId}]`);
+    else if (fileUrl) descriptionParts.push(`[fileUrl:${fileUrl}]`);
+
+    return descriptionParts;
   }
 
-  private async ensureValidList(roomId: string): Promise<any | null> {
-    console.log('[PrivOSLifecycleService] ensureValidList called for roomId:', roomId);
-    let list = await this.findExistingList(roomId);
-    console.log('[PrivOSLifecycleService] findExistingList result:', list ? 'found' : 'not found');
+  private appendDocumentField(customFields: any[], fileObject: any, fieldDefinitions: any[]): void {
+    if (!fileObject) return;
 
-    if (list) {
-      list = await this.enrichListWithStagesOrDelete(list);
-    }
+    const fileField = (fieldDefinitions || []).find((field: any) => {
+      const fieldName = String(field.name || '').toLowerCase();
+      return field.type === 'DOCUMENT' || fieldName.includes('hồ sơ') || fieldName.includes('document');
+    });
+    if (!fileField) return;
 
-    if (!list) {
-      console.log('[PrivOSLifecycleService] Valid list not found, creating a new one...');
-      list = await this.createNewList(roomId);
-    }
+    customFields.push({ fieldId: fileField._id || fileField.id, value: [fileObject] });
+  }
 
-    return list;
+  private async resolveListContext(roomId: string): Promise<LifecycleListContext> {
+    const existingList = await this.findExistingList(roomId);
+    if (existingList) return this.enrichListWithStages(existingList);
+
+    const newList = await this.createNewList(roomId);
+    if (!newList) throw new Error('Employee profile list is unavailable.');
+
+    return {
+      list: newList,
+      configurationStatus: this.isValidStagesArray(newList.stages) ? 'ready' : 'unavailable',
+    };
   }
 
   private async findExistingList(roomId: string): Promise<any | null> {
-    console.log('[PrivOSLifecycleService] findExistingList called for roomId:', roomId);
     const res: any = await this.app.callServerTool({
       name: 'privos.lists.getAll',
       arguments: { roomId }
     });
 
     const text = res?.content?.[0]?.text;
-    if (!text) {
-      console.log('[PrivOSLifecycleService] No text in response');
-      return null;
-    }
+    if (!text) throw new Error('Employee list response is empty.');
 
     const parsed = JSON.parse(text);
-    const lists = Array.isArray(parsed) ? parsed : (parsed?.lists || []);
-    console.log('[PrivOSLifecycleService] Total lists found:', lists.length);
+    const lists = Array.isArray(parsed) ? parsed : parsed?.lists;
+    if (!Array.isArray(lists)) throw new Error('Employee list response is malformed.');
 
-    // Chuyển sang dùng Exact Match hoặc System Prefix thay vì fuzzy search (.includes)
     const foundList = lists.find((l: any) => {
       const name = l.name || '';
       return name.startsWith(PrivOSLifecycleService.SYSTEM_PREFIX) || name === PrivOSLifecycleService.LEGACY_EXACT_NAME;
     }) || null;
-    console.log('[PrivOSLifecycleService] Found matching list:', foundList ? foundList.name : 'none');
     return foundList;
   }
 
-  private async enrichListWithStagesOrDelete(list: any): Promise<any | null> {
-    const configItem = await this.fetchSystemConfigItem(list._id || list.id);
-
-    if (configItem && configItem.description) {
-      try {
-        list.stages = JSON.parse(configItem.description);
-      } catch (e) {
-        console.warn('Failed to parse config item description');
+  private async enrichListWithStages(list: any): Promise<LifecycleListContext> {
+    try {
+      const configItem = await this.fetchSystemConfigItem(list._id || list.id);
+      if (configItem?.description) {
+        const configuredStages = JSON.parse(configItem.description);
+        if (!this.isValidStagesArray(configuredStages)) {
+          return { list, configurationStatus: 'unavailable' };
+        }
+        return { list: { ...list, stages: configuredStages }, configurationStatus: 'ready' };
       }
+    } catch {
+      return { list, configurationStatus: 'unavailable' };
     }
 
-    if (this.isValidStagesArray(list.stages)) {
-      return list;
-    }
-
-    // List is corrupted or missing stages config -> delete and return null to trigger recreation
-    console.log('[PrivOSLifecycleService] List is old/corrupted (no stages). Deleting to clean up...');
-    await this.deleteList(list._id || list.id);
-    return null;
+    return {
+      list,
+      configurationStatus: this.isValidStagesArray(list.stages) ? 'ready' : 'unavailable',
+    };
   }
 
   private isValidStagesArray(stages: any): boolean {
@@ -260,13 +286,6 @@ export class PrivOSLifecycleService implements ILifecycleService {
 
   private isSystemConfigItem(item: any): boolean {
     return (item.name || item.title || '').includes('[Hệ thống]');
-  }
-
-  private async deleteList(listId: string): Promise<void> {
-    await this.app.callServerTool({
-      name: 'privos.lists.deleteMany',
-      arguments: { listIds: [listId] }
-    });
   }
 
   private async createNewList(roomId: string): Promise<any | null> {
@@ -290,8 +309,8 @@ export class PrivOSLifecycleService implements ILifecycleService {
       }
 
       return newList;
-    } catch (err) {
-      console.error('[PrivOSLifecycleService] Failed to create HR List:', err);
+    } catch {
+      console.error('[PrivOSLifecycleService] PROFILE_LIST_CREATE_FAILED');
       return null;
     }
   }
@@ -328,16 +347,53 @@ export class PrivOSLifecycleService implements ILifecycleService {
   }
 
   private async fetchListItems(listId: string): Promise<any[]> {
+    const page = await this.fetchAllListItems(listId);
+    return page.items;
+  }
+
+  private async fetchAllListItems(listId: string): Promise<ListItemsPage> {
+    const items: any[] = [];
+    let offset = 0;
+
+    while (items.length < PrivOSLifecycleService.MAX_PROFILE_ITEMS) {
+      const page = await this.fetchListItemsPage(listId, offset);
+      items.push(...page.items);
+
+      if (page.isComplete) return { items, isComplete: true };
+      if (page.items.length === 0) return { items, isComplete: false };
+      offset += page.items.length;
+    }
+
+    return { items, isComplete: false };
+  }
+
+  private async fetchListItemsPage(listId: string, offset: number): Promise<ListItemsPage> {
     const res: any = await this.app.callServerTool({
       name: 'privos.lists.getItems',
-      arguments: { listId, count: 100 }
+      arguments: { listId, offset, count: PrivOSLifecycleService.PROFILE_PAGE_SIZE }
     });
 
     const text = res?.content?.[0]?.text;
-    if (!text) return [];
+    if (!text) {
+      throw new Error('List items response is empty.');
+    }
 
     const parsed = JSON.parse(text);
-    return Array.isArray(parsed) ? parsed : (parsed?.items || []);
+    const items = Array.isArray(parsed) ? parsed : (parsed?.items || []);
+    if (!Array.isArray(items)) {
+      throw new Error('List items response is malformed.');
+    }
+
+    const total = typeof parsed?.total === 'number'
+      ? parsed.total
+      : typeof parsed?.totalCount === 'number'
+        ? parsed.totalCount
+        : undefined;
+    const isComplete = parsed?.hasMore === false
+      || (total !== undefined && items.length >= total)
+      || (parsed?.hasMore !== true && items.length < PrivOSLifecycleService.PROFILE_PAGE_SIZE);
+
+    return { items, isComplete };
   }
 
   private createFieldDefinitionMap(fieldDefinitions: any[] | undefined): Map<string, any> {
@@ -400,19 +456,6 @@ export class PrivOSLifecycleService implements ILifecycleService {
     else if (typeof item.status === 'string' && isValidStatus(item.status)) resolvedStatus = item.status;
     else if (item.stage?.name && isValidStatus(item.stage.name)) resolvedStatus = item.stage.name;
     
-    console.warn(`[PrivOSLifecycleService] Item ${item._id} mapped to status: "${resolvedStatus}". Raw item info:`, { stageId, stage: item.stage, status: item.status, stages });
-    
-    // Also send log to backend IDE terminal
-    try {
-      this.app.callServerTool({
-        name: 'debug_log',
-        arguments: {
-          message: `Item ${item._id} mapped to status: "${resolvedStatus}"`,
-          data: { stageId, stage: item.stage, status: item.status, stages }
-        }
-      }).catch(err => console.error("Failed to send debug log", err));
-    } catch(e) {}
-
     return resolvedStatus;
   }
 
@@ -512,8 +555,8 @@ export class PrivOSLifecycleService implements ILifecycleService {
         const stages = Array.isArray(parsed) ? parsed : (parsed?.stages || []);
         if (stages.length > 0) return stages;
       }
-    } catch (err) {
-      console.warn(`[PrivOSLifecycleService] Could not fetch stages via tool for list ${listId}:`, err);
+    } catch {
+      console.warn('[PrivOSLifecycleService] LIST_STAGE_TOOL_UNAVAILABLE');
     }
 
     // 2. Fallback via restCall lists.info if available
@@ -529,8 +572,8 @@ export class PrivOSLifecycleService implements ILifecycleService {
           return body.stages;
         }
       }
-    } catch (err) {
-      console.warn(`[PrivOSLifecycleService] Could not fetch stages via REST for list ${listId}:`, err);
+    } catch {
+      console.warn('[PrivOSLifecycleService] LIST_STAGE_REST_UNAVAILABLE');
     }
 
     return [];

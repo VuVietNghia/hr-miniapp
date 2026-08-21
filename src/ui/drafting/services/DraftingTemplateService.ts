@@ -1,5 +1,9 @@
 import { DraftingTemplate, DraftingActionType } from '../types';
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export function renderDraftingTemplate(
   template: DraftingTemplate | string,
   customData: Record<string, string> = {}
@@ -24,11 +28,20 @@ export function renderDraftingTemplate(
   }
 
   Object.entries(mergedData).forEach(([key, val]) => {
-    const pattern = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
+    const pattern = new RegExp(`{{\\s*${escapeRegExp(key)}\\s*}}`, 'g');
     text = text.replace(pattern, val || `[${key}]`);
   });
 
-  return text;
+  return text.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_, key: string) => `[${key.trim()}]`);
+}
+
+export function resolveDraftingRouterTemplate(
+  routerResponse: string,
+  templates: DraftingTemplate[],
+): DraftingTemplate | undefined {
+  const match = routerResponse.match(/<router_result>\s*([a-zA-Z0-9_-]{1,100})\s*<\/router_result>/i);
+  if (!match || match[1] === 'unknown') return undefined;
+  return templates.find((template) => template.id === match[1]);
 }
 
 export function buildDraftingAIPrompt(
@@ -176,6 +189,13 @@ export class DraftingTemplateService {
     userPrompt: string
   ): string {
     return buildDraftingRouterPrompt(templates, userPrompt);
+  }
+
+  public resolveRouterTemplate(
+    routerResponse: string,
+    templates: DraftingTemplate[],
+  ): DraftingTemplate | undefined {
+    return resolveDraftingRouterTemplate(routerResponse, templates);
   }
   
   public buildGenericPrompt(

@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useState } from 'react';
+import React, { useMemo, useEffect, useState, useCallback } from 'react';
 import { usePrivosApp, usePrivosContext } from '@privos/app-react';
 import { PayrollDashboard } from './components/PayrollDashboard';
 import { PayrollService } from './services/PayrollService';
@@ -8,7 +8,7 @@ import { PrivOSLifecycleService } from '../lifecycle/services/PrivOSLifecycleSer
 export default function PayrollTab() {
   const app = usePrivosApp();
   const { roomId } = usePrivosContext();
-  const [schemaInitialized, setSchemaInitialized] = useState(false);
+  const [schemaState, setSchemaState] = useState<'initializing' | 'ready' | 'error'>('initializing');
 
   const { payrollService, lifecycleService, payrollExportService } = useMemo(() => {
     if (!app || !roomId) {
@@ -25,15 +25,34 @@ export default function PayrollTab() {
     return { payrollService: ps, lifecycleService: ls, payrollExportService: pes };
   }, [app, roomId]);
 
-  useEffect(() => {
-    if (payrollService) {
-      payrollService.initializeSchema()
-        .then(() => setSchemaInitialized(true))
-        .catch(err => console.error("Failed to init Payroll schema", err));
+  const initializeSchema = useCallback(async () => {
+    if (!payrollService) return;
+    setSchemaState('initializing');
+    try {
+      await payrollService.initializeSchema();
+      setSchemaState('ready');
+    } catch {
+      console.error('[PayrollTab] PAYROLL_SCHEMA_INIT_FAILED');
+      setSchemaState('error');
     }
   }, [payrollService]);
 
-  if (!app || !roomId || !payrollService || !lifecycleService || !payrollExportService || !schemaInitialized) {
+  useEffect(() => {
+    void initializeSchema();
+  }, [initializeSchema]);
+
+  if (schemaState === 'error') {
+    return (
+      <div className="p-4 flex justify-center items-center h-full">
+        <p>Không thể khởi tạo dữ liệu lương.</p>
+        <button type="button" className="hr-btn" onClick={() => void initializeSchema()}>
+          Thử lại
+        </button>
+      </div>
+    );
+  }
+
+  if (!app || !roomId || !payrollService || !lifecycleService || !payrollExportService || schemaState !== 'ready') {
     return (
       <div className="p-4 flex justify-center items-center h-full">
         <div className="spinner"></div>

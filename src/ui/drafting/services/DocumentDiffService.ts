@@ -7,6 +7,7 @@ import { IDocumentDiffService, DiffToken, DiffTokenType } from '../types';
  * 2. Tầng từ ngữ (Word-level LCS) để highlight chính xác từng từ thêm mới (<ins>) hoặc xóa bỏ (<del>)
  */
 export class DocumentDiffService implements IDocumentDiffService {
+  private static readonly MAX_LCS_MATRIX_CELLS = 250_000;
   /**
    * Chuyển chuỗi tiếng Việt có dấu thành chuỗi không dấu chuẩn Slug / File name
    */
@@ -83,6 +84,13 @@ export class DocumentDiffService implements IDocumentDiffService {
 
     const m = tokensA.length;
     const n = tokensB.length;
+
+    if (this.isMatrixTooLarge(m, n)) {
+      return [
+        ...(originalText ? [{ type: 'removed' as const, value: originalText }] : []),
+        ...(modifiedText ? [{ type: 'added' as const, value: modifiedText }] : []),
+      ];
+    }
 
     // LCS Matrix
     const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
@@ -189,6 +197,13 @@ export class DocumentDiffService implements IDocumentDiffService {
     const linesA = originalDoc.split('\n');
     const linesB = currentDoc.split('\n');
 
+    if (this.isMatrixTooLarge(linesA.length, linesB.length)) {
+      return [
+        `<del class="diff-removed" title="Tài liệu gốc đã thay đổi">${originalDoc}</del>`,
+        `<ins class="diff-added" title="Tài liệu mới">${currentDoc}</ins>`,
+      ].join('\n');
+    }
+
     const aligned = this.alignLines(linesA, linesB);
     const resultLines: string[] = [];
 
@@ -268,6 +283,7 @@ export class DocumentDiffService implements IDocumentDiffService {
   public countDifferences(originalText: string, modifiedText: string): number {
     const linesA = originalText.split('\n');
     const linesB = modifiedText.split('\n');
+    if (this.isMatrixTooLarge(linesA.length, linesB.length)) return 2;
     const aligned = this.alignLines(linesA, linesB);
 
     let count = 0;
@@ -280,5 +296,9 @@ export class DocumentDiffService implements IDocumentDiffService {
       }
     }
     return count;
+  }
+
+  private isMatrixTooLarge(leftSize: number, rightSize: number): boolean {
+    return leftSize * rightSize > DocumentDiffService.MAX_LCS_MATRIX_CELLS;
   }
 }
