@@ -74,7 +74,7 @@ function ThemedApp() {
   return (
     <ThemeProvider hostTheme={theme}>
       <div className="app-header">
-        <nav className="app-tabs" aria-label="Dashboard navigation">
+        <nav className="app-tabs" aria-label="Dashboard navigation" onMouseLeave={() => setOpenSection(null)}>
           <button
             type="button"
             className={`nav-primary-btn${tab === 'home' ? ' nav-primary-active' : ''}`}
@@ -91,7 +91,10 @@ function ThemedApp() {
             const isActive = isSectionActive(section);
 
             return (
-              <div className={`app-nav-section${isOpen ? ' app-nav-section-open' : ''}`} key={section.id}>
+              <div
+                className={`app-nav-section${isOpen ? ' app-nav-section-open' : ''}`}
+                key={section.id}
+              >
                 <button
                   type="button"
                   className={`nav-primary-btn${isOpen ? ' nav-primary-open' : ''}${isActive ? ' nav-primary-active' : ''}`}
@@ -109,7 +112,10 @@ function ThemedApp() {
                       type="button"
                       className={`tab-btn${tab === t.id ? ' tab-active' : ''}`}
                       tabIndex={isOpen ? 0 : -1}
-                      onClick={() => handleSelectTab(t.id)}
+                      onClick={() => {
+                        handleSelectTab(t.id);
+                        setOpenSection(null);
+                      }}
                     >
                       {t.label}
                     </button>
