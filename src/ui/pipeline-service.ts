@@ -7,6 +7,7 @@ import sangLocCvRaw from './data/sang_loc_cv.md?raw';
 import cvEvaluatorSkillRaw from './data/cv-evaluator-skill.md?raw';
 import jdTemplateRaw from './data/jd_template.md?raw';
 import jdGeneratorSkillRaw from './data/jd-generator-skill.md?raw';
+import { buildCandidateMarkdownFileName, extractCandidateNameFromMarkdown, formatKanbanItemTitle } from './pipeline-candidate-name';
 
 const CV_SCREENING_SYSTEM_DIRECTIVES = `<system_directives>
   <role>
@@ -555,11 +556,13 @@ KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ:
         }
       }
 
-      // Parse <saved_file> or saved_file from JSON
-      let newMdName = '';
-      if (result.saved_file) {
+      const candidateName = extractCandidateNameFromMarkdown(extractedMarkdown);
+      let newMdName = buildCandidateMarkdownFileName(candidateName, currentDate) || '';
+
+      // Fallback only when the Markdown did not contain a candidate name.
+      if (!newMdName && result.saved_file) {
         newMdName = result.saved_file;
-      } else {
+      } else if (!newMdName) {
         const fileMatch = aiProcessRes.text.match(/<saved_file>\s*([\s\S]*?)\s*<\/saved_file>/i);
         if (fileMatch && fileMatch[1]) {
           newMdName = fileMatch[1].trim();
@@ -932,23 +935,6 @@ ${content}
     return i >= 0 ? filename.slice(i) : '';
   }
 
-  private formatKanbanItemTitle(rawTitle: string): string {
-    if (!rawTitle) return 'CV_Unknown.md';
-
-    // Bỏ extension .md / .pdf / .docx
-    const nameWithoutExt = rawTitle.replace(/\.(md|pdf|docx|doc)$/i, '').trim();
-
-    // Khớp mẫu: YYYY-MM-DD_CV_HoTenKhongDau...
-    const match = nameWithoutExt.match(/^(\d{4}-\d{2}-\d{2})_CV_([a-zA-Z0-9]+)(?:_.*)?$/i);
-    if (match) {
-      const [, date, candidateName] = match;
-      return `${date}_CV_${candidateName}.md`;
-    }
-
-    // Nếu không khớp pattern chuẩn, giữ nguyên và đảm bảo đuôi .md
-    return nameWithoutExt.endsWith('.md') ? nameWithoutExt : `${nameWithoutExt}.md`;
-  }
-
   /**
    * Tạo một List Kanban và lưu toàn bộ kết quả CV vào các stage phù hợp sau khi chấm điểm xong đợt.
    * Được gọi từ UI sau khi toàn bộ CV đã được chấm xong.
@@ -1003,7 +989,9 @@ ${content}
       { name: '04_Phone_Screening', color: '#3b82f6' },
       { name: '05_Moi_Phong_Van', color: '#8b5cf6' },
       { name: '06_Sai_JD', color: '#f59e0b' },
-      { name: '07_CV_Cu', color: '#9ca3af' },
+      { name: '07_Chua_Phong_Van', color: '#06b6d4' },
+      { name: '08_Da_Phong_Van', color: '#ec4899' },
+      { name: '09_CV_Cu', color: '#9ca3af' },
     ];
 
     const parseToolResponse = (res: any) => {
@@ -1131,7 +1119,7 @@ ${content}
         const stageId = stageIdByName[stageName] || stageIdByName['01_Dau_Vao'];
         if (!stageId) throw new Error(`Không tìm thấy stageId cho stage ${stageName}.`);
         return {
-          title: this.formatKanbanItemTitle(r.normalizedName || r.originalName),
+          title: formatKanbanItemTitle(r.normalizedName || r.originalName),
           description: r.reason || '',
           stageId,
           customFields: [
