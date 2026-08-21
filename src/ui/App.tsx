@@ -8,9 +8,10 @@ import LifecycleDashboard from './lifecycle/LifecycleDashboard';
 import PayrollTab from './payroll/PayrollTab';
 import BotDraftingTab from './bot-drafting-tab';
 import CVScoredTab from './cv-scored/CVScoredTab';
+import JDChatbotTab from './jd-chatbot-functional';
 import { ensureTemplatesExistGlobal } from './pipeline-service';
 
-type Tab = 'home' | 'recruitment' | 'pipeline' | 'cvScored' | 'lifecycle' | 'payroll' | 'botDrafting';
+type Tab = 'home' | 'recruitment' | 'pipeline' | 'cvScored' | 'chatbotJD' | 'lifecycle' | 'payroll' | 'botDrafting';
 type SectionId = 'hr' | 'admin';
 
 type TabSection = {
@@ -27,6 +28,7 @@ const TAB_SECTIONS: TabSection[] = [
       { id: 'recruitment', label: 'Tuy\u1ec3n d\u1ee5ng' },
       { id: 'pipeline', label: 'CV Pipeline' },
       { id: 'cvScored', label: 'CV \u0111\u00e3 ch\u1ea5m' },
+      { id: 'chatbotJD', label: 'Chatbot JD' },
     ],
   },
   {
@@ -145,6 +147,12 @@ function ThemedApp() {
       {visitedTabs.has('cvScored') && (
         <div className={tab === 'cvScored' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'cvScored'}>
           <CVScoredTab />
+        </div>
+      )}
+
+      {visitedTabs.has('chatbotJD') && (
+        <div className={tab === 'chatbotJD' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'chatbotJD'}>
+          <JDChatbotTab />
         </div>
       )}
 

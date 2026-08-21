@@ -1481,14 +1481,6 @@ REQUIRED:
                 >
                   {isGeneratingJD ? 'Đang tạo...' : <><span>{'\u2728'}</span> {'Tạo bằng form'}</>}
                 </button>
-                <button
-                  className="pl-btn"
-                  style={{ flex: 1, justifyContent: 'center', backgroundColor: 'rgba(21, 111, 245, 0.08)', color: 'var(--accent)', borderColor: 'rgba(21, 111, 245, 0.2)' }}
-                  onClick={() => setChatFormOpen(true)}
-                  disabled={isGeneratingJD}
-                >
-                  {'\ud83d\udcac'} Chat với AI
-                </button>
               </div>
               {/* JD Upload Fallback */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingTop: '12px', borderTop: '1px dashed var(--border-light)', flexWrap: 'wrap' }}>
@@ -1664,7 +1656,7 @@ REQUIRED:
           </div>
         )}
 
-        {chatFormOpen && (
+        {false && chatFormOpen && (
           <div className="pl-modal-backdrop" onClick={() => !isChatting && setChatFormOpen(false)}>
             <div className="pl-modal" style={{ maxWidth: '600px', display: 'flex', flexDirection: 'column', height: '80vh' }} onClick={(e) => e.stopPropagation()}>
               <div className="pl-modal-header" style={{ flexShrink: 0, borderBottom: '1px solid var(--border-light)', paddingBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
