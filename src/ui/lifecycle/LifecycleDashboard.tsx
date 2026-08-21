@@ -265,59 +265,34 @@ function LifecycleContent() {
             />
           </div>
 
-          {/* Status Quick Filters */}
-          <div className="hr-pill-group">
-            <button
-              type="button"
-              className={`hr-filter-pill ${selectedStatus === 'all' ? 'active' : ''}`}
-              onClick={() => setSelectedStatus('all')}
-            >
-              Tất cả ({statusCounts.all})
-            </button>
-            <button
-              type="button"
-              className={`hr-filter-pill ${selectedStatus === 'Mới nhận việc' ? 'active' : ''}`}
-              onClick={() => setSelectedStatus('Mới nhận việc')}
-            >
-              Chờ hồ sơ ({statusCounts.wait})
-            </button>
-            <button
-              type="button"
-              className={`hr-filter-pill ${selectedStatus === 'Đang thử việc' ? 'active' : ''}`}
-              onClick={() => setSelectedStatus('Đang thử việc')}
-            >
-              Thử việc ({statusCounts.probation})
-            </button>
-            <button
-              type="button"
-              className={`hr-filter-pill ${selectedStatus === 'Chính thức' ? 'active' : ''}`}
-              onClick={() => setSelectedStatus('Chính thức')}
-            >
-              Chính thức ({statusCounts.official})
-            </button>
-            <button
-              type="button"
-              className={`hr-filter-pill ${selectedStatus === 'Nghỉ việc' ? 'active' : ''}`}
-              onClick={() => setSelectedStatus('Nghỉ việc')}
-            >
-              Nghỉ việc ({statusCounts.resigned})
-            </button>
-          </div>
+          <select
+            aria-label="Lọc theo trạng thái nhân sự"
+            className="hr-input"
+            value={selectedStatus}
+            onChange={(event) => setSelectedStatus(event.target.value)}
+            style={{ width: 'auto', minWidth: '180px' }}
+          >
+            <option value="all">Tất cả trạng thái ({statusCounts.all})</option>
+            <option value="Mới nhận việc">Chờ hồ sơ ({statusCounts.wait})</option>
+            <option value="Đang thử việc">Thử việc ({statusCounts.probation})</option>
+            <option value="Chính thức">Chính thức ({statusCounts.official})</option>
+            <option value="Nghỉ việc">Nghỉ việc ({statusCounts.resigned})</option>
+          </select>
 
-          {/* Department Filter */}
           {departments.length > 2 && (
-            <div className="hr-pill-group" style={{ borderLeft: '1px solid var(--border)', paddingLeft: '8px' }}>
-              {departments.map(dept => (
-                <button
-                  key={dept}
-                  type="button"
-                  className={`hr-filter-pill ${selectedDept === dept ? 'active' : ''}`}
-                  onClick={() => setSelectedDept(dept)}
-                >
-                  {dept}
-                </button>
+            <select
+              aria-label="Lọc theo phòng ban"
+              className="hr-input"
+              value={selectedDept}
+              onChange={(event) => setSelectedDept(event.target.value)}
+              style={{ width: 'auto', minWidth: '180px' }}
+            >
+              {departments.map((department) => (
+                <option key={department} value={department}>
+                  {department === 'Tất cả' ? 'Tất cả phòng ban' : department}
+                </option>
               ))}
-            </div>
+            </select>
           )}
         </div>
 
