@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { usePrivosApp } from '@privos/app-react';
+import { usePolling } from '../../hooks/usePolling';
 import { IPayrollService, PayrollRecord } from '../types';
 import { EmployeeProfile, ILifecycleService } from '../../lifecycle/types';
 import { 
@@ -9,11 +10,18 @@ import {
   isProbationContract 
 } from '../utils';
 import { formatPayrollDebugOutput } from '../debug-format';
+import {
+  type IPayrollExportService,
+  type PayrollExportDestination,
+  type PayrollExportFormat,
+  type PayrollExportScope,
+} from '../services/PayrollExportService';
 
 interface PayrollDashboardProps {
   roomId: string;
   payrollService: IPayrollService;
   lifecycleService: ILifecycleService;
+  payrollExportService: IPayrollExportService;
 }
 
 const BANK_OPTIONS = [
@@ -50,7 +58,109 @@ const SALARY_REGEX = /^\d{1,12}$/;
 const TAX_ID_REGEX = /^(?:\d{10}|\d{12}|\d{10}-?\d{3})$/;
 const BANK_ACCOUNT_REGEX = /^[0-9-]{6,24}$/;
 
-export function PayrollDashboard({ roomId, payrollService, lifecycleService }: PayrollDashboardProps) {
+type PayrollFilterStatus = 'all' | 'configured' | 'unconfigured' | 'missing_info';
+
+const PAYROLL_FILTER_LABELS: Record<PayrollFilterStatus, string> = {
+  all: 'Tat_Ca_Trang_Thai',
+  configured: 'Da_Co_Luong',
+  unconfigured: 'Chua_Thiet_Lap',
+  missing_info: 'Thieu_STK_MST',
+};
+
+const PAYROLL_EXPORT_FORMAT_LABELS: Record<PayrollExportFormat, string> = {
+  csv: 'CSV',
+  xlsx: 'Excel',
+};
+
+const PAYROLL_EXPORT_GROUPS: ReadonlyArray<{
+  label: string;
+  scope: PayrollExportScope;
+  actions: ReadonlyArray<{ format: PayrollExportFormat; destination: PayrollExportDestination; label: string }>;
+}> = [
+  {
+    label: 'Theo bộ lọc',
+    scope: 'filtered',
+    actions: [
+      { format: 'csv', destination: 'download', label: 'Tải CSV' },
+      { format: 'csv', destination: 'privos', label: 'Lưu CSV' },
+      { format: 'xlsx', destination: 'download', label: 'Tải Excel' },
+      { format: 'xlsx', destination: 'privos', label: 'Lưu Excel' },
+    ],
+  },
+  {
+    label: 'Toàn bộ dữ liệu',
+    scope: 'all',
+    actions: [
+      { format: 'csv', destination: 'download', label: 'Tải CSV' },
+      { format: 'csv', destination: 'privos', label: 'Lưu CSV' },
+      { format: 'xlsx', destination: 'download', label: 'Tải Excel' },
+      { format: 'xlsx', destination: 'privos', label: 'Lưu Excel' },
+    ],
+  },
+];
+
+interface PayrollFilterCounts {
+  all: number;
+  configured: number;
+  unconfigured: number;
+  missingInfo: number;
+}
+
+function hasConfiguredSalary(payroll?: PayrollRecord): boolean {
+  return (payroll?.baseSalary ?? 0) > 0;
+}
+
+function isPaymentInfoMissing(payroll?: PayrollRecord): boolean {
+  return hasConfiguredSalary(payroll)
+    && (!payroll?.taxId?.trim() || !payroll?.bankAccount?.trim());
+}
+
+function matchesPayrollFilter(payroll: PayrollRecord | undefined, filter: PayrollFilterStatus): boolean {
+  if (filter === 'configured') return hasConfiguredSalary(payroll);
+  if (filter === 'unconfigured') return !hasConfiguredSalary(payroll);
+  if (filter === 'missing_info') return isPaymentInfoMissing(payroll);
+  return true;
+}
+
+function areEmployeeProfilesEqual(prev: EmployeeProfile[], next: EmployeeProfile[]): boolean {
+  if (prev.length !== next.length) return false;
+  return prev.every((employee, index) => {
+    const candidate = next[index];
+    return employee._id === candidate._id
+      && employee.name === candidate.name
+      && employee.status === candidate.status
+      && employee.phone === candidate.phone
+      && employee.email === candidate.email
+      && employee.position === candidate.position
+      && employee.department === candidate.department
+      && employee.startDate === candidate.startDate
+      && employee.sourceCandidateId === candidate.sourceCandidateId;
+  });
+}
+
+function arePayrollRecordsEqual(prev: PayrollRecord[], next: PayrollRecord[]): boolean {
+  if (prev.length !== next.length) return false;
+  return prev.every((record, index) => {
+    const candidate = next[index];
+    return record._id === candidate._id
+      && record.employeeId === candidate.employeeId
+      && record.baseSalary === candidate.baseSalary
+      && record.taxId === candidate.taxId
+      && record.bankAccount === candidate.bankAccount
+      && record.bankName === candidate.bankName
+      && record.contractType === candidate.contractType
+      && record.applyProbationRate === candidate.applyProbationRate
+      && record.probationRate === candidate.probationRate
+      && record.roomId === candidate.roomId;
+  });
+}
+
+export function PayrollDashboard({
+  roomId,
+  payrollService,
+  lifecycleService,
+  payrollExportService,
+}: PayrollDashboardProps) {
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
   const [payrolls, setPayrolls] = useState<PayrollRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,13 +172,19 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
   const [statusMsg, setStatusMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [copiedBankId, setCopiedBankId] = useState<string | null>(null);
+  const [exportingAction, setExportingAction] = useState<string | null>(null);
 
   // States cho Search & Filter
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<PayrollFilterStatus>('all');
   const [selectedDept, setSelectedDept] = useState<string>('all');
+  const isRefreshingDataRef = useRef(false);
   
   const app = usePrivosApp();
+  const payrollByEmployeeId = useMemo(
+    () => new Map(payrolls.map((payroll) => [payroll.employeeId, payroll])),
+    [payrolls]
+  );
 
   // Test gửi request lên Backend
   useEffect(() => {
@@ -77,12 +193,10 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
       .catch((err: any) => console.error('Test Auth Error:', err));
   }, [app]);
 
-  useEffect(() => {
-    loadData();
-  }, [roomId, payrollService, lifecycleService]);
-
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = useCallback(async (isSilent = false) => {
+    if (isRefreshingDataRef.current) return;
+    isRefreshingDataRef.current = true;
+    if (!isSilent) setLoading(true);
     try {
       // Tải song song danh sách nhân sự từ Kanban và bảng Lương từ DB
       const [empData, payData] = await Promise.all([
@@ -94,22 +208,36 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
       const activeEmpIds = new Set(empData.map(e => e._id));
       const orphanedPayrolls = payData.filter(p => !activeEmpIds.has(p.employeeId));
       
-      if (orphanedPayrolls.length > 0) {
+      if (!isSilent && orphanedPayrolls.length > 0) {
         console.log(`Tiến hành dọn rác: Xoá ${orphanedPayrolls.length} bản ghi lương mồ côi.`);
         await Promise.all(orphanedPayrolls.map(p => {
           if (p._id) return payrollService.deleteRecord(p._id);
         }));
       }
 
-      setEmployees(empData);
-      setPayrolls(payData.filter(p => activeEmpIds.has(p.employeeId)));
+      const activePayrolls = payData.filter(p => activeEmpIds.has(p.employeeId));
+      setEmployees((previous) => (areEmployeeProfilesEqual(previous, empData) ? previous : empData));
+      setPayrolls((previous) => (arePayrollRecordsEqual(previous, activePayrolls) ? previous : activePayrolls));
     } catch (error) {
       console.error("Lỗi khi tải dữ liệu lương:", error);
-      setStatusMsg({ text: 'Lỗi khi tải dữ liệu bảng lương.', type: 'error' });
+      if (!isSilent) {
+        setStatusMsg({ text: 'Lỗi khi tải dữ liệu bảng lương.', type: 'error' });
+      }
     } finally {
-      setLoading(false);
+      isRefreshingDataRef.current = false;
+      if (!isSilent) setLoading(false);
     }
-  };
+  }, [lifecycleService, payrollService, roomId]);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  // Đồng bộ nền mỗi giây; hook tự chống request chồng nhau và dừng khi tab bị ẩn.
+  usePolling(
+    useCallback(() => loadData(true), [loadData]),
+    { enabled: Boolean(roomId) && editingId === null, interval: 1000, immediate: false }
+  );
 
   const showRawPayrollDebug = async () => {
     const request = {
@@ -129,7 +257,7 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
   };
 
   const handleEdit = (emp: EmployeeProfile) => {
-    const existing = payrolls.find(p => p.employeeId === emp._id);
+    const existing = payrollByEmployeeId.get(emp._id);
     setEditingId(emp._id);
     setFormData(existing || {
       employeeId: emp._id,
@@ -203,80 +331,28 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
         depts.add(e.department.trim());
       }
     });
-    return Array.from(depts);
+    return Array.from(depts).sort((left, right) => left.localeCompare(right, 'vi'));
   }, [employees]);
 
-  // Export CSV Handler
-  const handleExportCSV = () => {
-    if (employees.length === 0) return;
-
-    const headers = [
-      'Họ và Tên',
-      'Vị trí',
-      'Phòng ban',
-      'Loại hợp đồng',
-      'Lương cơ bản (VNĐ)',
-      'Tỷ lệ chi trả (%)',
-      'Lương thực nhận (VNĐ)',
-      'Mã số thuế',
-      'Ngân hàng',
-      'Số tài khoản'
-    ];
-
-    const rows = employees.map(emp => {
-      const pay = payrolls.find(p => p.employeeId === emp._id);
-      const baseSalary = pay?.baseSalary || 0;
-      const { netSalary, effectiveRate } = calculateNetSalary(
-        baseSalary,
-        pay?.contractType,
-        pay?.applyProbationRate !== false,
-        pay?.probationRate ?? 85
-      );
-
-      return [
-        `"${emp.name || ''}"`,
-        `"${emp.position || ''}"`,
-        `"${emp.department || ''}"`,
-        `"${pay?.contractType || 'Chính thức'}"`,
-        `${baseSalary}`,
-        `${effectiveRate}%`,
-        `${netSalary}`,
-        `"${pay?.taxId || ''}"`,
-        `"${pay?.bankName || ''}"`,
-        `"${pay?.bankAccount || ''}"`
-      ];
-    });
-
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `Bang_Luong_Nhan_Su_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-
-    setStatusMsg({ text: 'Đã xuất file bảng lương (CSV) thành công!', type: 'success' });
-    setTimeout(() => setStatusMsg(null), 3000);
-  };
+  const employeesInSelectedDepartment = useMemo(
+    () => selectedDept === 'all'
+      ? employees
+      : employees.filter((employee) => employee.department === selectedDept),
+    [employees, selectedDept]
+  );
 
   // KPIs calculations
   const stats = useMemo(() => {
-    const relevantEmployees = selectedDept === 'all' 
-      ? employees 
-      : employees.filter(e => e.department === selectedDept);
+    const relevantEmployees = employeesInSelectedDepartment;
 
     const totalStaff = relevantEmployees.length;
     const configuredCount = relevantEmployees.filter(emp => {
-      const pay = payrolls.find(p => p.employeeId === emp._id);
-      return pay && (pay.baseSalary ?? 0) > 0;
+      return hasConfiguredSalary(payrollByEmployeeId.get(emp._id));
     }).length;
 
     // Tính tổng quỹ lương thực nhận (đã tính tỷ lệ thử việc 85% nếu có)
     const totalBudget = relevantEmployees.reduce((acc, emp) => {
-      const pay = payrolls.find(p => p.employeeId === emp._id);
+      const pay = payrollByEmployeeId.get(emp._id);
       if (!pay || !pay.baseSalary) return acc;
       const { netSalary } = calculateNetSalary(
         pay.baseSalary,
@@ -288,42 +364,83 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
     }, 0);
 
     const fullyCompleted = relevantEmployees.filter(emp => {
-      const pay = payrolls.find(p => p.employeeId === emp._id);
+      const pay = payrollByEmployeeId.get(emp._id);
       return pay && (pay.baseSalary ?? 0) > 0 && !!pay.taxId && !!pay.bankAccount;
     }).length;
 
     const completionRate = totalStaff > 0 ? Math.round((fullyCompleted / totalStaff) * 100) : 0;
 
     return { totalStaff, configuredCount, totalBudget, fullyCompleted, completionRate };
-  }, [employees, payrolls, selectedDept]);
+  }, [employeesInSelectedDepartment, payrollByEmployeeId]);
+
+  const filterCounts = useMemo<PayrollFilterCounts>(() => {
+    return employeesInSelectedDepartment.reduce<PayrollFilterCounts>((counts, employee) => {
+      const payroll = payrollByEmployeeId.get(employee._id);
+      counts.all += 1;
+      if (hasConfiguredSalary(payroll)) counts.configured += 1;
+      else counts.unconfigured += 1;
+      if (isPaymentInfoMissing(payroll)) counts.missingInfo += 1;
+      return counts;
+    }, { all: 0, configured: 0, unconfigured: 0, missingInfo: 0 });
+  }, [employeesInSelectedDepartment, payrollByEmployeeId]);
 
   // Filtered employees list
   const filteredEmployees = useMemo(() => {
-    return employees.filter(emp => {
-      // 1. Department Filter
-      if (selectedDept !== 'all' && emp.department !== selectedDept) return false;
+    return employeesInSelectedDepartment.filter(emp => {
+      const payroll = payrollByEmployeeId.get(emp._id);
+      if (!matchesPayrollFilter(payroll, filterStatus)) return false;
 
-      const pay = payrolls.find(p => p.employeeId === emp._id);
-      const isConfigured = pay && (pay.baseSalary ?? 0) > 0;
-      const isMissingInfo = pay && (!pay.taxId || !pay.bankAccount);
-
-      // 2. Status Filter
-      if (filterStatus === 'configured' && !isConfigured) return false;
-      if (filterStatus === 'unconfigured' && isConfigured) return false;
-      if (filterStatus === 'missing_info' && (!isConfigured || !isMissingInfo)) return false;
-
-      // 3. Search Term
       if (!searchTerm.trim()) return true;
       const term = searchTerm.toLowerCase().trim();
       const matchName = emp.name.toLowerCase().includes(term);
       const matchPosition = emp.position?.toLowerCase().includes(term) ?? false;
       const matchDept = emp.department?.toLowerCase().includes(term) ?? false;
-      const matchTax = pay?.taxId?.toLowerCase().includes(term) ?? false;
-      const matchBank = pay?.bankAccount?.toLowerCase().includes(term) ?? false;
+      const matchTax = payroll?.taxId?.toLowerCase().includes(term) ?? false;
+      const matchBank = payroll?.bankAccount?.toLowerCase().includes(term) ?? false;
 
       return matchName || matchPosition || matchDept || matchTax || matchBank;
     });
-  }, [employees, payrolls, filterStatus, selectedDept, searchTerm]);
+  }, [employeesInSelectedDepartment, filterStatus, payrollByEmployeeId, searchTerm]);
+
+  const handleExport = async (
+    scope: PayrollExportScope,
+    format: PayrollExportFormat,
+    destination: PayrollExportDestination,
+  ) => {
+    const sourceEmployees = scope === 'filtered' ? filteredEmployees : employees;
+    const actionKey = `${scope}-${format}-${destination}`;
+    if (sourceEmployees.length === 0) {
+      setStatusMsg({ text: 'Không có dữ liệu bảng lương để xuất.', type: 'error' });
+      setTimeout(() => setStatusMsg(null), 3000);
+      return;
+    }
+
+    setExportingAction(actionKey);
+    try {
+      const result = await payrollExportService.export({
+        employees: sourceEmployees,
+        payrollByEmployeeId,
+        scope,
+        format,
+        destination,
+        filterContext: {
+          department: selectedDept === 'all' ? 'Tat_Ca_Phong_Ban' : selectedDept,
+          status: PAYROLL_FILTER_LABELS[filterStatus],
+        },
+      });
+      const destinationLabel = destination === 'privos'
+        ? `đã lưu vào PrivOS tại ${result.roomPath}`
+        : 'đã tải xuống máy';
+      setStatusMsg({ text: `Đã xuất ${result.fileName} và ${destinationLabel}.`, type: 'success' });
+      setTimeout(() => setStatusMsg(null), 4000);
+    } catch (error) {
+      console.error('Không thể xuất báo cáo payroll:', error);
+      setStatusMsg({ text: 'Không thể xuất báo cáo bảng lương. Vui lòng thử lại.', type: 'error' });
+      setTimeout(() => setStatusMsg(null), 4000);
+    } finally {
+      setExportingAction(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -343,46 +460,73 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
             Theo dõi mức lương cơ bản, lương thử việc, mã số thuế và tài khoản ngân hàng chi trả.
           </p>
         </div>
-        <div className="header-actions">
-          <button 
-            type="button" 
-            className="hr-btn hr-btn-export" 
-            onClick={handleExportCSV}
-            title="Xuất bảng lương ra file Excel/CSV"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-            Xuất Bảng Lương (CSV)
-          </button>
-
-          <button 
-            type="button" 
-            className="hr-btn" 
-            onClick={loadData}
-            title="Tải lại bảng lương"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
-            </svg>
-            Làm mới
-          </button>
+        <div className="header-actions payroll-header-actions">
+          {PAYROLL_EXPORT_GROUPS.map((group) => {
+            const sourceCount = group.scope === 'filtered' ? filteredEmployees.length : employees.length;
+            return (
+              <details
+                key={group.scope}
+                className="payroll-export-menu"
+              >
+                <summary className="payroll-export-menu-trigger">
+                  <span className="payroll-export-menu-icon" aria-hidden="true">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 3v12" />
+                      <path d="m7 10 5 5 5-5" />
+                      <path d="M5 21h14" />
+                    </svg>
+                  </span>
+                  <span>
+                    <span className="payroll-export-menu-title">{group.label}</span>
+                    <span className="payroll-export-menu-count">{sourceCount} nhân sự</span>
+                  </span>
+                  <svg className="payroll-export-menu-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </summary>
+                <div className="payroll-export-menu-panel">
+                  <p className="payroll-export-menu-description">
+                    {group.scope === 'filtered'
+                      ? 'Dùng kết quả tìm kiếm và bộ lọc hiện tại.'
+                      : 'Bỏ qua toàn bộ bộ lọc đang áp dụng.'}
+                  </p>
+                  <div className="payroll-export-actions">
+                    {group.actions.map((action) => {
+                      const actionKey = `${group.scope}-${action.format}-${action.destination}`;
+                      const isExporting = exportingAction === actionKey;
+                      const destinationLabel = action.destination === 'download' ? 'Tải máy' : 'Lưu PrivOS';
+                      return (
+                        <button
+                          key={actionKey}
+                          type="button"
+                          className={`payroll-export-action payroll-export-action-${action.destination}`}
+                          disabled={sourceCount === 0 || isExporting}
+                          onClick={() => handleExport(group.scope, action.format, action.destination)}
+                          title={`${action.label} ${group.label.toLowerCase()}`}
+                        >
+                          <span className="payroll-export-action-format">{PAYROLL_EXPORT_FORMAT_LABELS[action.format]}</span>
+                          <span>{isExporting ? 'Đang xuất...' : destinationLabel}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </details>
+            );
+          })}
 
           {/* Discreet Debug Inspector Button */}
           <button 
             type="button"
-            className="hr-btn hr-btn-subtle" 
-            style={{ fontSize: '0.8rem' }}
+            className="hr-btn hr-btn-subtle payroll-header-icon-button"
             onClick={showRawPayrollDebug}
             title="Xem dữ liệu gốc JSON từ Database"
+            aria-label="Xem dữ liệu gốc JSON từ Database"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="16 18 22 12 16 6"/>
               <polyline points="8 6 2 12 8 18"/>
             </svg>
-            Debug JSON
           </button>
         </div>
       </header>
@@ -438,7 +582,7 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
       </div>
 
       {/* Toolbar Search & Status Filters */}
-      <div className="hr-toolbar" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '10px' }}>
+      <div className="hr-toolbar">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
           <div className="hr-search-box" style={{ flex: '1 1 280px' }}>
             <span className="hr-search-icon">🔍</span>
@@ -451,66 +595,40 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
             />
           </div>
 
-          <div className="hr-pill-group">
-            <button 
-              type="button" 
-              className={`hr-filter-pill ${filterStatus === 'all' ? 'active' : ''}`}
-              onClick={() => setFilterStatus('all')}
-            >
-              Tất cả ({employees.length})
-            </button>
-            <button 
-              type="button" 
-              className={`hr-filter-pill ${filterStatus === 'configured' ? 'active' : ''}`}
-              onClick={() => setFilterStatus('configured')}
-            >
-              Đã có lương ({stats.configuredCount})
-            </button>
-            <button 
-              type="button" 
-              className={`hr-filter-pill ${filterStatus === 'missing_info' ? 'active' : ''}`}
-              onClick={() => setFilterStatus('missing_info')}
-            >
-              Thiếu STK/MST
-            </button>
-            <button 
-              type="button" 
-              className={`hr-filter-pill ${filterStatus === 'unconfigured' ? 'active' : ''}`}
-              onClick={() => setFilterStatus('unconfigured')}
-            >
-              Chưa thiết lập
-            </button>
-          </div>
-        </div>
+          <select
+            aria-label="Lọc theo tình trạng lương"
+            className="hr-input"
+            value={filterStatus}
+            onChange={(event) => setFilterStatus(event.target.value as PayrollFilterStatus)}
+            style={{ width: 'auto', minWidth: '185px' }}
+          >
+            <option value="all">Tất cả tình trạng ({filterCounts.all})</option>
+            <option value="configured">Đã có lương ({filterCounts.configured})</option>
+            <option value="unconfigured">Chưa thiết lập ({filterCounts.unconfigured})</option>
+            <option value="missing_info">Thiếu STK/MST ({filterCounts.missingInfo})</option>
+          </select>
 
-        {/* Department Filter Pills */}
-        {departments.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', paddingTop: '4px' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)' }}>Phòng ban:</span>
-            <div className="hr-pill-group">
-              <button
-                type="button"
-                className={`hr-filter-pill ${selectedDept === 'all' ? 'active' : ''}`}
-                onClick={() => setSelectedDept('all')}
-              >
-                Tất cả phòng ban
-              </button>
+          {departments.length > 0 && (
+            <select
+              aria-label="Lọc theo phòng ban"
+              className="hr-input"
+              value={selectedDept}
+              onChange={(event) => setSelectedDept(event.target.value)}
+              style={{ width: 'auto', minWidth: '180px' }}
+            >
+              <option value="all">Tất cả phòng ban</option>
               {departments.map(dept => (
-                <button
-                  key={dept}
-                  type="button"
-                  className={`hr-filter-pill ${selectedDept === dept ? 'active' : ''}`}
-                  onClick={() => setSelectedDept(dept)}
-                >
+                <option key={dept} value={dept}>
                   {dept}
-                </button>
+                </option>
               ))}
-            </div>
-            <span style={{ marginLeft: 'auto', fontSize: '0.8125rem', color: 'var(--text-muted, #6C737A)' }}>
-              Hiển thị <strong>{filteredEmployees.length}</strong> / {employees.length} hồ sơ
-            </span>
-          </div>
-        )}
+            </select>
+          )}
+
+          <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted, #6C737A)' }}>
+            Hiển thị <strong>{filteredEmployees.length}</strong> / {filterCounts.all} hồ sơ
+          </span>
+        </div>
       </div>
 
       {/* Modern Data Table */}
@@ -528,9 +646,9 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
           </thead>
           <tbody>
             {filteredEmployees.map(emp => {
-              const pay = payrolls.find(p => p.employeeId === emp._id);
+              const pay = payrollByEmployeeId.get(emp._id);
               const isEditing = editingId === emp._id;
-              const hasConfiguredSalary = pay && (pay.baseSalary ?? 0) > 0;
+              const isSalaryConfigured = hasConfiguredSalary(pay);
               const initials = getInitials(emp.name);
               
               return (
@@ -650,7 +768,7 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
                         </span>
                       </td>
                       <td>
-                        {hasConfiguredSalary ? (
+                        {isSalaryConfigured ? (
                           (() => {
                             const { netSalary, isProbationDiscounted } = calculateNetSalary(
                               pay!.baseSalary,
@@ -720,7 +838,7 @@ export function PayrollDashboard({ roomId, payrollService, lifecycleService }: P
                           className="hr-btn"
                           style={{ padding: '5px 12px', fontSize: '0.8rem' }}
                         >
-                          {hasConfiguredSalary ? 'Chỉnh sửa' : '+ Thiết lập'}
+                          {isSalaryConfigured ? 'Chỉnh sửa' : '+ Thiết lập'}
                         </button>
                       </td>
                     </>

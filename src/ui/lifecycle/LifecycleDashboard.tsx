@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { usePrivosApp, usePrivosContext } from '@privos/app-react';
 import { EmployeeProfile, PassedCandidate } from './types';
 import { PrivOSLifecycleService } from './services/PrivOSLifecycleService';
@@ -19,12 +19,30 @@ function areCandidatesEqual(prev: PassedCandidate[], next: PassedCandidate[]): b
       prev[i]._id !== next[i]._id ||
       prev[i].name !== next[i].name ||
       prev[i].score !== next[i].score ||
-      prev[i].position !== next[i].position
+      prev[i].position !== next[i].position ||
+      prev[i].email !== next[i].email ||
+      prev[i].phone !== next[i].phone
     ) {
       return false;
     }
   }
   return true;
+}
+
+function areProfilesEqual(prev: EmployeeProfile[], next: EmployeeProfile[]): boolean {
+  if (prev.length !== next.length) return false;
+  return prev.every((profile, index) => {
+    const candidate = next[index];
+    return profile._id === candidate._id
+      && profile.name === candidate.name
+      && profile.status === candidate.status
+      && profile.phone === candidate.phone
+      && profile.email === candidate.email
+      && profile.position === candidate.position
+      && profile.department === candidate.department
+      && profile.startDate === candidate.startDate
+      && profile.sourceCandidateId === candidate.sourceCandidateId;
+  });
 }
 
 function LifecycleContent() {
@@ -43,9 +61,12 @@ function LifecycleContent() {
   const [selectedDept, setSelectedDept] = useState('Tất cả');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
+  const isRefreshingProfilesRef = useRef(false);
+  const isRefreshingCandidatesRef = useRef(false);
 
   const refreshCandidates = useCallback(async (isSilent = false) => {
-    if (!roomId) return;
+    if (!roomId || isRefreshingCandidatesRef.current) return;
+    isRefreshingCandidatesRef.current = true;
     if (!isSilent) setIsLoadingCandidates(true);
     try {
       const candidates = await service.loadPassedCandidates(roomId);
@@ -53,40 +74,48 @@ function LifecycleContent() {
     } catch (err) {
       console.error('[LifecycleDashboard] Error loading candidates:', err);
     } finally {
+      isRefreshingCandidatesRef.current = false;
       if (!isSilent) setIsLoadingCandidates(false);
     }
   }, [roomId, service]);
 
-  // Bộ đếm polling 1 giây/lần khi form thêm nhân sự đang mở
+  const refreshProfiles = useCallback(async (isSilent = false) => {
+    if (!roomId || isRefreshingProfilesRef.current) return;
+    isRefreshingProfilesRef.current = true;
+    if (!isSilent) setIsLoading(true);
+
+    try {
+      const data = await service.loadProfiles(roomId);
+      setProfiles((previous) => (areProfilesEqual(previous, data) ? previous : data));
+    } catch (error) {
+      console.error('[LifecycleDashboard] Error loading profiles:', error);
+      if (!isSilent) {
+        setStatusMsg({ text: 'Không thể tải danh sách hồ sơ nhân sự.', type: 'error' });
+      }
+    } finally {
+      isRefreshingProfilesRef.current = false;
+      if (!isSilent) setIsLoading(false);
+    }
+  }, [roomId, service]);
+
+  // Đồng bộ hồ sơ mỗi giây khi tab đang hiển thị, không hiển thị loading lại trên UI.
+  usePolling(
+    useCallback(() => refreshProfiles(true), [refreshProfiles]),
+    { enabled: Boolean(roomId), interval: 1000, immediate: false }
+  );
+
+  // Đồng bộ ứng viên đạt mỗi giây chỉ khi form tạo hồ sơ đang mở.
   usePolling(
     useCallback(() => refreshCandidates(true), [refreshCandidates]),
-    { enabled: isCreating, interval: 1000 }
+    { enabled: isCreating && Boolean(roomId), interval: 1000, immediate: false }
   );
 
   useEffect(() => {
-    console.log('[LifecycleDashboard] useEffect triggered - roomId:', roomId, 'service:', !!service);
     if (roomId) {
-      console.log('[LifecycleDashboard] Calling refreshProfiles and refreshCandidates');
-      refreshProfiles();
-      refreshCandidates();
-    } else {
-      console.log('[LifecycleDashboard] roomId is falsy, skipping refresh');
+      void refreshProfiles();
+      void refreshCandidates();
     }
-  }, [roomId, service, refreshCandidates]);
-
-  const refreshProfiles = async () => {
-    console.log('[LifecycleDashboard] refreshProfiles called - roomId:', roomId);
-    if (!roomId) {
-      console.log('[LifecycleDashboard] refreshProfiles: roomId is falsy, returning');
-      return;
-    }
-    setIsLoading(true);
-    console.log('[LifecycleDashboard] Calling service.loadProfiles');
-    const data = await service.loadProfiles(roomId);
-    console.log('[LifecycleDashboard] Loaded profiles count:', data.length);
-    setProfiles(data);
-    setIsLoading(false);
-  };
+  }, [roomId, refreshCandidates, refreshProfiles]);
 
   const handleCreateSubmit = async (data: Omit<EmployeeProfile, '_id' | 'status'> & { attachedFileObj?: any }) => {
     if (!roomId) return;
@@ -102,8 +131,7 @@ function LifecycleContent() {
     setTimeout(() => setStatusMsg(null), 3000);
 
     // Sync from server silently to get real ID and fields
-    const updatedProfiles = await service.loadProfiles(roomId);
-    setProfiles(updatedProfiles);
+    await refreshProfiles(true);
   };
 
   const handleMoveProfile = async (profileId: string, newStatus: string) => {
@@ -208,19 +236,6 @@ function LifecycleContent() {
           </p>
         </div>
         <div className="header-actions" style={{ display: 'flex', gap: '10px' }}>
-          <button 
-            className="hr-btn" 
-            onClick={() => {
-              refreshProfiles();
-              refreshCandidates();
-            }}
-            disabled={isLoading || isLoadingCandidates}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
-            </svg>
-            Làm mới
-          </button>
           <button 
             className="hr-btn hr-btn-accent" 
             onClick={() => {

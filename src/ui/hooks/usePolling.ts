@@ -64,16 +64,25 @@ export function usePolling(
     let timerId: ReturnType<typeof setTimeout> | null = null;
     let isExecuting = false;
 
-    const executeCycle = async () => {
-      // Tạm ngưng nếu tab trình duyệt đang ẩn
-      if (pauseOnTabHidden && typeof document !== 'undefined' && document.hidden) {
-        if (isMounted) {
-          timerId = setTimeout(executeCycle, interval);
-        }
-        return;
-      }
+    const isTabHidden = () => pauseOnTabHidden
+      && typeof document !== 'undefined'
+      && document.hidden;
 
-      if (isExecuting) return;
+    const clearScheduledCycle = () => {
+      if (timerId !== null) {
+        clearTimeout(timerId);
+        timerId = null;
+      }
+    };
+
+    const scheduleNextCycle = () => {
+      if (!isMounted || isTabHidden()) return;
+      clearScheduledCycle();
+      timerId = setTimeout(executeCycle, interval);
+    };
+
+    const executeCycle = async () => {
+      if (!isMounted || isTabHidden() || isExecuting) return;
       isExecuting = true;
 
       try {
@@ -83,22 +92,31 @@ export function usePolling(
       } finally {
         isExecuting = false;
         // Chỉ kích hoạt lần tiếp theo SAU KHI lần trước đã xử lý xong
-        if (isMounted) {
-          timerId = setTimeout(executeCycle, interval);
-        }
+        scheduleNextCycle();
       }
     };
 
-    if (immediate) {
+    const handleVisibilityChange = () => {
+      if (isTabHidden() || isExecuting) return;
+      clearScheduledCycle();
+      void executeCycle();
+    };
+
+    if (pauseOnTabHidden && typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+
+    if (immediate && !isTabHidden()) {
       executeCycle();
     } else {
-      timerId = setTimeout(executeCycle, interval);
+      scheduleNextCycle();
     }
 
     return () => {
       isMounted = false;
-      if (timerId !== null) {
-        clearTimeout(timerId);
+      clearScheduledCycle();
+      if (pauseOnTabHidden && typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
       }
     };
   }, [enabled, interval, immediate, pauseOnTabHidden]);
