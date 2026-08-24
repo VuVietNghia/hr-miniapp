@@ -28,7 +28,7 @@ const TAB_SECTIONS: TabSection[] = [
       { id: 'recruitment', label: 'Tuy\u1ec3n d\u1ee5ng' },
       { id: 'pipeline', label: 'CV Pipeline' },
       { id: 'cvScored', label: 'CV \u0111\u00e3 ch\u1ea5m' },
-      { id: 'chatbotJD', label: 'Chatbot JD' },
+      { id: 'chatbotJD', label: 'Chỉnh sửa JD' },
     ],
   },
   {

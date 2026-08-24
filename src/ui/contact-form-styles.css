@@ -2044,6 +2044,37 @@ textarea:focus {
   font-size: 1rem;
 }
 
+.jd-chatbot-document-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.jd-chatbot-edit-icon {
+  display: inline-grid;
+  align-self: center;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid var(--border-light);
+  border-radius: 7px;
+  background: var(--bg-input);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.jd-chatbot-edit-icon.is-exit {
+  width: auto;
+  min-width: 48px;
+  padding: 0 9px;
+  color: #dc2626;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .jd-chatbot-icon-button {
   width: 28px;
   height: 28px;
@@ -2347,6 +2378,24 @@ textarea:focus {
 }
 
 .jd-chatbot-document::-webkit-scrollbar { display: none; }
+
+.jd-chatbot-document textarea {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.jd-chatbot-document textarea::-webkit-scrollbar { display: none; }
 
 .jd-chatbot-document h3 {
   margin: 18px 0 7px;
