@@ -2072,6 +2072,9 @@ textarea:focus {
   display: grid;
   gap: 7px;
   margin-top: 15px;
+  max-height: calc(5 * 42px + 4 * 7px);
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .jd-chatbot-file {
@@ -2171,6 +2174,24 @@ textarea:focus {
   line-height: 1;
 }
 
+.jd-chatbot-drawer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.jd-chatbot-drawer-refresh {
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-input);
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 6px 9px;
+}
+
 .jd-chatbot-context {
   max-width: 160px;
   overflow: hidden;
@@ -2187,7 +2208,13 @@ textarea:focus {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
   padding: 4px 1px 16px;
+}
+
+.jd-chatbot-messages::-webkit-scrollbar {
+  display: none;
 }
 
 .jd-chatbot-message {
@@ -2205,6 +2232,7 @@ textarea:focus {
   color: var(--text);
   font-size: 0.88rem;
   line-height: 1.5;
+  white-space: pre-line;
 }
 
 .jd-chatbot-message.user {
@@ -2255,13 +2283,24 @@ textarea:focus {
   font: inherit;
 }
 
-.jd-chatbot-document:empty::before {
-  content: 'Nội dung JD sẽ được hiển thị ở đây';
-  display: block;
-  padding-top: 18px;
+.jd-chatbot-company-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 8px;
   color: var(--text-muted);
-  font-size: 0.86rem;
-  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.jd-chatbot-company-option input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
 }
 
 .jd-chatbot-composer button,
@@ -2300,7 +2339,9 @@ textarea:focus {
   overflow-y: auto;
   min-height: 0;
   flex: 1;
-  padding: 14px 2px 10px;
+  padding: 14px 12px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, #111827 12%, var(--bg-input));
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
@@ -2351,6 +2392,22 @@ textarea:focus {
 
 .jd-chatbot-document p {
   margin: 0;
+}
+
+.jd-chatbot-empty-document {
+  margin: 0;
+  padding-top: 18px;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  text-align: center;
+}
+
+.jd-chatbot-document .jd-chatbot-changed-line {
+  border-radius: 5px;
+  background: color-mix(in srgb, #f59e0b 14%, transparent);
+  box-shadow: inset 3px 0 0 #f59e0b;
+  color: var(--text) !important;
+  padding-left: 10px;
 }
 
 .jd-chatbot-document ul {
