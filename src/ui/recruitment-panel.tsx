@@ -93,6 +93,8 @@ export default function RecruitmentPanel() {
   });
   const [showForm, setShowForm] = useState(false);
   const [draft, setDraft] = useState<JobDraft>(EMPTY_DRAFT);
+  const [isSavingJD, setIsSavingJD] = useState(false);
+  const [saveJDError, setSaveJDError] = useState('');
 
   useEffect(() => {
     if (!app || !roomId) return;
@@ -217,7 +219,12 @@ export default function RecruitmentPanel() {
 
   const submitJob = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSavingJD) return;
     if (!draft.title.trim() || !draft.summary.trim() || !draft.type.trim() || !draft.salary.trim() || !draft.req_professional.trim()) return;
+    if (!app || !roomId) {
+      setSaveJDError('Không thể lưu JD vì chưa kết nối được với Room Files.');
+      return;
+    }
 
     const newJob: Job = {
       title: draft.title.trim(),
@@ -235,14 +242,8 @@ export default function RecruitmentPanel() {
       contact_title: draft.contact_title.trim() || 'Không xác định',
     };
 
-    setJobsByDept(prev => ({
-      ...prev,
-      [department]: [...(prev[department] || []), newJob]
-    }));
-
-    if (app && roomId) {
-      const deptLabel = departments.find(d => d.id === department)?.label || department;
-      const content = `# TUYỂN DỤNG: ${newJob.title.toUpperCase()}
+    const deptLabel = departments.find(d => d.id === department)?.label || department;
+    const content = `# TUYỂN DỤNG: ${newJob.title.toUpperCase()}
 
 ***
 
@@ -303,14 +304,26 @@ _Đăng ngày: ${new Date().toISOString().slice(0, 10)}_
 
 <!-- SUMMARY: ${newJob.summary} -->
 `;
-      const normalizedTitle = newJob.title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
-      const fileName = `JD_${normalizedTitle.replace(/[^a-zA-Z0-9_ -]/g, '').trim().replace(/\s+/g, '_')}.md`;
-      createOrUpdateFile(app, `${roomId}/hr-miniapp/jds/${fileName}`, content)
-        .catch(console.error);
-    }
+    const normalizedTitle = newJob.title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
+    const fileName = `JD_${normalizedTitle.replace(/[^a-zA-Z0-9_ -]/g, '').trim().replace(/\s+/g, '_')}.md`;
 
-    setDraft(EMPTY_DRAFT);
-    setShowForm(false);
+    setIsSavingJD(true);
+    setSaveJDError('');
+    try {
+      await createOrUpdateFile(app, `${roomId}/hr-miniapp/jds/${fileName}`, content);
+      setJobsByDept(prev => ({
+        ...prev,
+        [department]: [...(prev[department] || []), newJob]
+      }));
+      setDraft(EMPTY_DRAFT);
+      setShowForm(false);
+    } catch (error: unknown) {
+      console.error('Failed to save JD to Room Files', error);
+      const message = error instanceof Error ? error.message : String(error);
+      setSaveJDError(`Không thể lưu JD vào Room Files: ${message}`);
+    } finally {
+      setIsSavingJD(false);
+    }
   };
 
   const addDepartment = () => {
@@ -476,8 +489,11 @@ _Đăng ngày: ${new Date().toISOString().slice(0, 10)}_
                 </div>
                 <div className="job-form-actions">
                   <button type="button" onClick={() => setShowForm(false)}>Hủy</button>
-                  <button type="submit">Lưu JD</button>
+                  <button type="submit" disabled={isSavingJD} aria-label={isSavingJD ? 'Đang lưu JD' : undefined}>
+                    {isSavingJD ? <span className="recruitment-save-spinner" aria-hidden="true" /> : 'Lưu JD'}
+                  </button>
                 </div>
+                {saveJDError && <p className="job-form-save-error" role="alert">{saveJDError}</p>}
               </form>
             )}
 
