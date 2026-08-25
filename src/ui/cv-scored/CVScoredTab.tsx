@@ -5,6 +5,7 @@ import { getKanbanColumnScrollDistance } from './kanban-scroll';
 import { getInviteEmailValidationError } from './invite-email-validation';
 import { getInviteMailButtonState } from './invite-mail-status';
 import { markInviteMailSent, wasInviteMailSent, INVITE_MAIL_SENT_FIELD_ID } from './invite-mail-persistence';
+import { canShowInviteMailButton, getCVColumnLabel, getCVColumnsForStages, getInterviewPendingStageId, type CVKanbanColumn } from './kanban-stages';
 import { restCall } from '../privos-rest';
 
 export interface CVProfile {
@@ -19,14 +20,6 @@ export interface CVProfile {
   customFields?: unknown;
   inviteMailSent?: boolean;
 }
-
-const CV_COLUMNS = [
-  { status: '02_Loai_CV', label: 'Loại', color: '#ef4444' },
-  { status: '03_Tiem_Nang', label: 'Tiềm năng', color: '#22c55e' },
-  { status: '05_Moi_Phong_Van', label: 'Mời phỏng vấn', color: '#eab308' },
-  { status: '06_Sai_JD', label: 'Sai JD', color: '#f59e0b' },
-  { status: '07_CV_Cu', label: 'CV cũ', color: '#9ca3af' },
-];
 
 function CVCard({ 
   cv, 
@@ -81,7 +74,7 @@ function CVCard({
                 }
                 return <span className="position-badge" style={badgeStyle}>{cv.category}</span>;
               })()}
-              {cv.status === '05_Moi_Phong_Van' && (
+              {canShowInviteMailButton(cv.status, isInviteSent) && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onInvite(cv); }}
                   className={inviteMailButton.className}
@@ -137,7 +130,7 @@ function CVColumn({
   onSelectDetail,
   isInviteSent
 }: { 
-  column: typeof CV_COLUMNS[0], 
+  column: CVKanbanColumn,
   cvs: CVProfile[], 
   listName: string,
   onMove: (id: string, newStatus: string) => void, 
@@ -217,6 +210,8 @@ export function CVBoard({
   isInviteSent: (id: string) => boolean
 }) {
   const boardRef = React.useRef<HTMLDivElement>(null);
+  const [isCollapsed, setIsCollapsed] = React.useState(true);
+  const columns = getCVColumnsForStages(board.stagesMap);
 
   const scrollOneColumn = (direction: -1 | 1) => {
     const container = boardRef.current;
@@ -229,10 +224,33 @@ export function CVBoard({
   };
 
   return (
-    <div className="cv-kanban-board" style={{ marginBottom: '40px' }}>
-      <div style={{ width: '100%', padding: '0 10px', marginBottom: '16px' }}>
+    <div className="cv-kanban-board" style={{ marginBottom: isCollapsed ? '16px' : '40px' }}>
+      <div style={{ width: '100%', padding: '0 10px', marginBottom: isCollapsed ? '6px' : '16px', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '8px' }}>
         <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: 'var(--text)' }}>{board.listName}</h3>
+        <button
+          type="button"
+          aria-label={isCollapsed ? `Xem list ${board.listName}` : `Ẩn list ${board.listName}`}
+          onClick={() => setIsCollapsed(collapsed => !collapsed)}
+          style={{ width: '24px', height: '24px', flex: '0 0 24px', border: '1px solid var(--border)', borderRadius: '50%', background: 'var(--bg-secondary, transparent)', color: 'var(--text-muted)', cursor: 'pointer', padding: 0, lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            style={{ display: 'block', transform: isCollapsed ? 'rotate(180deg)' : 'rotate(0deg)', transformOrigin: '50% 50%', transition: 'transform 160ms ease' }}
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
       </div>
+      {!isCollapsed && (
+        <>
       <div className="cv-kanban-nav-zone cv-kanban-nav-zone-left">
         <button
           type="button"
@@ -244,7 +262,7 @@ export function CVBoard({
         </button>
       </div>
       <div ref={boardRef} className="hr-kanban-container" style={{ display: 'flex', alignItems: 'stretch', gap: '24px', paddingBottom: '16px', overflowX: 'auto' }}>
-        {CV_COLUMNS.map(col => (
+        {columns.map(col => (
           <CVColumn 
             key={col.status} 
             column={col} 
@@ -267,6 +285,8 @@ export function CVBoard({
           ›
         </button>
       </div>
+        </>
+      )}
     </div>
   );
 }
@@ -390,11 +410,24 @@ export default function CVScoredTab() {
             customFields: updatedCustomFields,
           },
         });
+        const selectedBoard = boards.find((board) => board.cvs.some((cv) => cv._id === selectedCVForInvite._id));
+        const interviewPendingStageId = selectedBoard && getInterviewPendingStageId(selectedBoard.stagesMap);
+        if (interviewPendingStageId) {
+          await app.callServerTool({
+            name: 'privos.lists.moveItemToStage',
+            arguments: { itemId: selectedCVForInvite._id, stageId: interviewPendingStageId },
+          });
+        }
         setSentInviteCVIds((previous) => new Set(previous).add(selectedCVForInvite._id));
         setBoards((previous) => previous.map((board) => ({
           ...board,
           cvs: board.cvs.map((cv) => cv._id === selectedCVForInvite._id
-            ? { ...cv, customFields: updatedCustomFields, inviteMailSent: true }
+            ? {
+                ...cv,
+                customFields: updatedCustomFields,
+                inviteMailSent: true,
+                ...(interviewPendingStageId ? { status: '07_Chua_Phong_Van' } : {}),
+              }
             : cv),
         })));
       }
@@ -729,7 +762,7 @@ Trân trọng,
                 if (cvIndex !== -1) {
                   cleanName = cleanName.substring(cvIndex + 4);
                 }
-                cleanName = cleanName.replace(/([a-z])([A-Z])/g, '$1 $2').trim();
+                cleanName = cleanName.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim();
                 
                 let cleanPos = posName || '';
                 cleanPos = cleanPos.replace(/^SCREENING_/i, '').replace(/_/g, ' ');
@@ -863,7 +896,10 @@ Trân trọng,
                   Trạng thái Kanban
                 </span>
                 <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text)', marginTop: '4px' }}>
-                  {CV_COLUMNS.find(c => c.status === selectedCVForDetail.cv.status)?.label || selectedCVForDetail.cv.status}
+                  {getCVColumnLabel(
+                    boards.find((board) => board.cvs.some((cv) => cv._id === selectedCVForDetail.cv._id))?.stagesMap || {},
+                    selectedCVForDetail.cv.status,
+                  ) || selectedCVForDetail.cv.status}
                 </div>
               </div>
             </div>

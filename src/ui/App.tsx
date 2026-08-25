@@ -8,9 +8,10 @@ import LifecycleDashboard from './lifecycle/LifecycleDashboard';
 import PayrollTab from './payroll/PayrollTab';
 import BotDraftingTab from './bot-drafting-tab';
 import CVScoredTab from './cv-scored/CVScoredTab';
+import JDChatbotTab from './jd-chatbot-functional';
 import { ensureTemplatesExistGlobal } from './pipeline-service';
 
-type Tab = 'home' | 'recruitment' | 'pipeline' | 'cvScored' | 'lifecycle' | 'payroll' | 'botDrafting';
+type Tab = 'home' | 'recruitment' | 'pipeline' | 'cvScored' | 'chatbotJD' | 'lifecycle' | 'payroll' | 'botDrafting';
 type SectionId = 'hr' | 'admin';
 
 type TabSection = {
@@ -27,6 +28,7 @@ const TAB_SECTIONS: TabSection[] = [
       { id: 'recruitment', label: 'Tuy\u1ec3n d\u1ee5ng' },
       { id: 'pipeline', label: 'CV Pipeline' },
       { id: 'cvScored', label: 'CV \u0111\u00e3 ch\u1ea5m' },
+      { id: 'chatbotJD', label: 'Chỉnh sửa JD' },
     ],
   },
   {
@@ -74,7 +76,7 @@ function ThemedApp() {
   return (
     <ThemeProvider hostTheme={theme}>
       <div className="app-header">
-        <nav className="app-tabs" aria-label="Dashboard navigation">
+        <nav className="app-tabs" aria-label="Dashboard navigation" onMouseLeave={() => setOpenSection(null)}>
           <button
             type="button"
             className={`nav-primary-btn${tab === 'home' ? ' nav-primary-active' : ''}`}
@@ -91,7 +93,10 @@ function ThemedApp() {
             const isActive = isSectionActive(section);
 
             return (
-              <div className={`app-nav-section${isOpen ? ' app-nav-section-open' : ''}`} key={section.id}>
+              <div
+                className={`app-nav-section${isOpen ? ' app-nav-section-open' : ''}`}
+                key={section.id}
+              >
                 <button
                   type="button"
                   className={`nav-primary-btn${isOpen ? ' nav-primary-open' : ''}${isActive ? ' nav-primary-active' : ''}`}
@@ -109,7 +114,10 @@ function ThemedApp() {
                       type="button"
                       className={`tab-btn${tab === t.id ? ' tab-active' : ''}`}
                       tabIndex={isOpen ? 0 : -1}
-                      onClick={() => handleSelectTab(t.id)}
+                      onClick={() => {
+                        handleSelectTab(t.id);
+                        setOpenSection(null);
+                      }}
                     >
                       {t.label}
                     </button>
@@ -139,6 +147,12 @@ function ThemedApp() {
       {visitedTabs.has('cvScored') && (
         <div className={tab === 'cvScored' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'cvScored'}>
           <CVScoredTab />
+        </div>
+      )}
+
+      {visitedTabs.has('chatbotJD') && (
+        <div className={tab === 'chatbotJD' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'chatbotJD'}>
+          <JDChatbotTab />
         </div>
       )}
 
