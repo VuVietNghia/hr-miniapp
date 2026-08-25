@@ -108,6 +108,46 @@ test('exports all employees to a valid XLSX workbook with numeric salary cells',
   assert.equal(sheet?.E2?.t, 'n');
 });
 
+test('logs redacted PrivOS upload diagnostics when the host rejects an export', async () => {
+  const { app } = createAppMock();
+  const uploadError = Object.assign(new Error('Invalid folder'), {
+    code: 'INVALID_FOLDER',
+    statusCode: 400,
+  });
+  app.uploadFile = async () => {
+    throw uploadError;
+  };
+  const service = new PayrollExportService(app, 'room-1');
+  const originalConsoleError = console.error;
+  const logs: unknown[][] = [];
+  console.error = (...args: unknown[]) => logs.push(args);
+
+  try {
+    await assert.rejects(() => service.export(createRequest('xlsx')), /Invalid folder/u);
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0]?.[0], '[PayrollExport] PrivOS upload failed');
+
+  const diagnostic = logs[0]?.[1] as Record<string, unknown>;
+  assert.equal(diagnostic.fileName, 'Bang_Luong_Toan_Bo_20260821_090507.xlsx');
+  assert.equal(diagnostic.format, 'xlsx');
+  assert.equal(diagnostic.mimeType, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  assert.equal(diagnostic.folderId, 'payroll-export-folder');
+  assert.equal(diagnostic.duplicateAction, 'keep_both');
+  assert.ok(typeof diagnostic.payloadBytes === 'number' && diagnostic.payloadBytes > 0);
+  assert.ok(typeof diagnostic.base64Length === 'number' && diagnostic.base64Length > 0);
+  assert.deepEqual(diagnostic.error, {
+    name: 'Error',
+    message: 'Invalid folder',
+    code: 'INVALID_FOLDER',
+    statusCode: 400,
+  });
+  assert.doesNotMatch(JSON.stringify(diagnostic), /Nguyễn Minh An|0123456789/u);
+});
+
 test('rejects an export with no source employees before uploading', async () => {
   const { app, uploads } = createAppMock();
   const service = new PayrollExportService(app, 'room-1');

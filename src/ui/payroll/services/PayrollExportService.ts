@@ -83,14 +83,31 @@ export class PayrollExportService implements IPayrollExportService {
     }
 
     const folderId = await ensureFolderPath(this.app, this.roomId, EXPORT_FOLDER);
-    await this.app.uploadFile({
-      channelId: this.roomId,
-      fileName,
-      base64Data: this.toBase64(payload),
-      mimeType: this.mimeTypeFor(request.format),
-      folderId,
-      duplicateAction: 'keep_both',
-    });
+    const base64Data = this.toBase64(payload);
+    const mimeType = this.mimeTypeFor(request.format);
+
+    try {
+      await this.app.uploadFile({
+        channelId: this.roomId,
+        fileName,
+        base64Data,
+        mimeType,
+        folderId,
+        duplicateAction: 'keep_both',
+      });
+    } catch (error) {
+      console.error('[PayrollExport] PrivOS upload failed', {
+        fileName,
+        format: request.format,
+        mimeType,
+        folderId,
+        duplicateAction: 'keep_both',
+        payloadBytes: payload.byteLength,
+        base64Length: base64Data.length,
+        error: this.describeUploadError(error),
+      });
+      throw error;
+    }
 
     return {
       fileName,
@@ -229,6 +246,41 @@ export class PayrollExportService implements IPayrollExportService {
       binary += String.fromCharCode(...payload.subarray(index, index + chunkSize));
     }
     return btoa(binary);
+  }
+
+  private describeUploadError(error: unknown): {
+    name: string;
+    message: string;
+    code?: string;
+    statusCode?: number;
+  } {
+    if (!(error instanceof Error)) {
+      return {
+        name: typeof error,
+        message: typeof error === 'string' ? error : 'Unknown PrivOS upload error',
+      };
+    }
+
+    const errorWithDetails = error as Error & {
+      code?: unknown;
+      status?: unknown;
+      statusCode?: unknown;
+    };
+    const code = typeof errorWithDetails.code === 'string'
+      ? errorWithDetails.code
+      : undefined;
+    const statusCode = typeof errorWithDetails.statusCode === 'number'
+      ? errorWithDetails.statusCode
+      : typeof errorWithDetails.status === 'number'
+        ? errorWithDetails.status
+        : undefined;
+
+    return {
+      name: error.name,
+      message: error.message,
+      ...(code ? { code } : {}),
+      ...(statusCode !== undefined ? { statusCode } : {}),
+    };
   }
 
   private formatTimestamp(date: Date): string {
