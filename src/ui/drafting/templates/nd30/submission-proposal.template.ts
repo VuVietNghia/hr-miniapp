@@ -1,4 +1,4 @@
-import { DraftingTemplate } from '../../types';
+﻿import { DraftingTemplate } from '../../types';
 
 export const submissionProposalTemplate: DraftingTemplate = {
   id: 'submission-proposal',
@@ -9,7 +9,7 @@ export const submissionProposalTemplate: DraftingTemplate = {
   icon: '📑',
   description: 'Tờ trình trình cấp có thẩm quyền phê duyệt chủ trương, kinh phí hoặc phương án công tác chuẩn NĐ 30.',
   defaultData: {
-    companyName: 'CÔNG TY CỔ PHẦN CÔNG NGHỆ B.ARMY',
+    companyName: '[Tên công ty]',
     docCode: '12',
     subject: 'V/v phê duyệt chủ trương đầu tư nâng cấp hạ tầng máy chủ AI năm 2026',
     approver: 'Hội đồng Quản trị và Tổng Giám đốc Công ty',

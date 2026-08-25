@@ -5,6 +5,7 @@
 
 export * from './drafting/types';
 export * from './drafting/services/DraftingTemplateService';
+export * from './drafting/services/CompanyContextProvider';
 export * from './drafting/services/BuiltinTemplateProvider';
 export * from './drafting/services/DocumentDiffService';
 export * from './drafting/templates';

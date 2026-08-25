@@ -1,4 +1,4 @@
-import { DraftingTemplate } from '../../types';
+﻿import { DraftingTemplate } from '../../types';
 
 export const officialDispatchTemplate: DraftingTemplate = {
   id: 'official-dispatch',
@@ -9,7 +9,7 @@ export const officialDispatchTemplate: DraftingTemplate = {
   icon: '📨',
   description: 'Công văn trao đổi công việc, đề nghị phối hợp hoặc phúc đáp đối tác chuẩn thể thức Nghị định 30.',
   defaultData: {
-    companyName: 'CÔNG TY CỔ PHẦN CÔNG NGHỆ B.ARMY',
+    companyName: '[Tên công ty]',
     docCode: '88',
     subject: 'V/v phối hợp triển khai hạ tầng kết nối và bảo mật hệ thống năm 2026',
     recipientOrg: 'TẬP ĐOÀN VIỄN THÔNG VÀ CÔNG NGHỆ THÔNG TIN',
@@ -18,7 +18,7 @@ export const officialDispatchTemplate: DraftingTemplate = {
     draftingDept: 'Phòng Kỹ thuật & Hạ tầng',
     recipients: '- Như trên;\n- Ban Giám đốc (để b/c);\n- Lưu: VT, KT.'
   },
-  templateText: `| **{{companyName}}**<br>Số: {{docCode}}/{{year}}/BARMY-CV<br>V/v {{subject}} | **CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM**<br>**Độc lập - Tự do - Hạnh phúc** |
+  templateText: `| **{{companyName}}**<br>Số: {{docCode}}/{{year}}/{{companyCode}}-CV<br>V/v {{subject}} | **CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM**<br>**Độc lập - Tự do - Hạnh phúc** |
 | :---: | :---: |
 
 Kính gửi: **{{recipientOrg}}**
@@ -35,7 +35,7 @@ Nhằm bảo đảm tiến độ triển khai đồng bộ hạ tầng truyền 
 
 **2. Tiến độ và đầu mối liên hệ:**
 - Thời gian hoàn tất kiểm thử kết nối: Trước ngày 30/09/{{year}}.
-- Đầu mối phụ trách kỹ thuật của {{companyName}}: {{draftingDept}} (Điện thoại: 024.3888.9999 - Email: tech@barmy.vn).
+- Đầu mối phụ trách kỹ thuật của {{companyName}}: {{draftingDept}} (Điện thoại: 024.3888.9999 - Email: {{companyEmail}}).
 
 {{companyName}} rất mong nhận được sự quan tâm, phối hợp chặt chẽ của Quý đơn vị để công tác triển khai đạt hiệu quả cao nhất./.
 

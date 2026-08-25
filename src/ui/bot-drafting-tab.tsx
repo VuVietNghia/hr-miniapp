@@ -3,11 +3,12 @@ import { usePrivosApp, usePrivosContext, type McpApp } from '@privos/app-react';
 import {
   IDraftingTemplateProvider,
   BuiltinTemplateProvider,
+  CompanyContextProvider,
   buildDraftingRouterPrompt,
   buildDraftingAIPrompt,
   buildGenericDraftingAIPrompt
 } from './drafting-templates';
-import type { DraftingTemplate } from './drafting/types';
+import type { DraftingTemplate, ICompanyContextProvider } from './drafting/types';
 import { PipelineService } from './pipeline-service';
 import { MarkdownPathContextBuilder } from './cv-context-builder';
 import { createOrUpdateFile } from './privos-rest';
@@ -21,6 +22,7 @@ export interface BotDraftingTabProps {
   onLog?: (msg: string) => void;
   pipelineService?: PipelineService | null;
   templateProvider?: IDraftingTemplateProvider | null;
+  companyContextProvider?: ICompanyContextProvider | null;
 }
 
 export default function BotDraftingTab(props: BotDraftingTabProps) {
@@ -47,6 +49,12 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
     if (props.templateProvider) return props.templateProvider;
     return new BuiltinTemplateProvider();
   }, [props.templateProvider]);
+
+  const companyContextProvider = useMemo(() => {
+    if (props.companyContextProvider !== undefined) return props.companyContextProvider;
+    if (app && roomId) return new CompanyContextProvider(app, roomId);
+    return null;
+  }, [props.companyContextProvider, app, roomId]);
 
   const templates = useMemo(() => templateProvider.getTemplates(), [templateProvider]);
 
@@ -89,7 +97,7 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
   const handleAiAction = async () => {
     if (!userPrompt.trim() || isGenerating) return;
 
-    if (!pipelineService || !app || !roomId) {
+    if (!pipelineService || !app || !roomId || !companyContextProvider) {
       showToast('Chưa kết nối PrivOS. Vui lòng mở trong ứng dụng PrivOS.');
       return;
     }
@@ -98,6 +106,8 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
     onLog(`[AI DRAFTING] Bắt đầu xử lý pipeline 2 bước với prompt: "${userPrompt}"`);
 
     try {
+      const companyContext = await companyContextProvider.getContext();
+
       // BƯỚC 1: Phân loại ý định
       setPollingStatus('Bước 1/2: Đang phân loại yêu cầu...');
       const routerPrompt = buildDraftingRouterPrompt(templates, userPrompt);
@@ -114,10 +124,10 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
 
       if (matchedTemplate) {
         setPollingStatus(`Bước 2/2: Đang soạn thảo theo mẫu "${matchedTemplate.title}"...`);
-        generatorPrompt = buildDraftingAIPrompt(matchedTemplate, {}, 'custom', userPrompt, documentContent);
+        generatorPrompt = buildDraftingAIPrompt(matchedTemplate, {}, 'custom', userPrompt, documentContent, companyContext);
       } else {
         setPollingStatus('Bước 2/2: Đang soạn thảo văn bản tự do...');
-        generatorPrompt = buildGenericDraftingAIPrompt(userPrompt, documentContent);
+        generatorPrompt = buildGenericDraftingAIPrompt(userPrompt, documentContent, companyContext);
       }
       
       const aiResponse = await pipelineService.askAI(generatorPrompt, undefined, undefined, onLog);
@@ -349,7 +359,7 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
 
       <header className="hr-header-block">
         <div className="header-content">
-          <h2 className="hr-title">Bot Soạn Thảo (Zero-Shot AI)</h2>
+          <h2 className="hr-title">Bot Soạn Thảo</h2>
           <p className="hr-subtitle">Trợ lý AI tự động nhận diện yêu cầu, chọn biểu mẫu và soạn thảo văn bản chuẩn Nghị định 30.</p>
         </div>
         <div className="header-actions">

@@ -49,8 +49,6 @@ export function invalidateUiCache(): void {
 
 /** Handle an incoming MCP JSON-RPC request and return the result */
 export async function handleMcpMessage(method: string, _id: number, params: any): Promise<any> {
-	console.log(`[MCP INCOMING] method: ${method}, name: ${params?.name}`);
-
 	switch (method) {
 		case 'initialize':
 			return {

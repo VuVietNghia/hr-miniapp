@@ -27,6 +27,10 @@ export interface IDraftingTemplateProvider {
   getTemplatesByCategory(category: TemplateCategory | 'all'): DraftingTemplate[];
 }
 
+export interface ICompanyContextProvider {
+  getContext(): Promise<string>;
+}
+
 export type DiffTokenType = 'unchanged' | 'added' | 'removed';
 
 export interface DiffToken {

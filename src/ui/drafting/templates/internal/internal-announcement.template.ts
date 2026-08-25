@@ -1,4 +1,4 @@
-import { DraftingTemplate } from '../../types';;
+﻿import { DraftingTemplate } from '../../types';;
 
 export const internalAnnouncementTemplate: DraftingTemplate = {
   id: 'internal-announcement',
@@ -9,15 +9,15 @@ export const internalAnnouncementTemplate: DraftingTemplate = {
   icon: '📢',
   description: 'Thông báo toàn thể CBNV chuẩn thể thức văn bản hành chính công vụ.',
   defaultData: {
-    companyName: 'CÔNG TY CỔ PHẦN CÔNG NGHỆ B.ARMY',
+    companyName: '[Tên công ty]',
     announcementTitle: 'Lịch nghỉ Lễ Quốc khánh 02/09 và hoạt động Teambuilding năm 2026',
-    recipientGroup: 'Toàn thể Cán bộ Nhân viên Công ty B.Army',
+    recipientGroup: 'Toàn thể Cán bộ Nhân viên công ty',
     startDate: '01/09/2026',
     endDate: '03/09/2026',
     resumeDate: '04/09/2026',
     notes: '- Cán bộ nhân viên chủ động hoàn thành công việc tồn đọng trước kỳ nghỉ.\n- Bộ phận Kỹ thuật và Vận hành duy trì trực On-call 24/7 theo lịch phân công.\n- Chú ý ngắt các thiết bị điện và niêm phong văn phòng trước khi nghỉ.'
   },
-  templateText: `| **{{companyName}}**<br>Số: {{docNumber}}/{{year}}/TB-BARMY | **CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM**<br>**Độc lập - Tự do - Hạnh phúc** |
+  templateText: `| **{{companyName}}**<br>Số: {{docNumber}}/{{year}}/TB-{{companyCode}} | **CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM**<br>**Độc lập - Tự do - Hạnh phúc** |
 | :---: | :---: |
 
 # THÔNG BÁO

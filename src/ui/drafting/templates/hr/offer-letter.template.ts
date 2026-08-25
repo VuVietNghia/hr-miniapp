@@ -1,4 +1,4 @@
-import { DraftingTemplate } from '../../types';
+﻿import { DraftingTemplate } from '../../types';
 
 export const offerLetterTemplate: DraftingTemplate = {
   id: 'offer-letter',
@@ -7,9 +7,9 @@ export const offerLetterTemplate: DraftingTemplate = {
   categoryLabel: 'Ghi nhận & Thỏa thuận',
   track: 'modern_enterprise',
   icon: '✉️',
-  description: 'Thư mời nhận việc trang trọng gửi ứng viên trúng tuyển, chuẩn chính sách đãi ngộ B.Army.',
+  description: 'Thư mời nhận việc trang trọng gửi ứng viên trúng tuyển, chuẩn chính sách đãi ngộ của doanh nghiệp.',
   defaultData: {
-    companyName: 'CÔNG TY CỔ PHẦN CÔNG NGHỆ B.ARMY',
+    companyName: '[Tên công ty]',
     candidateName: 'Nguyễn Văn A',
     position: 'Senior Frontend Engineer',
     department: 'Phòng Kỹ thuật & Công nghệ',
@@ -17,14 +17,14 @@ export const offerLetterTemplate: DraftingTemplate = {
     probationSalary: '25.500.000 VNĐ / tháng',
     officialSalary: '30.000.000 VNĐ / tháng',
     probationDuration: '02 tháng (hưởng 85% lương chính thức)',
-    workLocation: 'Tầng 8, Tòa nhà B.Army Tower, Cầu Giấy, Hà Nội',
+    workLocation: 'Tầng 8, Tòa nhà [Trụ sở công ty], Cầu Giấy, Hà Nội',
     reportingTo: 'Trưởng phòng Kỹ thuật',
     replyDeadline: '10/08/2026'
   },
   templateText: `# THƯ MỜI NHẬN VIỆC (JOB OFFER LETTER)
 ### V/v Tuyển dụng nhân sự vị trí {{position}}
 
-**Số:** {{docNumber}}/{{year}}/OL-BARMY
+**Số:** {{docNumber}}/{{year}}/OL-{{companyCode}}
 **Hà Nội, ngày {{currentDate}}**
 
 ---
@@ -46,7 +46,7 @@ Ban Giám đốc và Phòng Nhân sự **{{companyName}}** trân trọng chúc m
 - **Mức lương thử việc:** **{{probationSalary}}**
 - **Mức lương chính thức (Gross):** **{{officialSalary}}**
 - **Đánh giá & Thưởng:** Thưởng KPI định kỳ theo quý, lương tháng 13 và thưởng Lễ Tết.
-- **Bảo hiểm & Phúc lợi:** Tham gia đầy đủ BHXH, BHYT, BHTN theo quy định; Gói bảo hiểm sức khỏe B.Army Care.
+- **Bảo hiểm & Phúc lợi:** Tham gia đầy đủ BHXH, BHYT, BHTN theo quy định; Gói bảo hiểm sức khỏe bảo hiểm sức khỏe theo chính sách công ty.
 
 **3. Xác nhận nhận việc:**
 Vui lòng phản hồi xác nhận đồng ý nhận việc bằng cách gửi email hoặc ký xác nhận văn bản này trước **17:00 ngày {{replyDeadline}}**.

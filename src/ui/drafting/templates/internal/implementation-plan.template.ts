@@ -1,4 +1,4 @@
-import { DraftingTemplate } from '../../types';
+﻿import { DraftingTemplate } from '../../types';
 
 export const implementationPlanTemplate: DraftingTemplate = {
   id: 'implementation-plan',
@@ -9,7 +9,7 @@ export const implementationPlanTemplate: DraftingTemplate = {
   icon: '📋',
   description: 'Kế hoạch triển khai dự án/chuyển đổi số chuẩn thể thức NĐ 30/2020/NĐ-CP (Khớp 100% định dạng Word chuẩn).',
   defaultData: {
-    companyName: 'CÔNG TY CỔ PHẦN CÔNG NGHỆ B.ARMY',
+    companyName: '[Tên công ty]',
     planCode: '03',
     subject: 'V/v triển khai Ứng dụng di động (App) phục vụ chăm sóc khách hàng năm 2026',
     draftingDept: 'Phòng Công nghệ thông tin',
@@ -19,7 +19,7 @@ export const implementationPlanTemplate: DraftingTemplate = {
     totalBudget: '5.000.000.000 đồng (năm tỷ đồng)',
     duration: '05 tháng'
   },
-  templateText: `| **{{companyName}}**<br>Số: {{planCode}}/{{year}}/KH-BARMY | **CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM**<br>**Độc lập - Tự do - Hạnh phúc** |
+  templateText: `| **{{companyName}}**<br>Số: {{planCode}}/{{year}}/KH-{{companyCode}} | **CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM**<br>**Độc lập - Tự do - Hạnh phúc** |
 | :---: | :---: |
 
 # KẾ HOẠCH
