@@ -2009,6 +2009,25 @@ textarea:focus {
   font-family: inherit;
 }
 
+.jd-chatbot-library-trigger:disabled,
+.jd-chatbot-preview-badge:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.jd-chatbot-edit-icon:disabled,
+.jd-chatbot-edit-icon[aria-disabled="true"],
+.jd-chatbot-chat-input:disabled,
+.jd-chatbot-company-option.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.jd-chatbot-edit-icon[aria-disabled="true"] {
+  pointer-events: none;
+  user-select: none;
+}
+
 .jd-chatbot-workspace {
   display: grid;
   grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.2fr);
