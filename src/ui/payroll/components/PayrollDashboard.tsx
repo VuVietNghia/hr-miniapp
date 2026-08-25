@@ -186,13 +186,6 @@ export function PayrollDashboard({
     [payrolls]
   );
 
-  // Test gửi request lên Backend
-  useEffect(() => {
-    app.callServerTool({ name: 'test_auth', arguments: { hello: 'world' } })
-      .then((res: any) => console.log('Test Auth Result:', res))
-      .catch((err: any) => console.error('Test Auth Error:', err));
-  }, [app]);
-
   const loadData = useCallback(async (isSilent = false) => {
     if (isRefreshingDataRef.current) return;
     isRefreshingDataRef.current = true;

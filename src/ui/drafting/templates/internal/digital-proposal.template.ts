@@ -1,4 +1,4 @@
-import { DraftingTemplate } from '../../types';
+﻿import { DraftingTemplate } from '../../types';
 
 export const digitalProposalTemplate: DraftingTemplate = {
   id: 'digital-proposal',
@@ -10,7 +10,7 @@ export const digitalProposalTemplate: DraftingTemplate = {
   description: 'Bản đề xuất giải pháp công nghệ, lộ trình và phân tích hiệu quả tài chính (ROI) hiện đại.',
   defaultData: {
     projectName: 'Ứng dụng AI vào Tự động hóa Quy trình Tuyển dụng & Quản trị Nhân sự',
-    preparedFor: 'Ban Giám đốc Công ty B.Army',
+    preparedFor: 'Ban Giám đốc công ty',
     preparedBy: 'Phòng Kỹ thuật & Sáng tạo Công nghệ',
     budgetEstimate: '850.000.000 VNĐ',
     timeline: '03 tháng (Q3 - Q4/2026)',

@@ -1,4 +1,4 @@
-import { DraftingTemplate } from '../../types';
+﻿import { DraftingTemplate } from '../../types';
 
 export const programTemplate: DraftingTemplate = {
   id: 'program',
@@ -9,10 +9,10 @@ export const programTemplate: DraftingTemplate = {
   icon: '📄',
   description: 'Mẫu Chương trình (Program) chuẩn thể thức Nghị định 30/2020/NĐ-CP.',
   defaultData: {
-    companyName: 'CÔNG TY CỔ PHẦN CÔNG NGHỆ B.ARMY',
+    companyName: '[Tên công ty]',
     docCode: '01'
   },
-  templateText: `| **{{companyName}}**<br>Số: {{docCode}}/{{year}}/BARMY<br>V/v nội dung | **CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM**<br>**Độc lập - Tự do - Hạnh phúc** |
+  templateText: `| **{{companyName}}**<br>Số: {{docCode}}/{{year}}/{{companyCode}}<br>V/v nội dung | **CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM**<br>**Độc lập - Tự do - Hạnh phúc** |
 | :---: | :---: |
 
 Kính gửi: Các phòng ban/Đơn vị liên quan

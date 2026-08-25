@@ -1,4 +1,4 @@
-import { DraftingTemplate } from '../../types';
+﻿import { DraftingTemplate } from '../../types';
 
 export const workReportTemplate: DraftingTemplate = {
   id: 'work-report',
@@ -9,7 +9,7 @@ export const workReportTemplate: DraftingTemplate = {
   icon: '📊',
   description: 'Báo cáo tổng kết tình hình thực hiện nhiệm vụ, kết quả và kiến nghị công tác chuẩn thể thức NĐ 30.',
   defaultData: {
-    companyName: 'CÔNG TY CỔ PHẦN CÔNG NGHỆ B.ARMY',
+    companyName: '[Tên công ty]',
     docCode: '45',
     reportTitle: 'Báo cáo kết quả công tác Quý III và Phương hướng nhiệm vụ Quý IV năm 2026',
     reportingDept: 'Phòng Vận hành & Phát triển Kinh doanh',
@@ -17,7 +17,7 @@ export const workReportTemplate: DraftingTemplate = {
     reporterName: 'Phạm Thu Trang',
     recipients: '- Ban Giám đốc (để b/c);\n- Các Phòng/Ban liên quan;\n- Lưu: VT, VH.'
   },
-  templateText: `| **{{companyName}}**<br>Số: {{docCode}}/{{year}}/BC-BARMY | **CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM**<br>**Độc lập - Tự do - Hạnh phúc** |
+  templateText: `| **{{companyName}}**<br>Số: {{docCode}}/{{year}}/BC-{{companyCode}} | **CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM**<br>**Độc lập - Tự do - Hạnh phúc** |
 | :---: | :---: |
 
 # BÁO CÁO

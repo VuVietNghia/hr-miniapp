@@ -1,4 +1,4 @@
-import { DraftingTemplate } from '../../types';;
+﻿import { DraftingTemplate } from '../../types';;
 
 export const probationContractTemplate: DraftingTemplate = {
   id: 'probation-contract',
@@ -9,10 +9,10 @@ export const probationContractTemplate: DraftingTemplate = {
   icon: '📝',
   description: 'Hợp đồng thử việc chuẩn theo Bộ luật Lao động 2019 và thể thức văn bản hiện đại.',
   defaultData: {
-    companyName: 'CÔNG TY CỔ PHẦN CÔNG NGHỆ B.ARMY',
+    companyName: '[Tên công ty]',
     companyRep: 'Trần Văn Giám Đốc',
     companyRole: 'Tổng Giám đốc',
-    companyAddress: 'Tầng 8, Tòa nhà B.Army Tower, Cầu Giấy, Hà Nội',
+    companyAddress: 'Tầng 8, Tòa nhà [Trụ sở công ty], Cầu Giấy, Hà Nội',
     candidateName: 'Nguyễn Văn A',
     dob: '01/01/1995',
     idCard: '001095012345',
@@ -25,7 +25,7 @@ export const probationContractTemplate: DraftingTemplate = {
     endDate: '15/10/2026',
     baseSalary: '25.500.000 VNĐ / tháng (85% mức lương chính thức)'
   },
-  templateText: `| **{{companyName}}**<br>Số: {{docNumber}}/{{year}}/HĐTV-BARMY | **CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM**<br>**Độc lập - Tự do - Hạnh phúc** |
+  templateText: `| **{{companyName}}**<br>Số: {{docNumber}}/{{year}}/HĐTV-{{companyCode}} | **CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM**<br>**Độc lập - Tự do - Hạnh phúc** |
 | :---: | :---: |
 
 # HỢP ĐỒNG THỬ VIỆC

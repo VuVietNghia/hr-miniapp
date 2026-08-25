@@ -1,4 +1,4 @@
-import { DraftingTemplate } from '../../types';;
+﻿import { DraftingTemplate } from '../../types';;
 
 export const salaryIncreaseDecisionTemplate: DraftingTemplate = {
   id: 'salary-increase-decision',
@@ -9,7 +9,7 @@ export const salaryIncreaseDecisionTemplate: DraftingTemplate = {
   icon: '🎖️',
   description: 'Quyết định hành chính chuẩn thể thức NĐ 30/2020/NĐ-CP về bổ nhiệm và điều chỉnh lương.',
   defaultData: {
-    companyName: 'CÔNG TY CỔ PHẦN CÔNG NGHỆ B.ARMY',
+    companyName: '[Tên công ty]',
     signerName: 'Trần Văn Giám Đốc',
     signerRole: 'TỔNG GIÁM ĐỐC',
     employeeName: 'Nguyễn Văn A',
@@ -21,7 +21,7 @@ export const salaryIncreaseDecisionTemplate: DraftingTemplate = {
     effectiveDate: '01/09/2026',
     reason: 'Hoàn thành xuất sắc các chỉ tiêu KPI và dẫn dắt thành công dự án trọng điểm.'
   },
-  templateText: `| **{{companyName}}**<br>Số: {{docNumber}}/{{year}}/QĐ-BARMY | **CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM**<br>**Độc lập - Tự do - Hạnh phúc** |
+  templateText: `| **{{companyName}}**<br>Số: {{docNumber}}/{{year}}/QĐ-{{companyCode}} | **CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM**<br>**Độc lập - Tự do - Hạnh phúc** |
 | :---: | :---: |
 
 # QUYẾT ĐỊNH

@@ -1,4 +1,4 @@
-import { DraftingTemplate } from '../../types';
+﻿import { DraftingTemplate } from '../../types';
 
 export const powerOfAttorneyTemplate: DraftingTemplate = {
   id: 'power-of-attorney',
@@ -9,7 +9,7 @@ export const powerOfAttorneyTemplate: DraftingTemplate = {
   icon: '⚖️',
   description: 'Văn bản ủy quyền đại diện ký kết hợp đồng, giải quyết thủ tục pháp lý hoặc điều hành công việc.',
   defaultData: {
-    companyName: 'CÔNG TY CỔ PHẦN CÔNG NGHỆ B.ARMY',
+    companyName: '[Tên công ty]',
     grantorName: 'Trần Văn Giám Đốc',
     grantorRole: 'Tổng Giám đốc - Người đại diện theo pháp luật',
     grantorId: '001080001111',
@@ -19,7 +19,7 @@ export const powerOfAttorneyTemplate: DraftingTemplate = {
     scopeOfAuthority: 'Được toàn quyền đại diện ký kết các Hợp đồng kinh tế, Hợp đồng cung cấp dịch vụ có giá trị dưới 1.000.000.000 VNĐ và điều hành các hoạt động tác nghiệp hàng ngày của Công ty trong thời gian Tổng Giám đốc đi công tác.',
     validUntil: '31/12/2026'
   },
-  templateText: `| **{{companyName}}**<br>Số: {{docNumber}}/{{year}}/GUQ-BARMY | **CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM**<br>**Độc lập - Tự do - Hạnh phúc** |
+  templateText: `| **{{companyName}}**<br>Số: {{docNumber}}/{{year}}/GUQ-{{companyCode}} | **CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM**<br>**Độc lập - Tự do - Hạnh phúc** |
 | :---: | :---: |
 
 # GIẤY ỦY QUYỀN

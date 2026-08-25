@@ -1,4 +1,4 @@
-import { DraftingTemplate, DraftingActionType } from '../types';
+﻿import { DraftingTemplate, DraftingActionType } from '../types';
 
 export function renderDraftingTemplate(
   template: DraftingTemplate | string,
@@ -36,7 +36,8 @@ export function buildDraftingAIPrompt(
   formData: Record<string, string>,
   actionType: DraftingActionType | string = 'full_generation',
   customPrompt?: string,
-  currentDocContent?: string
+  currentDocContent?: string,
+  companyContext?: string
 ): string {
   const mergedData = { ...template.defaultData, ...formData };
 
@@ -63,7 +64,7 @@ export function buildDraftingAIPrompt(
       break;
   }
 
-  return `Bạn là Trợ lý Soạn thảo Văn bản Hành chính & Doanh nghiệp cấp cao (B.Army Drafting AI Copilot).
+  return `${companyContext ? `${companyContext}\n` : ''}Bạn là Trợ lý Soạn thảo Văn bản Hành chính & Doanh nghiệp cấp cao (AI Copilot).
 
 THÔNG TIN MẪU VĂN BẢN:
 - Tên mẫu: ${template.title}
@@ -80,6 +81,8 @@ ${template.templateText}
 
 ${currentDocContent ? `NỘI DUNG VĂN BẢN HIỆN TẠI:\n"""\n${currentDocContent}\n"""\n` : ''}
 
+${buildCompanyContextInstruction(companyContext)}
+
 TÁC VỤ CẦN THỰC HIỆN:
 ${actionInstruction}
 
@@ -94,14 +97,17 @@ QUY TẮC BẮT BUỘC:
 
 export function buildGenericDraftingAIPrompt(
   userPrompt: string,
-  currentDocContent?: string
+  currentDocContent?: string,
+  companyContext?: string
 ): string {
-  return `Bạn là Trợ lý Soạn thảo Văn bản Hành chính & Doanh nghiệp cấp cao (B.Army Drafting AI Copilot).
+  return `${companyContext ? `${companyContext}\n` : ''}Bạn là Trợ lý Soạn thảo Văn bản Hành chính & Doanh nghiệp cấp cao (AI Copilot).
 
 YÊU CẦU TỪ NGƯỜI DÙNG (YÊU CẦU SOẠN TỰ DO):
 "${userPrompt}"
 
 ${currentDocContent ? `NỘI DUNG VĂN BẢN HIỆN TẠI:\n"""\n${currentDocContent}\n"""\n` : ''}
+
+${buildCompanyContextInstruction(companyContext)}
 
 TÁC VỤ CẦN THỰC HIỆN:
 1. Phân tích yêu cầu của người dùng để soạn thảo một văn bản hành chính/doanh nghiệp hoàn chỉnh từ con số 0.
@@ -166,9 +172,10 @@ export class DraftingTemplateService {
     formData: Record<string, string>,
     actionType: DraftingActionType | string = 'full_generation',
     customPrompt?: string,
-    currentDocContent?: string
+    currentDocContent?: string,
+    companyContext?: string
   ): string {
-    return buildDraftingAIPrompt(template, formData, actionType, customPrompt, currentDocContent);
+    return buildDraftingAIPrompt(template, formData, actionType, customPrompt, currentDocContent, companyContext);
   }
 
   public buildRouterPrompt(
@@ -180,8 +187,18 @@ export class DraftingTemplateService {
   
   public buildGenericPrompt(
     userPrompt: string,
-    currentDocContent?: string
+    currentDocContent?: string,
+    companyContext?: string
   ): string {
-    return buildGenericDraftingAIPrompt(userPrompt, currentDocContent);
+    return buildGenericDraftingAIPrompt(userPrompt, currentDocContent, companyContext);
   }
+}
+
+function buildCompanyContextInstruction(companyContext?: string): string {
+  if (!companyContext) return '';
+
+  return `QUY TẮC THÔNG TIN CÔNG TY:
+1. BẮT BUỘC đọc và chỉ sử dụng thông tin công ty từ tài liệu tham chiếu ở trên cho bên/cơ quan ban hành văn bản.
+2. Thông tin công ty trong tài liệu tham chiếu được ưu tiên hơn mọi dữ liệu công ty mặc định trong mẫu; không dùng dữ liệu công ty mặc định trong mẫu.
+3. Chỉ dùng các thông tin được nêu rõ trong tài liệu tham chiếu. Thiếu thông tin thì để dạng [Chưa có thông tin], không tự suy diễn.`;
 }

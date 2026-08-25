@@ -1,4 +1,4 @@
-import { DraftingTemplate } from '../../types';
+﻿import { DraftingTemplate } from '../../types';
 
 export const meetingMinutesTemplate: DraftingTemplate = {
   id: 'meeting-minutes',
@@ -9,14 +9,14 @@ export const meetingMinutesTemplate: DraftingTemplate = {
   icon: '✍️',
   description: 'Biên bản ghi nhận diễn biến, kết luận cuộc họp Ban Giám đốc hoặc Hội đồng chuyên môn.',
   defaultData: {
-    companyName: 'CÔNG TY CỔ PHẦN CÔNG NGHỆ B.ARMY',
+    companyName: '[Tên công ty]',
     meetingTitle: 'Họp rà soát tiến độ dự án chuyển đổi số Quý III và chuẩn bị kế hoạch kinh doanh Quý IV',
-    location: 'Phòng họp VIP 1, Tòa nhà B.Army Tower',
+    location: 'Phòng họp VIP 1, Tòa nhà [Trụ sở công ty]',
     chairperson: 'Ông Trần Văn Giám Đốc - Tổng Giám đốc',
     secretary: 'Bà Hoàng Kim Thư - Thư ký Ban Giám đốc',
     attendees: 'Ban Giám đốc, Trưởng các Phòng: CNTT, Kinh doanh, Marketing, Kế toán và Nhân sự.'
   },
-  templateText: `| **{{companyName}}**<br>Số: {{docNumber}}/{{year}}/BB-BARMY | **CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM**<br>**Độc lập - Tự do - Hạnh phúc** |
+  templateText: `| **{{companyName}}**<br>Số: {{docNumber}}/{{year}}/BB-{{companyCode}} | **CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM**<br>**Độc lập - Tự do - Hạnh phúc** |
 | :---: | :---: |
 
 # BIÊN BẢN CUỘC HỌP
