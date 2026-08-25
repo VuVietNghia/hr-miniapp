@@ -49,7 +49,7 @@ interface PayrollExportRow {
 const EXPORT_FOLDER = ['hr-miniapp', 'payroll', 'exports'];
 const CSV_MIME_TYPE = 'text/csv;charset=utf-8';
 const XLSX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-const EXPORT_HEADERS = [
+const EXPORT_HEADERS: string[] = [
   'Họ và Tên',
   'Vị trí',
   'Phòng ban',
@@ -60,7 +60,7 @@ const EXPORT_HEADERS = [
   'Mã số thuế',
   'Ngân hàng',
   'Số tài khoản',
-] as const;
+];
 
 export class PayrollExportService implements IPayrollExportService {
   constructor(
@@ -201,7 +201,9 @@ export class PayrollExportService implements IPayrollExportService {
   }
 
   private download(fileName: string, payload: Uint8Array, format: PayrollExportFormat): void {
-    const blob = new Blob([payload], { type: this.mimeTypeFor(format) });
+    const buffer = new ArrayBuffer(payload.byteLength);
+    new Uint8Array(buffer).set(payload);
+    const blob = new Blob([buffer], { type: this.mimeTypeFor(format) });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
