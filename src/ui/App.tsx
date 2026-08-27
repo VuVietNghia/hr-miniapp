@@ -10,6 +10,13 @@ import BotDraftingTab from './bot-drafting-tab';
 import CVScoredTab from './cv-scored/CVScoredTab';
 import JDChatbotTab from './jd-chatbot-functional';
 import { ensureTemplatesExistGlobal } from './pipeline-service';
+import { hasPayrollOwnerRole } from './payroll/access/owner-role-policy';
+import {
+  canSelectPayrollTab,
+  filterPayrollTab,
+  removePayrollFromVisited,
+  resolveTabAfterPayrollRevocation,
+} from './payroll/access/payroll-navigation-policy';
 
 type Tab = 'home' | 'recruitment' | 'pipeline' | 'cvScored' | 'chatbotJD' | 'lifecycle' | 'payroll' | 'botDrafting';
 type SectionId = 'hr' | 'admin';
@@ -44,10 +51,15 @@ const TAB_SECTIONS: TabSection[] = [
 
 function ThemedApp() {
   const app = usePrivosApp();
-  const { theme, roomId } = usePrivosContext();
+  const { theme, roomId, userRoles } = usePrivosContext();
   const [tab, setTab] = useState<Tab>('home');
   const [visitedTabs, setVisitedTabs] = useState<Set<Tab>>(() => new Set<Tab>(['home']));
   const [openSection, setOpenSection] = useState<SectionId | null>(null);
+  const canAccessPayroll = hasPayrollOwnerRole(userRoles);
+  const visibleTabSections = TAB_SECTIONS.map((section) => ({
+    ...section,
+    tabs: filterPayrollTab(section.tabs, userRoles),
+  }));
 
   useEffect(() => {
     if (app && roomId) {
@@ -61,7 +73,19 @@ function ThemedApp() {
     }
   }, [tab]);
 
+  useEffect(() => {
+    if (canAccessPayroll) return;
+
+    setTab((previousTab) => resolveTabAfterPayrollRevocation(previousTab));
+    setVisitedTabs((previousVisitedTabs) => {
+      if (!previousVisitedTabs.has('payroll')) return previousVisitedTabs;
+      return removePayrollFromVisited(previousVisitedTabs);
+    });
+  }, [canAccessPayroll]);
+
   const handleSelectTab = (selectedTab: Tab) => {
+    if (!canSelectPayrollTab(selectedTab, userRoles)) return;
+
     setTab(selectedTab);
     setVisitedTabs((prev) => {
       if (prev.has(selectedTab)) return prev;
@@ -88,7 +112,9 @@ function ThemedApp() {
             Company
           </button>
 
-          {TAB_SECTIONS.map((section) => {
+          {visibleTabSections.map((section) => {
+            if (section.tabs.length === 0) return null;
+
             const isOpen = openSection === section.id;
             const isActive = isSectionActive(section);
 
@@ -164,9 +190,9 @@ function ThemedApp() {
         </div>
       )}
 
-      {visitedTabs.has('payroll') && (
+      {canAccessPayroll && visitedTabs.has('payroll') && (
         <div className={tab === 'payroll' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'payroll'}>
-          <PayrollTab />
+          <PayrollTab key={roomId} roomId={roomId} userRoles={userRoles} />
         </div>
       )}
 

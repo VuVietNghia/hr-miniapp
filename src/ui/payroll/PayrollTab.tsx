@@ -1,17 +1,27 @@
 import React, { useMemo, useEffect, useState } from 'react';
-import { usePrivosApp, usePrivosContext } from '@privos/app-react';
+import { usePrivosApp } from '@privos/app-react';
 import { PayrollDashboard } from './components/PayrollDashboard';
 import { PayrollService } from './services/PayrollService';
 import { PayrollExportService } from './services/PayrollExportService';
 import { PrivOSLifecycleService } from '../lifecycle/services/PrivOSLifecycleService';
+import { canMountPayroll } from './access/payroll-mount-policy';
 
-export default function PayrollTab() {
+type PayrollTabProps = Readonly<{
+  roomId: string;
+  userRoles: readonly string[] | null | undefined;
+}>;
+
+export default function PayrollTab({ roomId, userRoles }: PayrollTabProps) {
   const app = usePrivosApp();
-  const { roomId } = usePrivosContext();
   const [schemaInitialized, setSchemaInitialized] = useState(false);
+  const canMount = canMountPayroll({
+    hasApp: app !== null,
+    roomId,
+    userRoles,
+  });
 
   const { payrollService, lifecycleService, payrollExportService } = useMemo(() => {
-    if (!app || !roomId) {
+    if (!canMount || !app) {
       return { payrollService: null, lifecycleService: null, payrollExportService: null };
     }
     
@@ -23,17 +33,36 @@ export default function PayrollTab() {
     const pes = new PayrollExportService(app, roomId);
     
     return { payrollService: ps, lifecycleService: ls, payrollExportService: pes };
-  }, [app, roomId]);
+  }, [app, roomId, canMount]);
 
   useEffect(() => {
-    if (payrollService) {
-      payrollService.initializeSchema()
-        .then(() => setSchemaInitialized(true))
-        .catch(err => console.error("Failed to init Payroll schema", err));
-    }
+    setSchemaInitialized(false);
+    if (!payrollService) return;
+
+    let cancelled = false;
+
+    payrollService.initializeSchema()
+      .then(() => {
+        if (!cancelled) {
+          setSchemaInitialized(true);
+        }
+      })
+      .catch(err => {
+        if (!cancelled) {
+          console.error("Failed to init Payroll schema", err);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [payrollService]);
 
-  if (!app || !roomId || !payrollService || !lifecycleService || !payrollExportService || !schemaInitialized) {
+  if (!canMount) {
+    return null;
+  }
+
+  if (!payrollService || !lifecycleService || !payrollExportService || !schemaInitialized) {
     return (
       <div className="p-4 flex justify-center items-center h-full">
         <div className="spinner"></div>
