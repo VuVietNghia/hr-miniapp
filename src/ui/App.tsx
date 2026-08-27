@@ -10,7 +10,7 @@ import BotDraftingTab from './bot-drafting-tab';
 import CVScoredTab from './cv-scored/CVScoredTab';
 import JDChatbotTab from './jd-chatbot-functional';
 import { ensureTemplatesExistGlobal } from './pipeline-service';
-import { hasPayrollOwnerRole } from './payroll/access/owner-role-policy';
+import { usePayrollAccessPolling } from './payroll/access/usePayrollAccessPolling';
 import {
   canSelectPayrollTab,
   filterPayrollTab,
@@ -55,10 +55,11 @@ function ThemedApp() {
   const [tab, setTab] = useState<Tab>('home');
   const [visitedTabs, setVisitedTabs] = useState<Set<Tab>>(() => new Set<Tab>(['home']));
   const [openSection, setOpenSection] = useState<SectionId | null>(null);
-  const canAccessPayroll = hasPayrollOwnerRole(userRoles);
+  const canAccessPayroll = usePayrollAccessPolling(app, userRoles);
+  const payrollAccessRoles = canAccessPayroll ? ['owner'] : [];
   const visibleTabSections = TAB_SECTIONS.map((section) => ({
     ...section,
-    tabs: filterPayrollTab(section.tabs, userRoles),
+    tabs: filterPayrollTab(section.tabs, payrollAccessRoles),
   }));
 
   useEffect(() => {
@@ -84,7 +85,7 @@ function ThemedApp() {
   }, [canAccessPayroll]);
 
   const handleSelectTab = (selectedTab: Tab) => {
-    if (!canSelectPayrollTab(selectedTab, userRoles)) return;
+    if (!canSelectPayrollTab(selectedTab, payrollAccessRoles)) return;
 
     setTab(selectedTab);
     setVisitedTabs((prev) => {
@@ -192,7 +193,7 @@ function ThemedApp() {
 
       {canAccessPayroll && visitedTabs.has('payroll') && (
         <div className={tab === 'payroll' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'payroll'}>
-          <PayrollTab key={roomId} roomId={roomId} userRoles={userRoles} />
+          <PayrollTab key={roomId} roomId={roomId} userRoles={payrollAccessRoles} />
         </div>
       )}
 
