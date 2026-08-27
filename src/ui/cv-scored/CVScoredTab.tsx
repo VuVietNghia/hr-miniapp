@@ -7,6 +7,8 @@ import { getInviteMailButtonState } from './invite-mail-status';
 import { markInviteMailSent, wasInviteMailSent, INVITE_MAIL_SENT_FIELD_ID } from './invite-mail-persistence';
 import { canShowInviteMailButton, getCVColumnLabel, getCVColumnsForStages, getInterviewPendingStageId, type CVKanbanColumn } from './kanban-stages';
 import { restCall } from '../privos-rest';
+import { usePolling } from '../hooks/usePolling';
+import { CVBoardPollingGuard } from './polling-sync';
 
 export interface CVProfile {
   _id: string;
@@ -443,6 +445,8 @@ export default function CVScoredTab() {
 
   const inviteDateRef = React.useRef<HTMLInputElement>(null);
   const requestRef = React.useRef(0);
+  const pollingGuardRef = React.useRef(new CVBoardPollingGuard());
+  const pendingPollRunnerRef = React.useRef<() => void>(() => {});
 
   useEffect(() => {
     if (!inviteModalOpen) return;
@@ -471,6 +475,7 @@ Trân trọng,
   const loadData = useCallback(async () => {
     if (!app || !roomId) return;
     const reqId = ++requestRef.current;
+    pollingGuardRef.current.beginForegroundRefresh();
     
     setLoading(true);
     try {
@@ -494,8 +499,9 @@ Trân trọng,
         });
       
       if (targetLists.length === 0) {
-        setBoards([]);
-        setLoading(false);
+        if (reqId === requestRef.current) {
+          setBoards([]);
+        }
         return;
       }
 
@@ -662,15 +668,89 @@ Trân trọng,
         setBoards([]);
       }
     } finally {
+      const shouldRunPendingPoll = pollingGuardRef.current.endForegroundRefresh();
       if (reqId === requestRef.current) {
         setLoading(false);
       }
+      if (shouldRunPendingPoll) pendingPollRunnerRef.current();
     }
   }, [app, roomId]);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
+
+  const pollStageMoves = useCallback(async (required = false) => {
+    if (!app || boards.length === 0) return;
+    const pollId = required
+      ? pollingGuardRef.current.requestPoll()
+      : pollingGuardRef.current.tryBeginPoll();
+    if (pollId === null) return;
+
+    try {
+      const snapshots = await Promise.all(boards.map(async (board) => {
+        const itemsRes: any = await app.callServerTool({
+          name: 'privos.lists.getItems',
+          arguments: { listId: board.listId }
+        });
+        const parsed = JSON.parse(itemsRes?.content?.[0]?.text || '[]');
+        const items = Array.isArray(parsed) ? parsed : (parsed.items || []);
+        const statuses = new Map<string, string>();
+
+        for (const item of items) {
+          const itemId = item._id || item.id;
+          const status = board.stagesMap[item.stageId]
+            || (typeof item.stage === 'string' ? item.stage : undefined)
+            || (typeof item.status === 'string' ? item.status : undefined);
+          if (itemId && status) statuses.set(itemId, status);
+        }
+
+        return { listId: board.listId, statuses };
+      }));
+
+      if (!pollingGuardRef.current.canApplyPoll(pollId)) return;
+      const snapshotsByList = new Map(snapshots.map(snapshot => [snapshot.listId, snapshot.statuses]));
+      setBoards((previous) => {
+        let boardsChanged = false;
+        const nextBoards = previous.map((board) => {
+          const statuses = snapshotsByList.get(board.listId);
+          if (!statuses) return board;
+
+          let cvsChanged = false;
+          const cvs = board.cvs.map((cv) => {
+            const status = statuses.get(cv._id);
+            if (!status || status === cv.status) return cv;
+            cvsChanged = true;
+            return { ...cv, status };
+          });
+
+          if (!cvsChanged) return board;
+          boardsChanged = true;
+          return { ...board, cvs };
+        });
+        return boardsChanged ? nextBoards : previous;
+      });
+    } catch (error) {
+      console.error('[CVScoredTab] Không thể đồng bộ stage CV:', error);
+    } finally {
+      if (pollingGuardRef.current.finishPoll(pollId)) {
+        pendingPollRunnerRef.current();
+      }
+    }
+  }, [app, boards]);
+
+  useEffect(() => {
+    pendingPollRunnerRef.current = () => { void pollStageMoves(); };
+  }, [pollStageMoves]);
+
+  usePolling(
+    pollStageMoves,
+    {
+      enabled: Boolean(app && roomId),
+      interval: 1000,
+      immediate: false,
+    }
+  );
 
   const handleMove = async (listId: string, id: string, newStatus: string) => {
     if (!app) return;
@@ -684,6 +764,9 @@ Trân trọng,
       stageId = Object.keys(board.stagesMap).find(k => board.stagesMap[k] === '10_CV_Cu');
     }
     if (!stageId) return;
+
+    if (!pollingGuardRef.current.beginMove(id)) return;
+    const previousStatus = board.cvs.find(cv => cv._id === id)?.status;
 
     // Optimistic
     setBoards(prev => prev.map(b => {
@@ -700,7 +783,17 @@ Trân trọng,
       });
     } catch (err) {
       console.error(err);
-      // Revert could be implemented here
+      if (previousStatus) {
+        setBoards(prev => prev.map(b => {
+          if (b.listId === listId) {
+            return { ...b, cvs: b.cvs.map(cv => cv._id === id ? { ...cv, status: previousStatus } : cv) };
+          }
+          return b;
+        }));
+      }
+    } finally {
+      pollingGuardRef.current.endMove(id);
+      void pollStageMoves(true);
     }
   };
 
@@ -712,7 +805,7 @@ Trân trọng,
 
   const handleRefresh = () => {
     setSearchQuery('');
-    loadData();
+    void loadData();
   };
 
   return (

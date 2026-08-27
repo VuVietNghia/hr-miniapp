@@ -1764,30 +1764,6 @@ REQUIRED:
                         {jdName}
                       </h3>
                     </div>
-                    {!isEditingJd && (
-                      <button
-                        type="button"
-                        className="pl-btn"
-                        onClick={() => {
-                          setJdEditDraft(jdContent);
-                          setIsEditingJd(true);
-                        }}
-                        title="Chỉnh sửa nội dung file JD"
-                        style={{
-                          padding: '3px 9px',
-                          fontSize: '12px',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          color: 'var(--accent)',
-                          borderColor: 'var(--accent)',
-                          borderRadius: '8px',
-                        }}
-                      >
-                        <span>✏️</span>
-                        <span>Sửa JD</span>
-                      </button>
-                    )}
                   </div>
                   <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'DM Mono, monospace' }}>
                     RoomFiles/hr-miniapp/jds/{jdName}
