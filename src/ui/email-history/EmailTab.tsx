@@ -5,9 +5,11 @@ import type {
   EmailHistoryDateRange,
   EmailHistoryFilter,
   EmailHistoryRecord,
+  EmailSourceFilter,
 } from '../../email-history/email-history-model';
 import { usePolling } from '../hooks/usePolling';
 import { EmailHistoryService } from './email-history-service';
+import { toggleEmailSourceFilter } from './email-mailbox-state';
 import { EmailMailboxView } from './EmailMailboxView';
 import './email-tab.css';
 
@@ -28,6 +30,7 @@ export default function EmailTab({ active }: EmailTabProps) {
   const [records, setRecords] = useState<EmailHistoryRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<EmailHistoryFilter>('all');
+  const [sourceFilter, setSourceFilter] = useState<EmailSourceFilter>('all');
   const [query, setQuery] = useState('');
   const [dateRange, setDateRange] = useState<EmailHistoryDateRange>({ from: '', to: '' });
   const [loading, setLoading] = useState(false);
@@ -42,6 +45,7 @@ export default function EmailTab({ active }: EmailTabProps) {
     setRecords([]);
     setSelectedId(null);
     setFilter('all');
+    setSourceFilter('all');
     setQuery('');
     setDateRange({ from: '', to: '' });
     setError(null);
@@ -100,7 +104,7 @@ export default function EmailTab({ active }: EmailTabProps) {
   };
 
   const handleConfirmDelete = async () => {
-    if (!service || !deleteCandidate || deletingId) return;
+    if (!service || !deleteCandidate || deletingId || retryingId === deleteCandidate.id) return;
     const itemId = deleteCandidate.id;
     setDeletingId(itemId);
     setError(null);
@@ -120,6 +124,7 @@ export default function EmailTab({ active }: EmailTabProps) {
       records={records}
       selectedId={selectedId}
       filter={filter}
+      sourceFilter={sourceFilter}
       query={query}
       dateRange={dateRange}
       loading={loading}
@@ -130,6 +135,9 @@ export default function EmailTab({ active }: EmailTabProps) {
       onSelect={setSelectedId}
       onBack={() => setSelectedId(null)}
       onFilterChange={setFilter}
+      onSourceFilterChange={source => {
+        setSourceFilter(current => toggleEmailSourceFilter(current, source));
+      }}
       onQueryChange={setQuery}
       onDateRangeChange={setDateRange}
       onRetry={record => { void handleRetry(record); }}

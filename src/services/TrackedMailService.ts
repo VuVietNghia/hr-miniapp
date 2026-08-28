@@ -10,9 +10,11 @@ export interface SendTrackedMailRequest extends StoredEmailPayload {
 }
 
 export interface EmailHistoryGateway {
-  createSending(
+  createResult(
     roomId: string,
     payload: StoredEmailPayload,
+    status: EmailHistoryRecord['status'],
+    error?: unknown,
     requestedBy?: string,
   ): Promise<EmailHistoryRecord>;
   markSent(roomId: string, itemId: string): Promise<EmailHistoryRecord>;
@@ -46,20 +48,24 @@ export class TrackedMailService {
 
   async send(request: SendTrackedMailRequest): Promise<EmailHistoryRecord> {
     const { roomId, requestedBy, ...payload } = request;
-    const sending = await this.history.createSending(roomId, payload, requestedBy);
 
     try {
       await this.delivery.queueMail(toDeliveryParams(payload));
-    } catch (error) {
-      await this.history.markFailed(roomId, sending.id, error);
-      throw error;
+    } catch (deliveryError) {
+      try {
+        await this.history.createResult(roomId, payload, 'failed', deliveryError, requestedBy);
+      } catch (historyError) {
+        const message = historyError instanceof Error ? historyError.message : String(historyError);
+        throw new Error(`Gửi email thất bại và không thể lưu lịch sử: ${message}`);
+      }
+      throw deliveryError;
     }
 
     try {
-      return await this.history.markSent(roomId, sending.id);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Email đã gửi nhưng không thể cập nhật lịch sử: ${message}`);
+      return await this.history.createResult(roomId, payload, 'sent', undefined, requestedBy);
+    } catch (historyError) {
+      const message = historyError instanceof Error ? historyError.message : String(historyError);
+      throw new Error(`Email đã gửi nhưng không thể lưu lịch sử: ${message}`);
     }
   }
 

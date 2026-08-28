@@ -39,9 +39,10 @@ const FIELD_DEFINITIONS = [
 ];
 
 const STAGE_DEFINITIONS = [
-  { name: EMAIL_HISTORY_STAGES.sending, color: '#d97706' },
-  { name: EMAIL_HISTORY_STAGES.sent, color: '#16a34a' },
-  { name: EMAIL_HISTORY_STAGES.failed, color: '#dc2626' },
+  { name: EMAIL_HISTORY_STAGES.interviewSent, color: '#16a34a' },
+  { name: EMAIL_HISTORY_STAGES.interviewFailed, color: '#dc2626' },
+  { name: EMAIL_HISTORY_STAGES.employeeSent, color: '#16a34a' },
+  { name: EMAIL_HISTORY_STAGES.employeeFailed, color: '#dc2626' },
 ];
 
 function parseToolResponse(response: unknown): any {
@@ -72,10 +73,24 @@ function resolveStageIds(stages: unknown): EmailHistoryStageIds | null {
     }
   }
 
-  const sending = idsByName.get(EMAIL_HISTORY_STAGES.sending);
-  const sent = idsByName.get(EMAIL_HISTORY_STAGES.sent);
-  const failed = idsByName.get(EMAIL_HISTORY_STAGES.failed);
-  return sending && sent && failed ? { sending, sent, failed } : null;
+  const interviewSent = idsByName.get(EMAIL_HISTORY_STAGES.interviewSent);
+  const interviewFailed = idsByName.get(EMAIL_HISTORY_STAGES.interviewFailed);
+  const employeeSent = idsByName.get(EMAIL_HISTORY_STAGES.employeeSent);
+  const employeeFailed = idsByName.get(EMAIL_HISTORY_STAGES.employeeFailed);
+  return interviewSent && interviewFailed && employeeSent && employeeFailed
+    ? { interviewSent, interviewFailed, employeeSent, employeeFailed }
+    : null;
+}
+
+function getStageId(
+  stages: EmailHistoryStageIds,
+  source: StoredEmailPayload['source'],
+  status: EmailHistoryRecord['status'],
+): string {
+  if (source === 'cv_scored') {
+    return status === 'sent' ? stages.interviewSent : stages.interviewFailed;
+  }
+  return status === 'sent' ? stages.employeeSent : stages.employeeFailed;
 }
 
 function normalizeError(error: unknown): string {
@@ -143,35 +158,45 @@ export class EmailHistoryRepository {
     return pending;
   }
 
-  async createSending(
+  async createResult(
     roomId: string,
     payload: StoredEmailPayload,
+    status: EmailHistoryRecord['status'],
+    error?: unknown,
     requestedBy?: string,
   ): Promise<EmailHistoryRecord> {
     const store = await this.ensureStore(roomId);
     const timestamp = this.now();
     const recordId = this.createRecordId();
+    const stageId = getStageId(store.stageIds, payload.source, status);
     const draft: EmailHistoryRecord = {
       id: '',
       listId: store.listId,
-      stageId: store.stageIds.sending,
-      status: 'sending',
+      stageId,
+      status,
       ...payload,
       createdAt: timestamp,
       updatedAt: timestamp,
+      sentAt: status === 'sent' ? timestamp : undefined,
       attemptCount: 1,
+      lastError: status === 'failed' ? normalizeError(error) : undefined,
       requestedBy,
     };
 
     const response = parseToolResponse(await this.callTool('privos.lists.createItem', {
       listId: store.listId,
       title: payload.subject,
-      stageId: store.stageIds.sending,
+      stageId,
       customFields: recordToCustomFields(draft, recordId),
     }));
     const item = response?.item || response;
     const itemId = getListId(item);
     if (!itemId) throw new Error('Không lấy được item ID sau khi tạo lịch sử email.');
+
+    await this.callTool('privos.lists.moveItemToStage', {
+      itemId,
+      stageId,
+    });
 
     return { ...draft, id: itemId };
   }
@@ -182,10 +207,11 @@ export class EmailHistoryRepository {
     const timestamp = this.now();
     return this.updateRecord({
       ...current,
-      stageId: store.stageIds.sent,
+      stageId: getStageId(store.stageIds, current.source, 'sent'),
       status: 'sent',
       updatedAt: timestamp,
       sentAt: timestamp,
+      attemptCount: current.attemptCount + 1,
       lastError: undefined,
     });
   }
@@ -195,9 +221,10 @@ export class EmailHistoryRepository {
     const current = await this.getRecord(roomId, itemId);
     return this.updateRecord({
       ...current,
-      stageId: store.stageIds.failed,
+      stageId: getStageId(store.stageIds, current.source, 'failed'),
       status: 'failed',
       updatedAt: this.now(),
+      attemptCount: current.attemptCount + 1,
       lastError: normalizeError(error),
     });
   }
@@ -206,21 +233,12 @@ export class EmailHistoryRepository {
     roomId: string,
     itemId: string,
   ): Promise<{ record: EmailHistoryRecord; payload: StoredEmailPayload }> {
-    const store = await this.ensureStore(roomId);
     const current = await this.getRecord(roomId, itemId);
     if (current.status !== 'failed') {
       throw new Error('Chỉ có thể gửi lại email ở trạng thái Gửi lỗi.');
     }
 
-    const record = await this.updateRecord({
-      ...current,
-      stageId: store.stageIds.sending,
-      status: 'sending',
-      updatedAt: this.now(),
-      attemptCount: current.attemptCount + 1,
-      lastError: undefined,
-    });
-    return { record, payload: recordPayload(record) };
+    return { record: current, payload: recordPayload(current) };
   }
 
   async getRecord(roomId: string, itemId: string): Promise<EmailHistoryRecord> {
@@ -281,17 +299,17 @@ export class EmailHistoryRepository {
       ? recordIdField.value
       : record.id;
 
-    await this.callTool('privos.lists.updateItem', {
-      itemId: record.id,
-      title: record.subject,
-      customFields: recordToCustomFields(record, recordId),
-    });
     if (currentItem.stageId !== record.stageId) {
       await this.callTool('privos.lists.moveItemToStage', {
         itemId: record.id,
         stageId: record.stageId,
       });
     }
+    await this.callTool('privos.lists.updateItem', {
+      itemId: record.id,
+      title: record.subject,
+      customFields: recordToCustomFields(record, recordId),
+    });
     return record;
   }
 

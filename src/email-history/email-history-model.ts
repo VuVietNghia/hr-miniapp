@@ -1,9 +1,10 @@
-export const EMAIL_HISTORY_LIST_NAME = '[Hệ thống] Email History';
+export const EMAIL_HISTORY_LIST_NAME = 'Quản lí Email';
 
 export const EMAIL_HISTORY_STAGES = {
-  sending: 'Đang gửi',
-  sent: 'Đã gửi',
-  failed: 'Gửi lỗi',
+  interviewSent: 'Email Phỏng vấn - Đã gửi',
+  interviewFailed: 'Email Phỏng vấn - Gửi lỗi',
+  employeeSent: 'Email Nhân sự - Đã gửi',
+  employeeFailed: 'Email Nhân sự - Gửi lỗi',
 } as const;
 
 export const EMAIL_HISTORY_FIELD_IDS = {
@@ -24,9 +25,10 @@ export const EMAIL_HISTORY_FIELD_IDS = {
   requestedBy: 'requested_by',
 } as const;
 
-export type EmailHistoryStatus = keyof typeof EMAIL_HISTORY_STAGES;
-export type EmailHistoryFilter = EmailHistoryStatus | 'all';
+export type EmailHistoryStatus = 'sent' | 'failed';
+export type EmailHistoryFilter = EmailHistoryStatus | 'all' | 'templates';
 export type EmailSource = 'cv_scored' | 'lifecycle';
+export type EmailSourceFilter = EmailSource | 'all';
 
 export interface EmailHistoryDateRange {
   from: string;
@@ -34,9 +36,10 @@ export interface EmailHistoryDateRange {
 }
 
 export interface EmailHistoryStageIds {
-  sending: string;
-  sent: string;
-  failed: string;
+  interviewSent: string;
+  interviewFailed: string;
+  employeeSent: string;
+  employeeFailed: string;
 }
 
 export interface StoredEmailPayload {
@@ -89,10 +92,14 @@ function readCustomFields(value: unknown): Map<string, unknown> {
   return fields;
 }
 
-function getStatus(stageId: string, stages: EmailHistoryStageIds): EmailHistoryStatus | null {
-  if (stageId === stages.sending) return 'sending';
-  if (stageId === stages.sent) return 'sent';
-  if (stageId === stages.failed) return 'failed';
+function getStatus(
+  stageId: string,
+  stages: EmailHistoryStageIds,
+): { status: EmailHistoryStatus; source: EmailSource } | null {
+  if (stageId === stages.interviewSent) return { status: 'sent', source: 'cv_scored' };
+  if (stageId === stages.interviewFailed) return { status: 'failed', source: 'cv_scored' };
+  if (stageId === stages.employeeSent) return { status: 'sent', source: 'lifecycle' };
+  if (stageId === stages.employeeFailed) return { status: 'failed', source: 'lifecycle' };
   return null;
 }
 
@@ -107,8 +114,8 @@ export function parseEmailHistoryItem(
   const stageId = asNonEmptyString(item.stageId);
   if (!id || !listId || !stageId) return null;
 
-  const status = getStatus(stageId, stages);
-  if (!status) return null;
+  const stageIdentity = getStatus(stageId, stages);
+  if (!stageIdentity) return null;
 
   const fields = readCustomFields(item.customFields);
   const source = asNonEmptyString(fields.get(EMAIL_HISTORY_FIELD_IDS.source));
@@ -123,7 +130,7 @@ export function parseEmailHistoryItem(
     || createdAt;
 
   if (
-    (source !== 'cv_scored' && source !== 'lifecycle')
+    source !== stageIdentity.source
     || !recipientName
     || !recipientEmail
     || !subject
@@ -146,8 +153,8 @@ export function parseEmailHistoryItem(
     id,
     listId,
     stageId,
-    status,
-    source,
+    status: stageIdentity.status,
+    source: stageIdentity.source,
     recipientName,
     recipientEmail,
     subject,
@@ -179,10 +186,14 @@ export function filterEmailHistory(
   filter: EmailHistoryFilter,
   query: string,
   dateRange: EmailHistoryDateRange = { from: '', to: '' },
+  sourceFilter: EmailSourceFilter = 'all',
 ): EmailHistoryRecord[] {
+  if (filter === 'templates') return [];
+
   const normalizedQuery = normalizeSearchText(query);
 
   return records.filter(record => {
+    if (sourceFilter !== 'all' && record.source !== sourceFilter) return false;
     if (filter !== 'all' && record.status !== filter) return false;
     if (dateRange.from || dateRange.to) {
       const updatedAt = new Date(record.updatedAt);
@@ -210,5 +221,5 @@ export function canRetryEmail(record: EmailHistoryRecord): boolean {
 }
 
 export function canDeleteEmail(record: EmailHistoryRecord): boolean {
-  return record.status !== 'sending';
+  return Boolean(record.id);
 }

@@ -33,10 +33,13 @@ function resolveStageIds(stages: unknown): EmailHistoryStageIds | null {
     }
   }
 
-  const sending = ids.get(EMAIL_HISTORY_STAGES.sending);
-  const sent = ids.get(EMAIL_HISTORY_STAGES.sent);
-  const failed = ids.get(EMAIL_HISTORY_STAGES.failed);
-  return sending && sent && failed ? { sending, sent, failed } : null;
+  const interviewSent = ids.get(EMAIL_HISTORY_STAGES.interviewSent);
+  const interviewFailed = ids.get(EMAIL_HISTORY_STAGES.interviewFailed);
+  const employeeSent = ids.get(EMAIL_HISTORY_STAGES.employeeSent);
+  const employeeFailed = ids.get(EMAIL_HISTORY_STAGES.employeeFailed);
+  return interviewSent && interviewFailed && employeeSent && employeeFailed
+    ? { interviewSent, interviewFailed, employeeSent, employeeFailed }
+    : null;
 }
 
 export class EmailHistoryService {

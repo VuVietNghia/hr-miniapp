@@ -90,6 +90,25 @@
   background: color-mix(in srgb, var(--accent) 9%, var(--bg-card, #fff));
 }
 
+.email-source-filter-button {
+  height: 32px;
+  padding: 0 11px;
+  border: 1px solid var(--email-border);
+  border-radius: 10px;
+  color: var(--text-muted);
+  background: var(--bg-card, #fff);
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.email-source-filter-button:hover,
+.email-source-filter-button.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, var(--bg-card, #fff));
+}
+
 .email-inline-error {
   margin: 12px 20px 0;
   padding: 10px 14px;
@@ -150,6 +169,9 @@
   font-size: 17px;
 }
 
+.email-filter-icon.is-sent { color: #16a34a; }
+.email-filter-icon.is-failed { color: #dc2626; }
+
 .email-status-filter strong {
   font-size: 12px;
 }
@@ -209,7 +231,6 @@
   font-size: 17px;
 }
 
-.email-row-status.is-sending { color: #d97706; }
 .email-row-status.is-sent { color: #16a34a; }
 .email-row-status.is-failed { color: #dc2626; }
 
@@ -314,7 +335,6 @@
   white-space: nowrap;
 }
 
-.email-status-badge.is-sending { color: #92400e; background: #fef3c7; }
 .email-status-badge.is-sent { color: #166534; background: #dcfce7; }
 .email-status-badge.is-failed { color: #991b1b; background: #fee2e2; }
 

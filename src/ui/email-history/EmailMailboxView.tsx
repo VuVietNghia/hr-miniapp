@@ -3,10 +3,10 @@ import {
   ArrowLeftOutlined,
   CalendarOutlined,
   CheckCircleOutlined,
-  ClockCircleOutlined,
   CloseOutlined,
   CloseCircleOutlined,
   DeleteOutlined,
+  FileTextOutlined,
   MailOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -19,6 +19,8 @@ import type {
   EmailHistoryFilter,
   EmailHistoryRecord,
   EmailHistoryStatus,
+  EmailSource,
+  EmailSourceFilter,
 } from '../../email-history/email-history-model';
 import { canDeleteEmail, canRetryEmail, filterEmailHistory } from '../../email-history/email-history-model';
 
@@ -26,6 +28,7 @@ export interface EmailMailboxViewProps {
   records: EmailHistoryRecord[];
   selectedId: string | null;
   filter: EmailHistoryFilter;
+  sourceFilter: EmailSourceFilter;
   query: string;
   dateRange: EmailHistoryDateRange;
   loading: boolean;
@@ -36,6 +39,7 @@ export interface EmailMailboxViewProps {
   onSelect: (id: string) => void;
   onBack: () => void;
   onFilterChange: (filter: EmailHistoryFilter) => void;
+  onSourceFilterChange: (source: EmailSource) => void;
   onQueryChange: (query: string) => void;
   onDateRangeChange: (dateRange: EmailHistoryDateRange) => void;
   onRetry: (record: EmailHistoryRecord) => void;
@@ -45,22 +49,20 @@ export interface EmailMailboxViewProps {
 }
 
 const STATUS_LABELS: Record<EmailHistoryStatus, string> = {
-  sending: 'Đang gửi',
   sent: 'Đã gửi',
   failed: 'Gửi lỗi',
 };
 
 const STATUS_ICONS: Record<EmailHistoryStatus, ReactNode> = {
-  sending: <ClockCircleOutlined />,
   sent: <CheckCircleOutlined />,
   failed: <CloseCircleOutlined />,
 };
 
 const FILTERS: Array<{ id: EmailHistoryFilter; label: string; icon: ReactNode }> = [
   { id: 'all', label: 'Tất cả', icon: <MailOutlined /> },
-  { id: 'sending', label: STATUS_LABELS.sending, icon: STATUS_ICONS.sending },
   { id: 'sent', label: STATUS_LABELS.sent, icon: STATUS_ICONS.sent },
   { id: 'failed', label: STATUS_LABELS.failed, icon: STATUS_ICONS.failed },
+  { id: 'templates', label: 'Mẫu email', icon: <FileTextOutlined /> },
 ];
 
 function toPlainText(html: string): string {
@@ -160,6 +162,7 @@ export function EmailMailboxView({
   records,
   selectedId,
   filter,
+  sourceFilter,
   query,
   dateRange,
   loading,
@@ -170,6 +173,7 @@ export function EmailMailboxView({
   onSelect,
   onBack,
   onFilterChange,
+  onSourceFilterChange,
   onQueryChange,
   onDateRangeChange,
   onRetry,
@@ -181,13 +185,16 @@ export function EmailMailboxView({
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
   const [draftDateRange, setDraftDateRange] = useState<EmailHistoryDateRange>(dateRange);
   const [dateFilterError, setDateFilterError] = useState<string | null>(null);
-  const visibleRecords = filterEmailHistory(records, filter, query, dateRange);
+  const sourceRecords = sourceFilter === 'all'
+    ? records
+    : records.filter(record => record.source === sourceFilter);
+  const visibleRecords = filterEmailHistory(records, filter, query, dateRange, sourceFilter);
   const selected = records.find(record => record.id === selectedId) || null;
   const counts = {
-    all: records.length,
-    sending: records.filter(record => record.status === 'sending').length,
-    sent: records.filter(record => record.status === 'sent').length,
-    failed: records.filter(record => record.status === 'failed').length,
+    all: sourceRecords.length,
+    sent: sourceRecords.filter(record => record.status === 'sent').length,
+    failed: sourceRecords.filter(record => record.status === 'failed').length,
+    templates: 0,
   };
 
   return (
@@ -223,6 +230,26 @@ export function EmailMailboxView({
               >
                 <CalendarOutlined />
               </button>
+              <button
+                type="button"
+                className={sourceFilter === 'cv_scored'
+                  ? 'email-source-filter-button is-active'
+                  : 'email-source-filter-button'}
+                aria-pressed={sourceFilter === 'cv_scored'}
+                onClick={() => onSourceFilterChange('cv_scored')}
+              >
+                Phỏng vấn
+              </button>
+              <button
+                type="button"
+                className={sourceFilter === 'lifecycle'
+                  ? 'email-source-filter-button is-active'
+                  : 'email-source-filter-button'}
+                aria-pressed={sourceFilter === 'lifecycle'}
+                onClick={() => onSourceFilterChange('lifecycle')}
+              >
+                Nhân sự
+              </button>
               <label className="email-search">
                 <SearchOutlined aria-hidden="true" />
                 <input
@@ -247,7 +274,14 @@ export function EmailMailboxView({
                   title={filtersCollapsed ? option.label : undefined}
                   onClick={() => onFilterChange(option.id)}
                 >
-                  <span className="email-filter-icon" aria-hidden="true">{option.icon}</span>
+                  <span
+                    className={option.id === 'sent' || option.id === 'failed'
+                      ? `email-filter-icon is-${option.id}`
+                      : 'email-filter-icon'}
+                    aria-hidden="true"
+                  >
+                    {option.icon}
+                  </span>
                   <span className="email-filter-label">{option.label}</span>
                   <strong>{counts[option.id]}</strong>
                 </button>
@@ -321,7 +355,7 @@ export function EmailMailboxView({
                 <button
                   type="button"
                   className="email-action-btn is-danger"
-                  disabled={deletingId === selected.id}
+                  disabled={deletingId === selected.id || retryingId === selected.id}
                   onClick={() => onRequestDelete(selected)}
                 >
                   <DeleteOutlined />
@@ -344,7 +378,7 @@ export function EmailMailboxView({
             </header>
 
             <dl className="email-detail-metadata">
-              <div><dt>Nguồn</dt><dd>CV đã chấm</dd></div>
+              <div><dt>Nguồn</dt><dd>{selected.source === 'cv_scored' ? 'CV đã chấm' : 'Hồ sơ NS'}</dd></div>
               {selected.jdName && <div><dt>JD</dt><dd>{selected.jdName}</dd></div>}
               <div><dt>Số lần gửi</dt><dd>{selected.attemptCount}</dd></div>
               <div><dt>Cập nhật</dt><dd>{formatTimestamp(selected.updatedAt)}</dd></div>

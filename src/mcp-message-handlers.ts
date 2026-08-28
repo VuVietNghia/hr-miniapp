@@ -195,8 +195,8 @@ export async function handleMcpMessage(method: string, _id: number, params: any)
 				}
 				
 				if (args.roomId || args.source) {
-					if (!args.roomId || args.source !== 'cv_scored') {
-						throw new Error('Tracked mail requires roomId and source=cv_scored in phase one');
+					if (!args.roomId || (args.source !== 'cv_scored' && args.source !== 'lifecycle')) {
+						throw new Error('Tracked mail requires roomId and a supported source');
 					}
 					const record = await trackedMailService.send({
 						roomId: args.roomId,
