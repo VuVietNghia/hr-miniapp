@@ -9,6 +9,7 @@ import { canShowInviteMailButton, getCVColumnLabel, getCVColumnsForStages, getIn
 import { restCall } from '../privos-rest';
 import { usePolling } from '../hooks/usePolling';
 import { CVBoardPollingGuard } from './polling-sync';
+import { buildTrackedInviteEmailRequest } from './invite-email-request';
 
 export interface CVProfile {
   _id: string;
@@ -384,7 +385,7 @@ export default function CVScoredTab() {
   });
 
   const handleSendInviteEmail = async () => {
-    if (!app) return;
+    if (!app || !roomId || !selectedCVForInvite) return;
     const targetEmail = inviteEmail.trim();
 
     if (inviteValidationError) {
@@ -394,45 +395,54 @@ export default function CVScoredTab() {
 
     setIsSendingInvite(true);
     try {
+      const selectedBoard = boards.find((board) =>
+        board.cvs.some((cv) => cv._id === selectedCVForInvite._id),
+      );
+      if (!selectedBoard) {
+        throw new Error('Không tìm thấy đợt tuyển dụng của CV này.');
+      }
+
       await app.callServerTool({
         name: 'hrm.mail.send',
-        arguments: {
+        arguments: buildTrackedInviteEmailRequest({
+          roomId,
+          cvItemId: selectedCVForInvite._id,
+          cvListId: selectedBoard.listId,
+          jdName: selectedBoard.listName,
           toName: inviteCandidateName || 'Ứng viên',
           toEmail: targetEmail,
           subject: inviteSubject,
-          htmlContent: inviteEmailBody.replace(/\n/g, '<br/>')
-        }
+          body: inviteEmailBody,
+        }),
       });
-      if (selectedCVForInvite) {
-        const updatedCustomFields = markInviteMailSent(selectedCVForInvite.customFields);
-        await restCall(app, 'POST', 'items.update', {
-          body: {
-            itemId: selectedCVForInvite._id,
-            name: selectedCVForInvite.name,
-            customFields: updatedCustomFields,
-          },
+
+      const updatedCustomFields = markInviteMailSent(selectedCVForInvite.customFields);
+      await restCall(app, 'POST', 'items.update', {
+        body: {
+          itemId: selectedCVForInvite._id,
+          name: selectedCVForInvite.name,
+          customFields: updatedCustomFields,
+        },
+      });
+      const interviewPendingStageId = getInterviewPendingStageId(selectedBoard.stagesMap);
+      if (interviewPendingStageId) {
+        await app.callServerTool({
+          name: 'privos.lists.moveItemToStage',
+          arguments: { itemId: selectedCVForInvite._id, stageId: interviewPendingStageId },
         });
-        const selectedBoard = boards.find((board) => board.cvs.some((cv) => cv._id === selectedCVForInvite._id));
-        const interviewPendingStageId = selectedBoard && getInterviewPendingStageId(selectedBoard.stagesMap);
-        if (interviewPendingStageId) {
-          await app.callServerTool({
-            name: 'privos.lists.moveItemToStage',
-            arguments: { itemId: selectedCVForInvite._id, stageId: interviewPendingStageId },
-          });
-        }
-        setSentInviteCVIds((previous) => new Set(previous).add(selectedCVForInvite._id));
-        setBoards((previous) => previous.map((board) => ({
-          ...board,
-          cvs: board.cvs.map((cv) => cv._id === selectedCVForInvite._id
-            ? {
-                ...cv,
-                customFields: updatedCustomFields,
-                inviteMailSent: true,
-                ...(interviewPendingStageId ? { status: '07_Chua_Phong_Van' } : {}),
-              }
-            : cv),
-        })));
       }
+      setSentInviteCVIds((previous) => new Set(previous).add(selectedCVForInvite._id));
+      setBoards((previous) => previous.map((board) => ({
+        ...board,
+        cvs: board.cvs.map((cv) => cv._id === selectedCVForInvite._id
+          ? {
+              ...cv,
+              customFields: updatedCustomFields,
+              inviteMailSent: true,
+              ...(interviewPendingStageId ? { status: '07_Chua_Phong_Van' } : {}),
+            }
+          : cv),
+      })));
       alert(`Đã gửi email mời phỏng vấn thành công tới ${targetEmail}!`);
       setInviteModalOpen(false);
     } catch (err: any) {

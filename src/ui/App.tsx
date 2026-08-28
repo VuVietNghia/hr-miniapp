@@ -9,6 +9,7 @@ import PayrollTab from './payroll/PayrollTab';
 import BotDraftingTab from './bot-drafting-tab';
 import CVScoredTab from './cv-scored/CVScoredTab';
 import JDChatbotTab from './jd-chatbot-functional';
+import EmailTab from './email-history/EmailTab';
 import { ensureTemplatesExistGlobal } from './pipeline-service';
 import { usePayrollAccessPolling } from './payroll/access/usePayrollAccessPolling';
 import {
@@ -18,7 +19,7 @@ import {
   resolveTabAfterPayrollRevocation,
 } from './payroll/access/payroll-navigation-policy';
 
-type Tab = 'home' | 'recruitment' | 'pipeline' | 'cvScored' | 'chatbotJD' | 'lifecycle' | 'payroll' | 'botDrafting';
+type Tab = 'home' | 'email' | 'recruitment' | 'pipeline' | 'cvScored' | 'chatbotJD' | 'lifecycle' | 'payroll' | 'botDrafting';
 type SectionId = 'hr' | 'admin';
 
 type TabSection = {
@@ -113,6 +114,17 @@ function ThemedApp() {
             Company
           </button>
 
+          <button
+            type="button"
+            className={`nav-primary-btn${tab === 'email' ? ' nav-primary-active' : ''}`}
+            onClick={() => {
+              handleSelectTab('email');
+              setOpenSection(null);
+            }}
+          >
+            Email
+          </button>
+
           {visibleTabSections.map((section) => {
             if (section.tabs.length === 0) return null;
 
@@ -159,6 +171,11 @@ function ThemedApp() {
       <div className={tab === 'home' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'home'}>
         <CompanyHome />
       </div>
+      {visitedTabs.has('email') && (
+        <div className={tab === 'email' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'email'}>
+          <EmailTab active={tab === 'email'} />
+        </div>
+      )}
       {visitedTabs.has('recruitment') && (
         <div className={tab === 'recruitment' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'recruitment'}>
           <RecruitmentPanel />

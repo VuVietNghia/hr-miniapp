@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { EmployeeProfile } from '../types';
-import { usePrivosApp } from '@privos/app-react';
+import { usePrivosApp, usePrivosContext } from '@privos/app-react';
 import { useEmployeeEmailTemplateProvider } from '../di/EmployeeEmailTemplateContext';
 import { isValidEmailAddress } from '../../../utils/email-validation';
 
@@ -10,8 +10,30 @@ interface EmailComposerModalProps {
   profile: EmployeeProfile;
 }
 
+export function buildLifecycleMailArguments({
+  roomId,
+  profile,
+  subject,
+  content,
+}: {
+  roomId: string;
+  profile: Pick<EmployeeProfile, 'name' | 'email'>;
+  subject: string;
+  content: string;
+}) {
+  return {
+    toName: profile.name || 'Nhân viên',
+    toEmail: profile.email?.trim() || '',
+    subject,
+    htmlContent: content.replace(/\n/g, '<br/>'),
+    roomId,
+    source: 'lifecycle' as const,
+  };
+}
+
 export function EmailComposerModal({ isOpen, onClose, profile }: EmailComposerModalProps) {
   const app = usePrivosApp();
+  const { roomId } = usePrivosContext();
   const templateProvider = useEmployeeEmailTemplateProvider();
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [subject, setSubject] = useState<string>('');
@@ -46,17 +68,16 @@ export function EmailComposerModal({ isOpen, onClose, profile }: EmailComposerMo
       alert('Hồ sơ nhân sự chưa có email hợp lệ. Vui lòng cập nhật email trước khi gửi.');
       return;
     }
+    if (!roomId) {
+      alert('Không xác định được Room để lưu lịch sử email.');
+      return;
+    }
 
     setIsSending(true);
     try {
       await app.callServerTool({
         name: 'hrm.mail.send',
-        arguments: {
-          toName: profile.name || 'Ứng viên',
-          toEmail: targetEmail,
-          subject: subject,
-          htmlContent: content.replace(/\n/g, '<br/>'),
-        }
+        arguments: buildLifecycleMailArguments({ roomId, profile, subject, content }),
       });
 
       alert(`Đã gửi email thành công tới ${targetEmail}!`);

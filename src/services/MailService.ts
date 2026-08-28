@@ -34,16 +34,8 @@ export class MailService {
     const publicKey = process.env.EMAILJS_PUBLIC_KEY;
     const privateKey = process.env.EMAILJS_PRIVATE_KEY;
 
-    console.log('[MailService DEBUG] Env vars:', {
-      serviceId,
-      templateId,
-      publicKey: publicKey ? '***' : undefined,
-      privateKey: privateKey ? '***' : undefined
-    });
-
     if (!serviceId || !templateId || !publicKey) {
-      console.warn('[MailService] Thiếu biến môi trường EmailJS (EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, hoặc EMAILJS_PUBLIC_KEY). Bỏ qua gửi email thực tế.');
-      return;
+      throw new Error('Thiếu biến môi trường EmailJS (EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, hoặc EMAILJS_PUBLIC_KEY).');
     }
 
     const payload: any = {
