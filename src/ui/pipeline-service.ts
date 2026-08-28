@@ -8,6 +8,12 @@ import cvEvaluatorSkillRaw from './data/cv-evaluator-skill.md?raw';
 import jdTemplateRaw from './data/jd_template.md?raw';
 import jdGeneratorSkillRaw from './data/jd-generator-skill.md?raw';
 import { buildCandidateMarkdownFileName, extractCandidateNameFromMarkdown, formatKanbanItemTitle } from './pipeline-candidate-name';
+import {
+  reconcileMarkdownAssessment,
+  validateCvAssessment,
+  validateMarkdownAssessment,
+  type CvAssessmentInput,
+} from './cv-scoring-policy';
 
 const CV_SCREENING_SYSTEM_DIRECTIVES = `<system_directives>
   <role>
@@ -33,6 +39,7 @@ export interface CVFile {
   status?: ProcessingStatus['status'];
   score?: number;
   category?: string;
+  jobFamily?: string;
   reason?: string;
   errorMsg?: string;
   normalizedName?: string;
@@ -48,6 +55,7 @@ export interface ProcessingStatus {
   status: 'pending' | 'uploading' | 'renaming' | 'scoring' | 'completed' | 'error';
   score?: number;
   category?: string;
+  jobFamily?: string;
   reason?: string;
   errorMsg?: string;
   markdownContent?: string;
@@ -453,6 +461,7 @@ export class PipelineService {
       const processorPrompt = `${CV_SCREENING_SYSTEM_DIRECTIVES}
 <task_payload>
 @Files:${this.roomId}/hr-miniapp/skills/cv-evaluator-skill.md
+@Files:${this.roomId}/hr-miniapp/skills/cv_md_template.md
 Hãy dùng skill cv-evaluator ở trên để chấm CV sau đây: @Files:${this.roomId}/${cv.name}
 
 THÔNG TIN HỆ THỐNG HIỆN TẠI:
@@ -460,16 +469,8 @@ THÔNG TIN HỆ THỐNG HIỆN TẠI:
 - Tháng hiện tại: ${currentMonth}
 - Ngày hiện tại: ${currentDate}
 
-QUY TẮC PHÂN LOẠI & LƯU TRỮ (BẮT BUỘC THANG ĐIỂM 100):
-1. Thang điểm: Bắt buộc từ 0 đến 100 điểm.
-2. Pipeline chịu trách nhiệm lưu file và tạo List. AI không copy, đổi tên hoặc tự lưu CV raw.
-3. Ngưỡng phân loại và đường dẫn lưu Markdown kết quả:
-   - Tổng điểm >= 80/100: "ĐẠT" -> Lưu vào: hr-miniapp/outputs-cv/${currentMonth}/02-passed_screening/
-   - Tổng điểm 50 - 79/100: "CÂN NHẮC" -> Lưu vào: hr-miniapp/outputs-cv/${currentMonth}/02-passed_screening/
-   - Tổng điểm < 50/100: "KHÔNG ĐẠT" (TUYỆT ĐỐI KHÔNG XẾP CÂN NHẮC NẾU DƯỚI 50 ĐIỂM) -> Lưu vào: hr-miniapp/outputs-cv/${currentMonth}/01-failed/
-   - Vị trí không tuyển trong JD: "KHÔNG TUYỂN VỊ TRÍ NÀY" -> Lưu vào: hr-miniapp/outputs-cv/${currentMonth}/01-failed/
-   - ƯU TIÊN SỐ 1 (SAI JD): Nếu ứng viên ứng tuyển SAI HOÀN TOÀN vị trí so với JD (ví dụ: xin làm IT nhưng nộp JD Sales), BẮT BUỘC gán category là "SAI JD" và chấm 0 điểm. TUYỆT ĐỐI KHÔNG xếp "ĐẠT" hay "CÂN NHẮC" dù kỹ năng trong CV tốt đến đâu. Lưu vào: hr-miniapp/outputs-cv/${currentMonth}/01-failed/
-     * LƯU Ý NGOẠI LỆ: Nếu trong CV ứng viên CÓ GHI RÕ vị trí ứng tuyển (ví dụ: "thực tập sinh backend", "ứng tuyển backend") VÀ vị trí đó KHỚP với JD đang chấm, thì TUYỆT ĐỐI KHÔNG ĐƯỢC phân loại là "SAI JD" hay "KHÔNG TUYỂN VỊ TRÍ NÀY". Trường hợp này chỉ được phân loại là ĐẠT, CÂN NHẮC hoặc KHÔNG ĐẠT theo điểm số.
+NGUYÊN TẮC: Skill cv-evaluator là nguồn duy nhất cho rubric, hard gate và phân loại.
+Pipeline chịu trách nhiệm lưu file và tạo List; AI không copy, đổi tên hoặc tự lưu CV raw.
 JD đối chiếu:
 <jd_content>
 ${jdContent}
@@ -484,18 +485,10 @@ KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ:
 [Toàn bộ nội dung file MD theo chuẩn cv_md_template.md]
 </markdown_content>
 
-3. Khối JSON kết quả cho hệ thống UI (Score phải là số thực tế từ 0-100):
-\`\`\`json
-{
-  "saved_file": "Tên-File-Da-Luu.md",
-  "score": 85,
-  "category": "ĐẠT" | "CÂN NHẮC" | "KHÔNG ĐẠT" | "KHÔNG TUYỂN VỊ TRÍ NÀY" | "SAI JD",
-  "reason": "Nhận xét ngắn chỉ dựa trên evidence",
-  "email": null,
-  "sdt": null,
-  "extracted_evidence": ["Trích dẫn nguyên văn từ CV"]
-}
-\`\`\`
+3. Một khối JSON duy nhất theo đúng schema và rubric trong skill cv-evaluator.
+   - score là số nguyên 0-100 và phải bằng tổng awarded_points sau hard gate.
+   - Không dùng thang điểm 10. Không tự đổi scale.
+   - job_family, hard_gate, category, criteria và Markdown phải nhất quán tuyệt đối.
 </task_payload>
 `;
 
@@ -515,45 +508,22 @@ KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ:
         if (onLog) onLog(`[Email Debug] ⚠ AI không trả về tag <markdown_content>! Sẽ phải fallback đọc từ đĩa.`);
       }
 
-      let result: any = { category: 'KHÔNG XÁC ĐỊNH', score: 0, reason: '' };
       const parsedScore = this.parseAIResponse(aiProcessRes.text);
-      if (parsedScore) {
-        result = { ...result, ...parsedScore };
-      }
-
-      // Fallback 1: Nếu chưa có điểm hoặc phân loại từ JSON, bóc tách trực tiếp từ Markdown report
-      if ((!result.score || result.category === 'KHÔNG XÁC ĐỊNH') && extractedMarkdown) {
-        const mdScore = this.extractScoreFromMarkdown(extractedMarkdown);
-        if (mdScore) {
-          result = {
-            ...result,
-            score: result.score || mdScore.score,
-            category: result.category !== 'KHÔNG XÁC ĐẠT' && result.category !== 'KHÔNG XÁC ĐỊNH' ? result.category : mdScore.category,
-            reason: result.reason || mdScore.reason
-          };
-          if (onLog) onLog(`[Fallback] Đã bóc tách thành công điểm & kết quả từ Markdown: ${result.category} (${result.score}đ)`);
+      if (!parsedScore) throw new Error('AI không trả về JSON chấm điểm hợp lệ.');
+      const result = validateCvAssessment(parsedScore as CvAssessmentInput);
+      if (!extractedMarkdown) throw new Error('AI không trả về Markdown đánh giá để đối chiếu.');
+      if (parsedScore.score !== result.score || parsedScore.category !== result.category) {
+        if (onLog) {
+          onLog(
+            `[Hiệu chỉnh điểm] AI trả ${String(parsedScore.score)}/100 (${String(parsedScore.category)}); `
+            + `hệ thống dùng tổng tiêu chí ${result.score}/100 (${result.category}).`,
+          );
         }
       }
-
-      // Chuẩn hóa scale: Nếu AI trả về thang điểm 10 (VD: 8.3/10) -> Scale lên thang 100
-      if (result.score > 0 && result.score <= 10) {
-        const originalScore = result.score;
-        result.score = Math.round(result.score * 10 * 10) / 10;
-        if (onLog) onLog(`[Chuẩn hóa điểm] Chuyển đổi thang 10 sang thang 100: ${originalScore} -> ${result.score}/100`);
-      }
-
-      // Guardrail bảo vệ phân loại theo ngưỡng điểm cứng
-      if (result.category !== 'KHÔNG TUYỂN VỊ TRÍ NÀY' && result.category !== 'DEEP_REVIEW') {
-        if (result.score >= 80 && result.category !== 'ĐẠT') {
-          result.category = 'ĐẠT';
-          if (onLog) onLog(`[Guardrail] Điểm ${result.score} >= 80đ -> Chuẩn hóa xếp loại: ĐẠT`);
-        } else if (result.score < 50 && (result.category === 'ĐẠT' || result.category === 'CÂN NHẮC')) {
-          result.category = 'KHÔNG ĐẠT';
-          if (onLog) onLog(`[Guardrail] Điểm ${result.score} < 50đ -> Tự động chuyển xếp loại: KHÔNG ĐẠT`);
-        } else if (result.score >= 50 && result.score < 80 && result.category === 'ĐẠT') {
-          result.category = 'CÂN NHẮC';
-          if (onLog) onLog(`[Guardrail] Điểm ${result.score} (50-79đ) -> Chuẩn hóa xếp loại: CÂN NHẮC`);
-        }
+      extractedMarkdown = reconcileMarkdownAssessment(extractedMarkdown, result);
+      validateMarkdownAssessment(extractedMarkdown, result);
+      if (onLog) {
+        onLog(`[Kiểm định] ${result.job_family} · ${result.category} · ${result.score}/100; JSON và Markdown nhất quán.`);
       }
 
       const candidateName = extractCandidateNameFromMarkdown(extractedMarkdown);
@@ -585,7 +555,7 @@ KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ:
       if (extractedMarkdown && newMdName) {
         const subFolder = (result.category === 'ĐẠT' || result.category === 'CÂN NHẮC')
           ? '02-passed_screening'
-          : (result.category === 'DEEP_REVIEW' ? '03-deep_reviewed' : '01-failed');
+          : '01-failed';
         const targetRoomFilePath = `${this.roomId}/hr-miniapp/outputs-cv/${currentMonth}/${subFolder}/${newMdName}`;
         try {
           await createOrUpdateFile(this.app, targetRoomFilePath, extractedMarkdown);
@@ -634,6 +604,7 @@ KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ:
         status: 'completed',
         score: result.score || 0,
         category: result.category || 'KHÔNG XÁC ĐỊNH',
+        jobFamily: result.job_family,
         reason: finalReason,
         email: candidateEmail,
         sdt: candidatePhone,
@@ -744,53 +715,6 @@ KHI HOÀN TẤT, BẠN BẮT BUỘC PHẢI TRẢ VỀ:
     }
 
     return null;
-  }
-
-  private extractScoreFromMarkdown(markdown: string): { score: number; category: string; reason?: string } | null {
-    if (!markdown) return null;
-
-    let category = 'KHÔNG XÁC ĐỊNH';
-    let score = 0;
-    let reason = '';
-
-    // Check category theo độ ưu tiên chính xác
-    if (/⛔|KHÔNG TUYỂN/i.test(markdown)) {
-      category = 'KHÔNG TUYỂN VỊ TRÍ NÀY';
-    } else if (/❌|KHÔNG ĐẠT/i.test(markdown)) {
-      category = 'KHÔNG ĐẠT';
-    } else if (/🟡|CÂN NHẮC/i.test(markdown)) {
-      category = 'CÂN NHẮC';
-    } else if (/✅|ĐẠT(?!\s*KHÔNG)/i.test(markdown)) {
-      category = 'ĐẠT';
-    }
-
-    // Check total score
-    const scoreMatch = markdown.match(/(?:Tổng điểm|Tổng Điểm|Score|Điểm)[:\s*]+([0-9]+(?:\.[0-9]+)?)/i);
-    if (scoreMatch && scoreMatch[1]) {
-      score = Number(scoreMatch[1]);
-      if (score > 0 && score <= 10) {
-        score = Math.round(score * 10 * 10) / 10;
-      }
-    }
-
-    // Guardrail kiểm soát phân loại theo điểm số
-    if (category !== 'KHÔNG TUYỂN VỊ TRÍ NÀY') {
-      if (score >= 80) {
-        category = 'ĐẠT';
-      } else if (score >= 50 && score < 80 && category !== 'KHÔNG ĐẠT') {
-        category = 'CÂN NHẮC';
-      } else if (score < 50 && score > 0) {
-        category = 'KHÔNG ĐẠT';
-      }
-    }
-
-    // Check reason
-    const reasonMatch = markdown.match(/(?:Kết luận|Lý do|Nhận xét chung|Tóm tắt)[:\s*]+([^\n\r]+)/i);
-    if (reasonMatch && reasonMatch[1]) {
-      reason = reasonMatch[1].trim();
-    }
-
-    return { category, score, reason };
   }
 
   async askAI(content: string, fileName?: string, fileId?: string, onLog?: (msg: string) => void, customFlowChatId?: string): Promise<{ text: string }> {
@@ -940,7 +864,7 @@ ${content}
    * Được gọi từ UI sau khi toàn bộ CV đã được chấm xong.
    */
   async createKanbanBatchViaAI(
-    results: Array<{ originalName: string; normalizedName?: string; score?: number; category?: string; reason?: string; email?: string; sdt?: string; phone?: string }>,
+    results: Array<{ originalName: string; normalizedName?: string; score?: number; category?: string; jobFamily?: string; reason?: string; email?: string; sdt?: string; phone?: string }>,
     jdName: string,
     onLog?: (msg: string) => void
   ): Promise<void> {
@@ -978,6 +902,7 @@ ${content}
     const fieldDefinitions = [
       { _id: 'tong_diem', name: 'Tổng điểm', type: 'NUMBER' },
       { _id: 'phan_loai', name: 'Phân loại', type: 'TEXT' },
+      { _id: 'nhom_nghe', name: 'Nhóm nghề', type: 'TEXT' },
       { _id: 'ly_do', name: 'Lý do', type: 'TEXTAREA' },
       { _id: 'email', name: 'Email', type: 'TEXT' },
       { _id: 'sdt', name: 'SĐT', type: 'TEXT' },
@@ -1087,6 +1012,25 @@ ${content}
             }
           }
 
+          const hasJobFamilyField = Array.isArray(existingList.fieldDefinitions)
+            && existingList.fieldDefinitions.some((fd: any) => fd._id === 'nhom_nghe');
+          if (!hasJobFamilyField) {
+            try {
+              await this.app.callServerTool({
+                name: 'privos.lists.addField',
+                arguments: {
+                  listId: existingList._id,
+                  fieldId: 'nhom_nghe',
+                  name: 'Nhóm nghề',
+                  type: 'TEXT'
+                }
+              });
+              if (onLog) onLog('[Kanban] Đã tự động bổ sung trường "Nhóm nghề" vào List.');
+            } catch (fieldErr) {
+              console.warn('Không thể thêm trường nhóm nghề vào list cũ', fieldErr);
+            }
+          }
+
           if (onLog) onLog(`[Kanban] Đã tải ${createdStages.length} stages. Sẽ thêm ${results.length} CV vào List này.`);
         }
       }
@@ -1125,6 +1069,7 @@ ${content}
           customFields: [
             { fieldId: 'tong_diem', value: r.score ?? 0 },
             { fieldId: 'phan_loai', value: r.category || 'KHÔNG XÁC ĐỊNH' },
+            { fieldId: 'nhom_nghe', value: r.jobFamily || 'GENERAL' },
             { fieldId: 'ly_do', value: r.reason || '' },
             { fieldId: 'email', value: r.email || '' },
             { fieldId: 'sdt', value: r.sdt || r.phone || '' },

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { usePrivosApp, usePrivosContext } from '@privos/app-react';
 import { PipelineService, CVFile, ProcessingStatus } from './pipeline-service';
 import { MarkdownPathContextBuilder } from './cv-context-builder';
+import { getCvPipelineDisplayReason } from './cv-pipeline-display-reason';
 import { createOrUpdateFile, getFileContent } from './privos-rest';
 import { usePolling } from './hooks/usePolling';
 
@@ -215,7 +216,8 @@ function PipelineProgressCard({ progress, isProcessing }: { progress: BatchProgr
 
 function CVResultCard({ s }: { s: ProcessingStatus }) {
   const [isOpen, setIsOpen] = useState(false);
-  const hasDetails = !!(s.reason || s.errorMsg);
+  const displayReason = s.reason ? getCvPipelineDisplayReason(s.reason) : '';
+  const hasDetails = !!(displayReason || s.errorMsg);
 
   return (
     <div style={{
@@ -262,13 +264,13 @@ function CVResultCard({ s }: { s: ProcessingStatus }) {
 
       {isOpen && hasDetails && (
         <div style={{ marginTop: '4px', paddingTop: '10px', borderTop: '1px solid var(--border-light)', animation: 'pl-in 0.2s ease' }}>
-          {s.reason && (
+          {displayReason && (
             <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-              {s.reason}
+              {displayReason}
             </p>
           )}
           {s.errorMsg && (
-            <p style={{ margin: s.reason ? '8px 0 0' : 0, fontSize: '12px', color: 'var(--status-fail)', lineHeight: 1.5 }}>
+            <p style={{ margin: displayReason ? '8px 0 0' : 0, fontSize: '12px', color: 'var(--status-fail)', lineHeight: 1.5 }}>
               {'\u26a0'} {s.errorMsg}
             </p>
           )}
