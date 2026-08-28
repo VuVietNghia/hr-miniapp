@@ -8,7 +8,7 @@ import { JDChatbotHeader } from './jd-chatbot-header';
 import { JDChatbotCompanyOption, JDChatbotComposer, JDChatbotEditButton } from './jd-chatbot-interaction-controls';
 
 type Message = { role: 'user' | 'ai'; content: string };
-const hello: Message = { role: 'ai', content: 'Chào bạn! Tôi sẽ hỏi lần lượt thông tin cần thiết để tạo hoặc chỉnh sửa JD.' };
+const hello: Message = { role: 'ai', content: 'Chào bạn! Tôi là trợ lí AI giúp bạn tạo và chỉnh sửa JD. Bạn cần tôi giúp gì ạ?' };
 
 function extractJDPositionName(text: string, content: string) {
   const positionTag = text.match(/<position_name>\s*([\s\S]*?)\s*<\/position_name>/i)?.[1]?.trim();
