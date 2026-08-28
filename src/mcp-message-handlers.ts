@@ -9,12 +9,18 @@ import path from 'path';
 
 import _pkg from '../package.json';
 import { callHubTool } from './relay-client';
+import { EmailHistoryRepository } from './services/EmailHistoryRepository';
 import { mailService } from './services/MailService';
+import { TrackedMailService } from './services/TrackedMailService';
 import { isValidEmailAddress } from './utils/email-validation';
 
 const pkg = _pkg as Record<string, any>;
 const TOOL_NAME = 'hr_management_dashboard';
 const UI_RESOURCE_URI = 'ui://demo-hr-management/form.html';
+const trackedMailService = new TrackedMailService(
+	new EmailHistoryRepository(callHubTool),
+	mailService,
+);
 
 /** Read icon as data URI from package.json icon path */
 function getIconDataUri(): string | undefined {
@@ -111,9 +117,28 @@ export async function handleMcpMessage(method: string, _id: number, params: any)
 								toName: { type: 'string', description: 'Name of the recipient' },
 								toEmail: { type: 'string', description: 'Email address of the recipient' },
 								subject: { type: 'string', description: 'Subject of the email' },
-								htmlContent: { type: 'string', description: 'HTML content of the email' }
+								htmlContent: { type: 'string', description: 'HTML content of the email' },
+								roomId: { type: 'string', description: 'Room that owns the email history' },
+								source: { type: 'string', enum: ['cv_scored', 'lifecycle'] },
+								cvItemId: { type: 'string' },
+								cvListId: { type: 'string' },
+								jdName: { type: 'string' },
+								requestedBy: { type: 'string' }
 							},
 							required: ['toName', 'toEmail', 'subject', 'htmlContent']
+						}
+					},
+					{
+						name: 'hrm.mail.retry',
+						title: 'Retry a failed HR email',
+						description: 'Retry a failed Room email using its original recipient and content.',
+						inputSchema: {
+							type: 'object',
+							properties: {
+								roomId: { type: 'string' },
+								itemId: { type: 'string' }
+							},
+							required: ['roomId', 'itemId']
 						}
 					},
 					{
@@ -169,20 +194,49 @@ export async function handleMcpMessage(method: string, _id: number, params: any)
 					throw new Error('Recipient email is invalid for hrm.mail.send');
 				}
 				
-				// Đẩy vào queue để gửi dần
-				mailService.queueMail({
+				if (args.roomId || args.source) {
+					if (!args.roomId || args.source !== 'cv_scored') {
+						throw new Error('Tracked mail requires roomId and source=cv_scored in phase one');
+					}
+					const record = await trackedMailService.send({
+						roomId: args.roomId,
+						source: args.source,
+						recipientName: args.toName,
+						recipientEmail: args.toEmail,
+						subject: args.subject,
+						htmlContent: args.htmlContent,
+						cvItemId: args.cvItemId,
+						cvListId: args.cvListId,
+						jdName: args.jdName,
+						requestedBy: args.requestedBy,
+					});
+					return {
+						content: [{ type: 'text', text: JSON.stringify({ itemId: record.id, status: record.status }) }]
+					};
+				}
+
+				await mailService.queueMail({
 					toName: args.toName,
 					toEmail: args.toEmail,
 					subject: args.subject,
-					htmlContent: args.htmlContent
-				}).catch(err => {
-					console.error('[MailHandler] Lỗi gửi thư trong background:', err);
+					htmlContent: args.htmlContent,
 				});
 
 				return {
 					content: [
-						{ type: 'text', text: 'Email has been successfully queued for sending.' }
+						{ type: 'text', text: 'Email has been sent successfully.' }
 					]
+				};
+			}
+
+			if (params?.name === 'hrm.mail.retry') {
+				const args = params.arguments;
+				if (!args?.roomId || !args?.itemId) {
+					throw new Error('Missing required arguments for hrm.mail.retry');
+				}
+				const record = await trackedMailService.retry(args.roomId, args.itemId);
+				return {
+					content: [{ type: 'text', text: JSON.stringify({ itemId: record.id, status: record.status }) }]
 				};
 			}
 
