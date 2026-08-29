@@ -11,6 +11,7 @@ import { usePolling } from '../hooks/usePolling';
 import { EmailHistoryService } from './email-history-service';
 import { toggleEmailSourceFilter } from './email-mailbox-state';
 import { EmailMailboxView } from './EmailMailboxView';
+import { createInterviewEmailTemplateRepository } from '../email-templates/interview-email-template-default';
 import './email-tab.css';
 
 export interface EmailTabProps {
@@ -25,6 +26,10 @@ export default function EmailTab({ active }: EmailTabProps) {
   const app = usePrivosApp();
   const { roomId } = usePrivosContext();
   const service = useMemo(() => app ? new EmailHistoryService(app) : null, [app]);
+  const templateRepository = useMemo(
+    () => app && roomId ? createInterviewEmailTemplateRepository(app, roomId) : null,
+    [app, roomId],
+  );
   const requestRef = useRef(0);
   const hasLoadedRef = useRef(false);
   const [records, setRecords] = useState<EmailHistoryRecord[]>([]);
@@ -38,6 +43,9 @@ export default function EmailTab({ active }: EmailTabProps) {
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteCandidate, setDeleteCandidate] = useState<EmailHistoryRecord | null>(null);
+  const [templateCreateRequest, setTemplateCreateRequest] = useState(0);
+  const [templateCount, setTemplateCount] = useState(0);
+  const [templateReady, setTemplateReady] = useState(false);
 
   useEffect(() => {
     requestRef.current += 1;
@@ -48,6 +56,9 @@ export default function EmailTab({ active }: EmailTabProps) {
     setSourceFilter('all');
     setQuery('');
     setDateRange({ from: '', to: '' });
+    setTemplateCreateRequest(0);
+    setTemplateCount(0);
+    setTemplateReady(false);
     setError(null);
     setDeleteCandidate(null);
   }, [roomId]);
@@ -127,17 +138,28 @@ export default function EmailTab({ active }: EmailTabProps) {
       sourceFilter={sourceFilter}
       query={query}
       dateRange={dateRange}
+      active={active}
       loading={loading}
       error={error}
       retryingId={retryingId}
       deletingId={deletingId}
       deleteCandidate={deleteCandidate}
+      templateRepository={templateRepository}
+      templateCreateRequest={templateCreateRequest}
+      templateCount={templateCount}
+      templateReady={templateReady}
       onSelect={setSelectedId}
       onBack={() => setSelectedId(null)}
-      onFilterChange={setFilter}
-      onSourceFilterChange={source => {
-        setSourceFilter(current => toggleEmailSourceFilter(current, source));
+      onFilterChange={nextFilter => {
+        setFilter(nextFilter);
+        if (nextFilter === 'templates') setSourceFilter('cv_scored');
       }}
+      onSourceFilterChange={source => {
+        setSourceFilter(current => filter === 'templates' ? source : toggleEmailSourceFilter(current, source));
+      }}
+      onCreateTemplate={() => setTemplateCreateRequest(current => current + 1)}
+      onTemplateCountChange={setTemplateCount}
+      onTemplateReadyChange={setTemplateReady}
       onQueryChange={setQuery}
       onDateRangeChange={setDateRange}
       onRetry={record => { void handleRetry(record); }}
