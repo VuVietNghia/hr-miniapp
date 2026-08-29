@@ -10,6 +10,14 @@ import { restCall } from '../privos-rest';
 import { usePolling } from '../hooks/usePolling';
 import { CVBoardPollingGuard } from './polling-sync';
 import { buildTrackedInviteEmailRequest } from './invite-email-request';
+import { createInterviewEmailTemplateRepository } from '../email-templates/interview-email-template-default';
+import type { InterviewEmailTemplateDocument } from '../email-templates/interview-email-template';
+import {
+  canSendInviteWithTemplate,
+  loadActiveInviteTemplate,
+  renderActiveInviteTemplate,
+  type ActiveTemplateRepository,
+} from './invite-template-state';
 
 export interface CVProfile {
   _id: string;
@@ -353,6 +361,10 @@ function renderFormattedReason(reasonText: string) {
 export default function CVScoredTab() {
   const app = usePrivosApp();
   const { roomId } = usePrivosContext();
+  const templateRepository = useMemo(
+    () => app && roomId ? createInterviewEmailTemplateRepository(app, roomId) : null,
+    [app, roomId],
+  );
   
   const [searchQuery, setSearchQuery] = useState('');
   const [boards, setBoards] = useState<CVBoardData[]>([]);
@@ -373,6 +385,10 @@ export default function CVScoredTab() {
   const [inviteSubject, setInviteSubject] = useState('');
   const [inviteEmailBody, setInviteEmailBody] = useState('');
   const [isSendingInvite, setIsSendingInvite] = useState(false);
+  const [activeInviteTemplate, setActiveInviteTemplate] = useState<InterviewEmailTemplateDocument | null>(null);
+  const [loadedInviteTemplateRepository, setLoadedInviteTemplateRepository] = useState<ActiveTemplateRepository | null>(null);
+  const [inviteTemplateLoading, setInviteTemplateLoading] = useState(false);
+  const [inviteTemplateError, setInviteTemplateError] = useState<string | null>(null);
 
   const inviteValidationError = getInviteEmailValidationError({
     candidateName: inviteCandidateName,
@@ -383,9 +399,16 @@ export default function CVScoredTab() {
     subject: inviteSubject,
     body: inviteEmailBody
   });
+  const inviteTemplateSendReady = canSendInviteWithTemplate({
+    activeTemplate: activeInviteTemplate,
+    loadedRepository: loadedInviteTemplateRepository,
+    loading: inviteTemplateLoading,
+    error: inviteTemplateError,
+  }, templateRepository);
 
   const handleSendInviteEmail = async () => {
     if (!app || !roomId || !selectedCVForInvite) return;
+    if (!inviteTemplateSendReady) return;
     const targetEmail = inviteEmail.trim();
 
     if (inviteValidationError) {
@@ -459,28 +482,65 @@ export default function CVScoredTab() {
   const pendingPollRunnerRef = React.useRef<() => void>(() => {});
 
   useEffect(() => {
-    if (!inviteModalOpen) return;
-    setInviteSubject(`Thư mời phỏng vấn - ${invitePosition || '[Vị trí]'} tại ${inviteCompany || '[Tên công ty]'}`);
-    
-    const formattedDate = inviteDate ? inviteDate.split('-').reverse().join('/') : '[Ngày, giờ]';
-    const emailBody = `Xin chào ${inviteCandidateName || '[Tên ứng viên]'},
+    if (!inviteModalOpen) {
+      setActiveInviteTemplate(null);
+      setLoadedInviteTemplateRepository(null);
+      setInviteTemplateLoading(false);
+      setInviteTemplateError(null);
+      setInviteSubject('');
+      setInviteEmailBody('');
+      return;
+    }
+    if (!templateRepository) {
+      setActiveInviteTemplate(null);
+      setLoadedInviteTemplateRepository(null);
+      setInviteTemplateLoading(false);
+      setInviteTemplateError('Không thể tải mẫu email phỏng vấn: Chưa kết nối Room');
+      setInviteSubject('');
+      setInviteEmailBody('');
+      return;
+    }
 
-Cảm ơn bạn đã dành thời gian ứng tuyển vào vị trí ${invitePosition || '[Tên vị trí]'} tại ${inviteCompany || '[Tên công ty]'}! Chúng tôi đã xem xét hồ sơ của bạn và rất ấn tượng với những gì bạn có. Vì vậy, chúng tôi mong muốn có cơ hội gặp gỡ và trao đổi trực tiếp với bạn trong buổi phỏng vấn sắp tới.
+    let current = true;
+    void loadActiveInviteTemplate(templateRepository, () => current, state => {
+      setActiveInviteTemplate(state.activeTemplate);
+      setLoadedInviteTemplateRepository(state.loadedRepository);
+      setInviteTemplateLoading(state.loading);
+      setInviteTemplateError(state.error);
+      if (!state.activeTemplate) {
+        setInviteSubject('');
+        setInviteEmailBody('');
+      }
+    });
+    return () => { current = false; };
+  }, [inviteModalOpen, templateRepository]);
 
-Thời gian: ${formattedDate}
-
-Địa điểm: [Địa chỉ công ty / Link phòng họp online]
-
-Người liên hệ: [Tên + Số điện thoại / Email]
-
-Nếu thời gian trên chưa phù hợp, bạn có thể phản hồi để sắp xếp lại lịch. Hãy xác nhận sự tham gia của bạn bằng cách trả lời email này trước [Thời hạn phản hồi].
-
-Chúng tôi rất mong được gặp bạn và trao đổi thêm về cơ hội hợp tác!
-
-Trân trọng,
-[Thông tin liên hệ của HR hoặc công ty]`;
-    setInviteEmailBody(emailBody);
-  }, [inviteCandidateName, invitePosition, inviteCompany, inviteDate, inviteModalOpen]);
+  useEffect(() => {
+    if (
+      !inviteModalOpen
+      || !activeInviteTemplate
+      || loadedInviteTemplateRepository !== templateRepository
+    ) return;
+    const rendered = renderActiveInviteTemplate(activeInviteTemplate, {
+      candidateName: inviteCandidateName,
+      candidateEmail: inviteEmail,
+      position: invitePosition,
+      company: inviteCompany,
+      interviewDate: inviteDate,
+    });
+    setInviteSubject(rendered.subject);
+    setInviteEmailBody(rendered.body);
+  }, [
+    activeInviteTemplate,
+    inviteCandidateName,
+    inviteCompany,
+    inviteDate,
+    inviteEmail,
+    inviteModalOpen,
+    invitePosition,
+    loadedInviteTemplateRepository,
+    templateRepository,
+  ]);
 
   const loadData = useCallback(async () => {
     if (!app || !roomId) return;
@@ -1077,6 +1137,20 @@ Trân trọng,
                 ✕
               </button>
             </div>
+
+            {inviteTemplateLoading && (
+              <p role="status" style={{ margin: '0 0 16px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                Đang tải mẫu email phỏng vấn…
+              </p>
+            )}
+            {!inviteTemplateLoading && (inviteTemplateError || !activeInviteTemplate) && (
+              <div role="alert" style={{ margin: '0 0 16px', color: '#dc2626', fontSize: '13px' }}>
+                <p style={{ margin: 0 }}>
+                  {inviteTemplateError || 'Không tìm thấy mẫu email phỏng vấn đang sử dụng.'}
+                </p>
+                <p style={{ margin: '4px 0 0' }}>Vào Email → Mẫu email để sửa hoặc chọn mẫu.</p>
+              </div>
+            )}
             
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
               {/* Left Column: Form Fields */}
@@ -1147,7 +1221,7 @@ Trân trọng,
             </div>
             
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
-              {inviteValidationError && (
+              {inviteTemplateSendReady && inviteValidationError && (
                 <p role="alert" style={{ margin: 0, marginRight: 'auto', alignSelf: 'center', color: '#dc2626', fontSize: '12px' }}>
                   {inviteValidationError}
                 </p>
@@ -1157,7 +1231,7 @@ Trân trọng,
               }}>Tải email về</button>
               <button 
                 className="hr-btn hr-btn-primary" 
-                disabled={isSendingInvite || Boolean(inviteValidationError)} 
+                disabled={isSendingInvite || !inviteTemplateSendReady || Boolean(inviteValidationError)}
                 style={{ backgroundColor: '#156FF5', color: '#fff', borderColor: '#156FF5' }} 
                 onClick={handleSendInviteEmail}
               >

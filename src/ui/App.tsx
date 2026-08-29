@@ -10,6 +10,7 @@ import BotDraftingTab from './bot-drafting-tab';
 import CVScoredTab from './cv-scored/CVScoredTab';
 import JDChatbotTab from './jd-chatbot-functional';
 import EmailTab from './email-history/EmailTab';
+import { createInterviewEmailTemplateRepository } from './email-templates/interview-email-template-default';
 import { ensureTemplatesExistGlobal } from './pipeline-service';
 import { usePayrollAccessPolling } from './payroll/access/usePayrollAccessPolling';
 import {
@@ -67,6 +68,14 @@ function ThemedApp() {
     if (app && roomId) {
       ensureTemplatesExistGlobal(app, roomId, true).catch(console.error);
     }
+  }, [app, roomId]);
+
+  useEffect(() => {
+    if (!app || !roomId) return;
+    const repository = createInterviewEmailTemplateRepository(app, roomId);
+    repository.ensureInitialized().catch(error => {
+      console.error('[InterviewEmailTemplates] Initialization failed', error);
+    });
   }, [app, roomId]);
 
   useEffect(() => {

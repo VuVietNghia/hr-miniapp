@@ -1,6 +1,3 @@
-import { McpApp } from '@privos/app-react';
-import { getFileContent, createOrUpdateFile } from './privos-rest';
-
 // ---------------------------------------------------------
 // 1. Dependency Injection setup
 // ---------------------------------------------------------
@@ -53,57 +50,6 @@ export class EmailJsProvider implements IEmailProvider {
   }
 }
 
-// ---------------------------------------------------------
-// 3. Email Template Management Service
-// ---------------------------------------------------------
-export interface EmailTemplate {
-  id: string;
-  name: string;
-  content: string;
-}
-
-export interface EmailSettings {
-  templates: EmailTemplate[];
-  emailJsConfig?: EmailProviderConfig;
-}
-
-const DEFAULT_TEMPLATES: EmailTemplate[] = [
-  {
-    id: 'interview_invitation',
-    name: 'Mời phỏng vấn',
-    content: `Dear Bạn {{Tên Ứng Viên}}
-Cảm ơn bạn đã quan tâm và nộp hồ sơ ứng tuyển vào vị trí Thực tập sinh Lập trình viên (Dev Intern) tại CÔNG TY TNHH GIẢI PHÁP CHUYỂN ĐỔI SỐ VDX.
-Sau khi xem xét hồ sơ, chúng tôi nhận thấy bạn phù hợp với vị trí này và trân trọng mời bạn tham gia buổi phỏng vấn trực tiếp tại văn phòng công ty với các thông tin như sau:
-
-    Thời gian: {{Thời Gian}}
-    Địa điểm: {{Địa Điểm}}
-
-Vui lòng xác nhận tham gia buổi phỏng vấn này trong vòng 24 giờ kể từ thời điểm nhận được email này, bằng cách phản hồi lại qua email hoặc liên hệ qua số điện thoại bên dưới:
-Một số lưu ý trước buổi phỏng vấn:
-
-    Vui lòng đến đúng giờ và mang theo CV, laptop.
-    Nếu bạn không thể tham dự theo lịch trên, vui lòng phản hồi email này trước {{Thời Gian}} để chúng tôi sắp xếp lại lịch phù hợp.
-
-Chúng tôi mong được gặp bạn trong buổi phỏng vấn sắp tới.
-Trân trọng,
-Nguyễn Hà
-HR VDX - {{SĐT}}`
-  },
-  {
-    id: 'rejection_letter',
-    name: 'Thông báo không phù hợp (Thank you letter)',
-    content: `Dear Bạn {{Tên Ứng Viên}}
-Cảm ơn bạn đã quan tâm và dành thời gian phỏng vấn/ứng tuyển tại VDX.
-Rất tiếc, tại thời điểm hiện tại định hướng của bạn chưa hoàn toàn phù hợp với vị trí mà chúng tôi đang tìm kiếm.
-
-Chúng tôi sẽ lưu hồ sơ của bạn vào hệ thống và sẽ liên hệ lại nếu có cơ hội phù hợp trong tương lai.
-Chúc bạn nhiều sức khỏe và thành công trên con đường sắp tới.
-
-Trân trọng,
-Phòng Tuyển Dụng VDX.`
-  }
-];
-
 export class EmailService {
   private provider: IEmailProvider;
   
@@ -113,28 +59,6 @@ export class EmailService {
   
   async send(payload: EmailPayload, config: EmailProviderConfig): Promise<void> {
     await this.provider.sendEmail(payload, config);
-  }
-  
-  async loadSettings(app: McpApp, roomId: string): Promise<EmailSettings> {
-    const path = `${roomId}/hr-miniapp/configs/email_settings.json`;
-    try {
-      const content = await getFileContent(app, path);
-      if (content && content.trim()) {
-        return JSON.parse(content) as EmailSettings;
-      }
-    } catch (e) {
-      console.warn("Không tìm thấy cấu hình Email, sẽ khởi tạo mặc định.", e);
-    }
-    
-    // Default settings
-    return {
-      templates: DEFAULT_TEMPLATES
-    };
-  }
-  
-  async saveSettings(app: McpApp, roomId: string, settings: EmailSettings): Promise<void> {
-    const path = `${roomId}/hr-miniapp/configs/email_settings.json`;
-    await createOrUpdateFile(app, path, JSON.stringify(settings, null, 2));
   }
   
   parseCandidateInfo(mdContent: string): { name: string, email: string } {

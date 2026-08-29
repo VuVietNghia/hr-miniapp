@@ -23,6 +23,12 @@ import type {
   EmailSourceFilter,
 } from '../../email-history/email-history-model';
 import { canDeleteEmail, canRetryEmail, filterEmailHistory } from '../../email-history/email-history-model';
+import { InterviewEmailTemplatePanel } from '../email-templates/InterviewEmailTemplatePanel';
+import type { IInterviewEmailTemplateRepository } from '../email-templates/interview-email-template-repository';
+import {
+  canCreateInterviewTemplate,
+  getEmailMailboxContentMode,
+} from '../email-templates/interview-email-template-state';
 
 export interface EmailMailboxViewProps {
   records: EmailHistoryRecord[];
@@ -31,15 +37,23 @@ export interface EmailMailboxViewProps {
   sourceFilter: EmailSourceFilter;
   query: string;
   dateRange: EmailHistoryDateRange;
+  active: boolean;
   loading: boolean;
   error: string | null;
   retryingId: string | null;
   deletingId: string | null;
   deleteCandidate: EmailHistoryRecord | null;
+  templateRepository: IInterviewEmailTemplateRepository | null;
+  templateCreateRequest: number;
+  templateCount: number;
+  templateReady: boolean;
   onSelect: (id: string) => void;
   onBack: () => void;
   onFilterChange: (filter: EmailHistoryFilter) => void;
   onSourceFilterChange: (source: EmailSource) => void;
+  onCreateTemplate: () => void;
+  onTemplateCountChange: (count: number) => void;
+  onTemplateReadyChange: (ready: boolean) => void;
   onQueryChange: (query: string) => void;
   onDateRangeChange: (dateRange: EmailHistoryDateRange) => void;
   onRetry: (record: EmailHistoryRecord) => void;
@@ -165,15 +179,23 @@ export function EmailMailboxView({
   sourceFilter,
   query,
   dateRange,
+  active,
   loading,
   error,
   retryingId,
   deletingId,
   deleteCandidate,
+  templateRepository,
+  templateCreateRequest,
+  templateCount,
+  templateReady,
   onSelect,
   onBack,
   onFilterChange,
   onSourceFilterChange,
+  onCreateTemplate,
+  onTemplateCountChange,
+  onTemplateReadyChange,
   onQueryChange,
   onDateRangeChange,
   onRetry,
@@ -185,16 +207,18 @@ export function EmailMailboxView({
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
   const [draftDateRange, setDraftDateRange] = useState<EmailHistoryDateRange>(dateRange);
   const [dateFilterError, setDateFilterError] = useState<string | null>(null);
+  const isTemplateMode = filter === 'templates';
   const sourceRecords = sourceFilter === 'all'
     ? records
     : records.filter(record => record.source === sourceFilter);
-  const visibleRecords = filterEmailHistory(records, filter, query, dateRange, sourceFilter);
+  const visibleRecords = isTemplateMode ? [] : filterEmailHistory(records, filter, query, dateRange, sourceFilter);
   const selected = records.find(record => record.id === selectedId) || null;
+  const contentMode = getEmailMailboxContentMode(filter, sourceFilter, Boolean(templateRepository));
   const counts = {
     all: sourceRecords.length,
     sent: sourceRecords.filter(record => record.status === 'sent').length,
     failed: sourceRecords.filter(record => record.status === 'failed').length,
-    templates: 0,
+    templates: templateCount,
   };
 
   return (
@@ -215,6 +239,46 @@ export function EmailMailboxView({
             </button>
             <h1>Email</h1>
             <div className="email-header-actions">
+              {isTemplateMode ? <>
+                <label className="email-search">
+                  <SearchOutlined aria-hidden="true" />
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={event => onQueryChange(event.target.value)}
+                    placeholder="Tìm kiếm mẫu email theo tên"
+                    aria-label="Tìm kiếm mẫu email"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className={sourceFilter === 'lifecycle'
+                    ? 'email-source-filter-button is-active'
+                    : 'email-source-filter-button'}
+                  aria-pressed={sourceFilter === 'lifecycle'}
+                  onClick={() => onSourceFilterChange('lifecycle')}
+                >
+                  Nhân sự
+                </button>
+                <button
+                  type="button"
+                  className={sourceFilter === 'cv_scored'
+                    ? 'email-source-filter-button is-active'
+                    : 'email-source-filter-button'}
+                  aria-pressed={sourceFilter === 'cv_scored'}
+                  onClick={() => onSourceFilterChange('cv_scored')}
+                >
+                  Phỏng vấn
+                </button>
+                <button
+                  type="button"
+                  className="email-create-template-button"
+                  disabled={!canCreateInterviewTemplate(active, sourceFilter, Boolean(templateRepository), templateReady)}
+                  onClick={onCreateTemplate}
+                >
+                  Tạo mẫu Email
+                </button>
+              </> : <>
               <button
                 type="button"
                 className={dateRange.from || dateRange.to
@@ -260,6 +324,7 @@ export function EmailMailboxView({
                   aria-label="Tìm kiếm email"
                 />
               </label>
+              </>}
             </div>
           </header>
 
@@ -288,7 +353,27 @@ export function EmailMailboxView({
               ))}
             </aside>
 
-            <div className="email-message-list" aria-label="Danh sách email">
+            <div className="email-message-list" aria-label={isTemplateMode ? 'Danh sách mẫu email' : 'Danh sách email'}>
+              {contentMode === 'lifecycle-empty' && (
+                <div className="email-empty-state">Chưa có mẫu email nhân sự</div>
+              )}
+              {templateRepository && (
+                <div hidden={contentMode !== 'interview-templates'}>
+                  <InterviewEmailTemplatePanel
+                    repository={templateRepository}
+                    category="cv_scored"
+                    active={active && contentMode === 'interview-templates'}
+                    createRequest={templateCreateRequest}
+                    query={query}
+                    onCountChange={onTemplateCountChange}
+                    onReadyChange={onTemplateReadyChange}
+                  />
+                </div>
+              )}
+              {contentMode === 'template-unavailable' && (
+                <div className="email-empty-state">Không thể truy cập mẫu email</div>
+              )}
+              {!isTemplateMode && <>
               {loading && records.length === 0 && (
                 <div className="email-empty-state">Đang tải lịch sử email…</div>
               )}
@@ -318,6 +403,7 @@ export function EmailMailboxView({
                   <time dateTime={record.updatedAt}>{formatTimestamp(record.updatedAt)}</time>
                 </button>
               ))}
+              </>}
             </div>
           </div>
         </>
