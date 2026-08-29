@@ -2,8 +2,7 @@ import { McpApp } from '@privos/app-react';
 import { EmployeeProfile, ILifecycleService, PassedCandidate } from '../types';
 
 export class PrivOSLifecycleService implements ILifecycleService {
-  private static readonly SYSTEM_PREFIX = '[HR-MiniApp]';
-  private static readonly LEGACY_EXACT_NAME = 'Hồ sơ nhân sự';
+  private static readonly LIST_NAME = 'Hồ sơ nhân sự';
   private static readonly SYSTEM_CONFIG_NAME = '[Hệ thống] Không xoá - Cấu hình Kanban';
   private static readonly DEFAULT_STAGE = 'Mới nhận việc';
 
@@ -214,10 +213,10 @@ export class PrivOSLifecycleService implements ILifecycleService {
     const lists = Array.isArray(parsed) ? parsed : (parsed?.lists || []);
     console.log('[PrivOSLifecycleService] Total lists found:', lists.length);
 
-    // Chuyển sang dùng Exact Match hoặc System Prefix thay vì fuzzy search (.includes)
+    // Hồ sơ nhân sự là nguồn dữ liệu chính xác cho cả Lifecycle và Payroll.
     const foundList = lists.find((l: any) => {
       const name = l.name || '';
-      return name.startsWith(PrivOSLifecycleService.SYSTEM_PREFIX) || name === PrivOSLifecycleService.LEGACY_EXACT_NAME;
+      return name === PrivOSLifecycleService.LIST_NAME;
     }) || null;
     console.log('[PrivOSLifecycleService] Found matching list:', foundList ? foundList.name : 'none');
     return foundList;
@@ -275,7 +274,7 @@ export class PrivOSLifecycleService implements ILifecycleService {
         name: 'privos.lists.create',
         arguments: {
           roomId,
-          name: `${PrivOSLifecycleService.SYSTEM_PREFIX} Hồ sơ nhân sự`,
+          name: PrivOSLifecycleService.LIST_NAME,
           fieldDefinitions: this.getInitialFieldDefinitions(),
           stages: this.getInitialStages()
         }
