@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { EmployeeProfile } from '../types';
-import { usePrivosApp, usePrivosContext } from '@privos/app-react';
+import { usePrivosApp, usePrivosContext } from '@privos_ai/app-react';
 import { useEmployeeEmailTemplateProvider } from '../di/EmployeeEmailTemplateContext';
 import { isValidEmailAddress } from '../../../utils/email-validation';
 
@@ -8,6 +8,11 @@ interface EmailComposerModalProps {
   isOpen: boolean;
   onClose: () => void;
   profile: EmployeeProfile;
+  mailClient?: LifecycleMailClient;
+}
+
+export interface LifecycleMailClient {
+  send(input: ReturnType<typeof buildLifecycleMailArguments>): Promise<void>;
 }
 
 export function buildLifecycleMailArguments({
@@ -31,7 +36,14 @@ export function buildLifecycleMailArguments({
   };
 }
 
-export function EmailComposerModal({ isOpen, onClose, profile }: EmailComposerModalProps) {
+export async function sendLifecycleMail(
+  input: Parameters<typeof buildLifecycleMailArguments>[0],
+  mail: LifecycleMailClient,
+): Promise<void> {
+  await mail.send(buildLifecycleMailArguments(input));
+}
+
+export function EmailComposerModal({ isOpen, onClose, profile, mailClient }: EmailComposerModalProps) {
   const app = usePrivosApp();
   const { roomId } = usePrivosContext();
   const templateProvider = useEmployeeEmailTemplateProvider();
@@ -39,6 +51,9 @@ export function EmailComposerModal({ isOpen, onClose, profile }: EmailComposerMo
   const [subject, setSubject] = useState<string>('');
   const [content, setContent] = useState<string>('');
   const [isSending, setIsSending] = useState(false);
+  const mail = useMemo<LifecycleMailClient | null>(() => mailClient ?? (app ? {
+    async send(input) { await app.callServerTool({ name: 'hrm.mail.send', arguments: input }); },
+  } : null), [app, mailClient]);
 
   if (!isOpen) return null;
 
@@ -75,15 +90,13 @@ export function EmailComposerModal({ isOpen, onClose, profile }: EmailComposerMo
 
     setIsSending(true);
     try {
-      await app.callServerTool({
-        name: 'hrm.mail.send',
-        arguments: buildLifecycleMailArguments({ roomId, profile, subject, content }),
-      });
+      if (!mail) throw new Error('Không có kết nối gửi mail.');
+      await sendLifecycleMail({ roomId, profile, subject, content }, mail);
 
       alert(`Đã gửi email thành công tới ${targetEmail}!`);
       onClose();
-    } catch (err: any) {
-      alert('Lỗi gửi mail: ' + (err.message || err));
+    } catch (err: unknown) {
+      alert('Lỗi gửi mail: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setIsSending(false);
     }

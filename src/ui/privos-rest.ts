@@ -9,138 +9,149 @@
  * Every call runs as the logged-in user and is gated server-side by the app's
  * granted scopes (declared in package.json `scopes`), so no bespoke tools needed.
  */
-import type { McpApp, RestRequestParams } from '@privos/app-react';
+import type { McpApp, RestRequestParams } from '@privos_ai/app-react';
 
-export async function restCall<T = any>(
-  app: McpApp,
+const OPTIONAL_FEATURE_MESSAGE = 'This optional feature is disabled because its permission was not granted. An administrator can enable it in app settings.';
+const ROOM_OPERATION_FAILED_MESSAGE = 'The Room operation could not be completed.';
+const INVALID_RESPONSE_MESSAGE = 'The Room operation returned an invalid response.';
+const PERMISSION_PATTERN = /permission|forbidden|unauthori[sz]ed|scope|not.granted|access.denied|\b401\b|\b403\b/i;
+
+type RestApp = Pick<McpApp, 'rest'>;
+
+export interface RestCallOptions {
+  query?: Record<string, string | number | boolean>;
+  body?: unknown;
+  timeoutMs?: number;
+}
+
+export class OptionalFeatureUnavailableError extends Error {
+  readonly code = 'OPTIONAL_PERMISSION_NOT_GRANTED';
+
+  constructor(
+    readonly scope?: string,
+    readonly errorType?: string,
+  ) {
+    super(OPTIONAL_FEATURE_MESSAGE);
+    this.name = 'OptionalFeatureUnavailableError';
+  }
+}
+
+export class PrivosRestError extends Error {
+  constructor(
+    readonly statusCode?: number,
+    readonly errorType?: string,
+  ) {
+    super(ROOM_OPERATION_FAILED_MESSAGE);
+    this.name = 'PrivosRestError';
+  }
+}
+
+export function safeFeatureError(error: unknown, fallback: string): string {
+  return error instanceof OptionalFeatureUnavailableError ? error.message : fallback;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isRestEnvelope(value: unknown): value is Readonly<{ statusCode: number; body: unknown }> {
+  return isRecord(value)
+    && typeof value.statusCode === 'number'
+    && Number.isInteger(value.statusCode)
+    && value.statusCode >= 100
+    && value.statusCode <= 599
+    && Object.prototype.hasOwnProperty.call(value, 'body');
+}
+
+function optionalString(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function failureMetadata(body: unknown): Readonly<{
+  failed: boolean;
+  errorType?: string;
+  permissionLooking: boolean;
+}> {
+  if (!isRecord(body)) return { failed: false, permissionLooking: false };
+  const error = optionalString(body, 'error');
+  const message = optionalString(body, 'message');
+  const errorType = optionalString(body, 'errorType');
+  const permissionLooking = [error, message, errorType]
+    .some((candidate) => candidate !== undefined && PERMISSION_PATTERN.test(candidate));
+  return {
+    failed: body.success === false,
+    ...(errorType === undefined ? {} : { errorType }),
+    permissionLooking,
+  };
+}
+
+/**
+ * The overload preserves pre-migration call sites until Tasks 10-11 inject the strict clients.
+ * New platform clients treat this result as unknown and validate/project every success body.
+ */
+export function restCall<T = unknown>(
+  app: RestApp,
   method: RestRequestParams['method'],
   path: string,
-  opts?: { query?: Record<string, string | number | boolean>; body?: any; timeoutMs?: number },
-): Promise<T> {
-  const res = await app.rest({ method, path, query: opts?.query, body: opts?.body, timeoutMs: opts?.timeoutMs });
-  const body: any = res?.body ?? res;
-  if (res?.statusCode && res.statusCode >= 400) {
-    throw new Error(body?.error || body?.message || `Request failed (${res.statusCode})`);
+  opts?: RestCallOptions,
+): Promise<T>;
+export async function restCall(
+  app: RestApp,
+  method: RestRequestParams['method'],
+  path: string,
+  opts?: RestCallOptions,
+): Promise<unknown> {
+  if (path === 'ai-messages.startGeneration') {
+    throw new OptionalFeatureUnavailableError('sandbox:ai-chat:write');
   }
-  if (body && body.success === false) {
-    throw new Error(body.error || body.message || 'Request failed');
+  const request: RestRequestParams = {
+    method,
+    path,
+    ...(opts?.query === undefined ? {} : { query: opts.query }),
+    ...(opts?.body === undefined ? {} : { body: opts.body }),
+    ...(opts?.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs }),
+  };
+  const response: unknown = await app.rest(request);
+  if (!isRestEnvelope(response)) throw new Error(INVALID_RESPONSE_MESSAGE);
+
+  const metadata = failureMetadata(response.body);
+  if (
+    response.statusCode === 403
+    || ((response.statusCode >= 400 || metadata.failed) && metadata.permissionLooking)
+  ) {
+    throw new OptionalFeatureUnavailableError(undefined, metadata.errorType);
   }
-  return body as T;
+  if (response.statusCode >= 400 || metadata.failed) {
+    throw new PrivosRestError(response.statusCode, metadata.errorType);
+  }
+  return response.body;
 }
 
-export async function getFileContent(app: McpApp, path: string): Promise<string> {
-  try {
-    const res = await app.rest({
-      method: 'GET',
-      path: 'api/files/content',
-      query: {
-        path: path,
-        basePath: '/app/data/projects/workspace/RoomFiles'
-      }
-    } as any);
-    const body: any = res?.body ?? res;
-    return body?.content || '';
-  } catch (err) {
-    console.error('Failed to get file content', err);
-    return '';
-  }
+type LegacyContentApp = Pick<McpApp, 'rest'>;
+type LegacyFolderApp = Pick<McpApp, 'callServerTool'>;
+type LegacyFileMutationApp = Pick<McpApp, 'callServerTool' | 'uploadFile'>;
+
+/** Path-based file reads have no approved Step 3 mapping and fail before transport. */
+export async function getFileContent(_app: LegacyContentApp, _path: string): Promise<string> {
+  throw new OptionalFeatureUnavailableError('files:read');
 }
 
-export async function ensureFolderPath(app: McpApp, channelId: string, folderNames: string[]): Promise<string | undefined> {
-  let currentParentId: string | undefined = undefined;
-
-  for (const folderName of folderNames) {
-    if (!folderName) continue;
-    
-    // 1. Lấy danh sách folder con trong currentParentId
-    const args: any = { channelId, limit: 100 };
-    if (currentParentId) {
-      args.parentId = currentParentId;
-    }
-    
-    const getRes: any = await app.callServerTool({
-      name: 'privos.folders.getByChannel',
-      arguments: args
-    });
-    
-    let folders: any[] = [];
-    try {
-      const text = getRes?.content?.[0]?.text;
-      if (text) {
-        const parsed = JSON.parse(text);
-        folders = Array.isArray(parsed) ? parsed : (parsed?.folders || []);
-      }
-    } catch (e) {
-      console.error('Failed to parse getByChannel response', e);
-    }
-    
-    const existingFolder = folders.find((f: any) => f.name === folderName);
-    
-    if (existingFolder && existingFolder._id) {
-      currentParentId = existingFolder._id;
-    } else {
-      // 2. Tạo folder nếu chưa tồn tại
-      const createArgs: any = { channelId, name: folderName };
-      if (currentParentId) {
-        createArgs.parentId = currentParentId;
-      }
-      const createRes: any = await app.callServerTool({
-        name: 'privos.folders.create',
-        arguments: createArgs
-      });
-      
-      try {
-        const text = createRes?.content?.[0]?.text;
-        if (text) {
-          const parsed = JSON.parse(text);
-          currentParentId = parsed?._id;
-        }
-      } catch (e) {
-        console.error('Failed to parse create folder response', e);
-      }
-      
-      if (!currentParentId) {
-        throw new Error(`Failed to create folder: ${folderName}`);
-      }
-    }
-  }
-
-  return currentParentId;
+/** Folder traversal and creation have no approved Step 3 mapping and fail before transport. */
+export async function ensureFolderPath(
+  _app: LegacyFolderApp,
+  _channelId: string,
+  _folderNames: readonly string[],
+): Promise<string | undefined> {
+  throw new OptionalFeatureUnavailableError('files:write');
 }
 
-export async function createOrUpdateFile(app: McpApp, path: string, content: string): Promise<any> {
-  try {
-    // path is expected to be `${roomId}/path/to/file`
-    const parts = path.split('/');
-    const roomId = parts[0];
-    const fileName = parts[parts.length - 1];
-    const folderNames = parts.slice(1, parts.length - 1);
-    
-    // Tự động tạo cây thư mục
-    const targetFolderId = await ensureFolderPath(app, roomId, folderNames);
-    
-    // Xử lý base64 encode chuẩn cho chuỗi UTF-8 (tiếng Việt)
-    const base64Content = btoa(unescape(encodeURIComponent(content)));
-    
-    const uploadArgs: any = {
-      channelId: roomId,
-      fileName: fileName,
-      base64Data: 'data:text/markdown;base64,' + base64Content,
-      mimeType: 'text/markdown',
-      duplicateAction: 'replace'
-    };
-    
-    if (targetFolderId) {
-      uploadArgs.folderId = targetFolderId;
-    }
-    
-    const res: any = await app.uploadFile(uploadArgs);
-    
-    if (!res) throw new Error("No response from uploadFile");
-    return res;
-  } catch (err: any) {
-    console.error('Failed to create/update file', err);
-    throw new Error(`Failed to create/update file: ${err.message || err}`);
-  }
+/** Replace-by-path depends on unsupported folders/file mutation and remains disabled. */
+export async function createOrUpdateFile(
+  _app: LegacyFileMutationApp,
+  _path: string,
+  _content: string,
+): Promise<unknown> {
+  throw new OptionalFeatureUnavailableError('files:write');
 }
 

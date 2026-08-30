@@ -1,11 +1,44 @@
-import React, { useState } from 'react';
-import { usePrivosApp, usePrivosContext } from '@privos/app-react';
+import React, { useMemo, useState } from 'react';
+import { usePrivosApp, usePrivosContext } from '@privos_ai/app-react';
 import { EmployeeProfile, PassedCandidate } from '../types';
-import { ensureFolderPath, createOrUpdateFile } from '../../privos-rest';
+import type { FilesClient, FoldersClient, UploadedFile } from '../../platform/contracts';
+import { createRoomClients } from '../../platform/create-room-clients';
 import employeeTemplateRaw from '../../data/employee_template.md?raw';
 
+export interface DetailedProfilePersistenceInput {
+  roomId: string;
+  department: string;
+  employeeName: string;
+  markdownFileName: string;
+  markdownContent: string;
+  image?: Readonly<{ fileName: string; base64Data: string; mimeType: string }>;
+}
+
+export async function persistDetailedProfileDocuments(
+  input: DetailedProfilePersistenceInput,
+  clients: Readonly<{ files: FilesClient; folders: FoldersClient }>,
+  commit: (file: UploadedFile) => void,
+): Promise<void> {
+  if (!input.roomId.trim()) throw new Error('Không xác định được Room để lưu hồ sơ.');
+  if (!clients.folders.capabilities.ensurePath || !clients.files.capabilities.folderScopedWrite) {
+    throw new Error('Lưu hồ sơ theo thư mục không khả dụng trên kết nối PrivOS hiện tại.');
+  }
+  const folder = await clients.folders.ensurePath(input.roomId, ['hr-miniapp', 'employees', input.department, input.employeeName]);
+  if (input.image) {
+    await clients.files.uploadToFolder({ roomId: input.roomId, folderId: folder._id, fileName: input.image.fileName, base64Data: input.image.base64Data, mimeType: input.image.mimeType });
+  }
+  const markdown = await clients.files.uploadToFolder({
+    roomId: input.roomId,
+    folderId: folder._id,
+    fileName: input.markdownFileName,
+    base64Data: `data:text/markdown;charset=utf-8,${encodeURIComponent(input.markdownContent)}`,
+    mimeType: 'text/markdown',
+  });
+  commit(markdown);
+}
+
 interface CreateDetailedProfileFormProps {
-  onSubmit: (data: Omit<EmployeeProfile, '_id' | 'status'> & { attachedFileObj?: any }) => Promise<void>;
+  onSubmit: (data: Omit<EmployeeProfile, '_id' | 'status'>) => Promise<void>;
   onCancel: () => void;
   passedCandidates?: PassedCandidate[];
   isLoadingCandidates?: boolean;
@@ -31,6 +64,8 @@ export function CreateDetailedProfileForm({
 }: CreateDetailedProfileFormProps) {
   const app = usePrivosApp();
   const { roomId } = usePrivosContext();
+  const clients = useMemo(() => app ? createRoomClients(app) : null, [app]);
+  const persistenceAvailable = Boolean(clients?.folders.capabilities.ensurePath && clients.files.capabilities.folderScopedWrite);
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -90,7 +125,6 @@ export function CreateDetailedProfileForm({
   const [isSuccess, setIsSuccess] = useState(false);
 
   const addLog = (msg: string) => {
-    console.log(msg);
     setDebugLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
   };
 
@@ -146,7 +180,7 @@ export function CreateDetailedProfileForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!app || !roomId) {
+    if (!clients || !roomId) {
       setErrorMsg('Chưa kết nối được với PrivOS App hoặc không lấy được Room ID.');
       return;
     }
@@ -182,36 +216,7 @@ export function CreateDetailedProfileForm({
       const safeName = normalizedName.replace(/[^a-zA-Z0-9\s]/g, '').trim().replace(/\s+/g, '_');
       const safeDept = formData.department.replace(/[^a-zA-Z0-9\s]/g, '').trim().replace(/\s+/g, '_');
 
-      // 1. Ensure employee specific folder exists
-      const folderId = await ensureFolderPath(app, roomId, ['hr-miniapp', 'employees', safeDept, safeName]);
-      if (!folderId) throw new Error('Không thể tạo hoặc truy cập thư mục của nhân sự này.');
-
-      // 2. Upload photo if present
-      if (idPhoto) {
-        addLog(`Bắt đầu upload ảnh: ${idPhoto.filename} (Kích thước gốc ước tính: ${Math.round(idPhoto.base64.length * 0.75 / 1024)} KB)`);
-        
-        try {
-          const photoRes: any = await Promise.race([
-            app.uploadFile({
-              channelId: roomId,
-              fileName: idPhoto.filename,
-              folderId: folderId,
-              base64Data: idPhoto.base64,
-              mimeType: idPhoto.mimeType
-            }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout sau 15 giây khi tải ảnh lên')), 15000))
-          ]);
-          
-          addLog(`Upload ảnh thành công vào thư mục của ${safeName}.`);
-        } catch (uploadErr: any) {
-          addLog(`LỖI UPLOAD ẢNH: ${uploadErr.message}`);
-          throw uploadErr; // Ném ra ngoài để dừng quá trình tạo hồ sơ
-        }
-      }
-      
-      addLog(`Hoàn tất bước ảnh. Bắt đầu tạo file Markdown...`);
-
-      // 3. Generate Markdown content
+      // Generate Markdown content
       let mdContent = employeeTemplateRaw;
       mdContent = mdContent.replace('[LOCAL_ID]', `NV${Date.now().toString().slice(-6)}`);
       mdContent = mdContent.replace('[CREATE_DATE]', new Date().toLocaleDateString('vi-VN'));
@@ -239,12 +244,17 @@ export function CreateDetailedProfileForm({
       let imgLinkStr = idPhoto ? `*Ảnh thẻ và các tài liệu liên quan được lưu trữ cùng thư mục với hồ sơ này.*` : '*Chưa có ảnh đính kèm*';
       mdContent = mdContent.replace('[IMAGE_LINK]', imgLinkStr);
 
-      // 4. Upload Markdown file locally (hr-miniapp local folder)
       const mdFileName = `${new Date().toISOString().split('T')[0]}_PROFILE_${safeName}.md`;
-      const mdFilePath = `hr-miniapp/employees/${safeDept}/${safeName}/${mdFileName}`;
-      
-      const uploadRes: any = await createOrUpdateFile(app, `${roomId}/${mdFilePath}`, mdContent);
-      const fileObj = uploadRes.file || (uploadRes.message && uploadRes.message.file) || uploadRes;
+      let fileObj: UploadedFile | undefined;
+      await persistDetailedProfileDocuments({
+        roomId,
+        department: safeDept,
+        employeeName: safeName,
+        markdownFileName: mdFileName,
+        markdownContent: mdContent,
+        ...(idPhoto ? { image: { fileName: idPhoto.filename, base64Data: idPhoto.base64, mimeType: idPhoto.mimeType } } : {}),
+      }, clients, uploaded => { fileObj = uploaded; });
+      if (!fileObj) throw new Error('Không nhận được định danh file hồ sơ Markdown.');
       addLog(`Tạo file Markdown thành công. Đang lưu database...`);
 
       await onSubmit({
@@ -260,10 +270,9 @@ export function CreateDetailedProfileForm({
 
       setIsSuccess(true);
       addLog(`Hoàn tất toàn bộ quy trình! Bạn có thể xem log hoặc đóng form.`);
-    } catch (err: any) {
-      addLog(`LỖI TỔNG: ${err.message}`);
-      console.error('Error in form submission:', err);
-      setErrorMsg(err.message || 'Có lỗi xảy ra khi tạo hồ sơ. Vui lòng thử lại.');
+    } catch {
+      addLog('LỖI TỔNG: Không thể lưu hồ sơ.');
+      setErrorMsg('Không thể lưu hồ sơ. Vui lòng thử lại.');
     } finally {
       setIsSubmitting(false);
     }
@@ -291,11 +300,15 @@ export function CreateDetailedProfileForm({
           </div>
         )}
 
-        {errorMsg && (
+      {errorMsg && (
           <div className="hr-status-banner hr-status-error">
             <span>⚠️</span>
             <span>{errorMsg}</span>
           </div>
+      )}
+
+        {!persistenceAvailable && (
+          <div className="hr-status-banner hr-status-error">Lưu hồ sơ theo thư mục đang không khả dụng; biểu mẫu chỉ đọc.</div>
         )}
 
         {/* Quick Selection from Passed Screening Candidates */}
@@ -481,7 +494,7 @@ export function CreateDetailedProfileForm({
               <button type="button" className="hr-btn" onClick={onCancel} disabled={isSubmitting}>
                 Hủy bỏ
               </button>
-              <button type="submit" className="hr-btn hr-btn-accent" disabled={isSubmitting}>
+              <button type="submit" className="hr-btn hr-btn-accent" disabled={isSubmitting || !persistenceAvailable}>
                 {isSubmitting ? 'Đang lưu hồ sơ...' : 'Tạo hồ sơ nhân sự'}
               </button>
             </>

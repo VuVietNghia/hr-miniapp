@@ -10,6 +10,10 @@ export interface SendTrackedMailRequest extends StoredEmailPayload {
 }
 
 export interface EmailHistoryGateway {
+  assertReadyForTrackedWrite(
+    roomId: string,
+    requiresStageMovement: boolean,
+  ): Promise<void>;
   createResult(
     roomId: string,
     payload: StoredEmailPayload,
@@ -48,6 +52,7 @@ export class TrackedMailService {
 
   async send(request: SendTrackedMailRequest): Promise<EmailHistoryRecord> {
     const { roomId, requestedBy, ...payload } = request;
+    await this.history.assertReadyForTrackedWrite(roomId, false);
 
     try {
       await this.delivery.queueMail(toDeliveryParams(payload));
@@ -77,7 +82,11 @@ export class TrackedMailService {
     this.activeRetries.add(retryKey);
 
     try {
+      await this.history.assertReadyForTrackedWrite(roomId, true);
       const prepared = await this.history.prepareRetry(roomId, itemId);
+      if (prepared.record.status !== 'failed') {
+        throw new Error('Chỉ có thể gửi lại email ở trạng thái Gửi lỗi.');
+      }
       try {
         await this.delivery.queueMail(toDeliveryParams(prepared.payload));
       } catch (error) {

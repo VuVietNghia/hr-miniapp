@@ -7,18 +7,35 @@ import {
   type EmailHistoryStageIds,
   type StoredEmailPayload,
 } from '../email-history/email-history-model';
-
-export type HubToolCaller = (name: string, args?: unknown) => Promise<unknown>;
+import type { RoomPlatformGateway } from '../platform/hub/RoomPlatformGateway';
 
 export interface EmailHistoryStore {
   listId: string;
   stageIds: EmailHistoryStageIds;
 }
 
-type EmailHistoryRepositoryDependencies = {
-  now?: () => string;
-  createRecordId?: () => string;
-};
+export interface EmailHistoryListDiscoveryCapability {
+  findList(roomId: string, listName: string): Promise<{ listId: string } | undefined>;
+}
+
+export interface EmailHistoryStageLookupCapability {
+  getStageIds(roomId: string, listId: string): Promise<EmailHistoryStageIds>;
+}
+
+export interface EmailHistoryStageMovementCapability {
+  moveItemToStage(roomId: string, itemId: string, stageId: string): Promise<void>;
+}
+
+export interface EmailHistoryRepositoryDependencies {
+  now: () => string;
+  createRecordId: () => string;
+}
+
+export interface EmailHistoryRepositoryCapabilities {
+  discovery?: EmailHistoryListDiscoveryCapability;
+  stageLookup?: EmailHistoryStageLookupCapability;
+  stageMovement?: EmailHistoryStageMovementCapability;
+}
 
 const FIELD_DEFINITIONS = [
   { _id: EMAIL_HISTORY_FIELD_IDS.recordId, name: 'Mã email', type: 'TEXT' },
@@ -36,50 +53,33 @@ const FIELD_DEFINITIONS = [
   { _id: EMAIL_HISTORY_FIELD_IDS.attemptCount, name: 'Số lần gửi', type: 'NUMBER' },
   { _id: EMAIL_HISTORY_FIELD_IDS.lastError, name: 'Lỗi gần nhất', type: 'TEXT' },
   { _id: EMAIL_HISTORY_FIELD_IDS.requestedBy, name: 'Người gửi', type: 'TEXT' },
-];
+] as const;
 
 const STAGE_DEFINITIONS = [
   { name: EMAIL_HISTORY_STAGES.interviewSent, color: '#16a34a' },
   { name: EMAIL_HISTORY_STAGES.interviewFailed, color: '#dc2626' },
   { name: EMAIL_HISTORY_STAGES.employeeSent, color: '#16a34a' },
   { name: EMAIL_HISTORY_STAGES.employeeFailed, color: '#dc2626' },
-];
+] as const;
 
-function parseToolResponse(response: unknown): any {
-  if (!response || typeof response !== 'object') return response;
-  const envelope = response as Record<string, any>;
-  const text = envelope.content?.[0]?.text;
-  if (typeof text === 'string') {
-    try {
-      return JSON.parse(text);
-    } catch {
-      return text;
-    }
-  }
-  return envelope.body ?? response;
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function getListId(value: any): string | undefined {
-  return value?._id || value?.id || value?.listId;
+function nonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  return value.trim() ? value : undefined;
 }
 
-function resolveStageIds(stages: unknown): EmailHistoryStageIds | null {
-  if (!Array.isArray(stages)) return null;
-  const idsByName = new Map<string, string>();
-  for (const stage of stages) {
-    const id = stage?._id || stage?.id;
-    if (typeof id === 'string' && typeof stage?.name === 'string') {
-      idsByName.set(stage.name, id);
-    }
-  }
+function getObjectId(value: unknown): string | undefined {
+  if (!isRecord(value)) return undefined;
+  return nonEmptyString(value._id)
+    ?? nonEmptyString(value.id);
+}
 
-  const interviewSent = idsByName.get(EMAIL_HISTORY_STAGES.interviewSent);
-  const interviewFailed = idsByName.get(EMAIL_HISTORY_STAGES.interviewFailed);
-  const employeeSent = idsByName.get(EMAIL_HISTORY_STAGES.employeeSent);
-  const employeeFailed = idsByName.get(EMAIL_HISTORY_STAGES.employeeFailed);
-  return interviewSent && interviewFailed && employeeSent && employeeFailed
-    ? { interviewSent, interviewFailed, employeeSent, employeeFailed }
-    : null;
+function getListId(value: unknown): string | undefined {
+  if (!isRecord(value)) return undefined;
+  return getObjectId(value) ?? nonEmptyString(value.listId);
 }
 
 function getStageId(
@@ -133,18 +133,54 @@ function recordPayload(record: EmailHistoryRecord): StoredEmailPayload {
   };
 }
 
+function validateStageIds(value: EmailHistoryStageIds): EmailHistoryStageIds {
+  const validated = {
+    interviewSent: nonEmptyString(value.interviewSent),
+    interviewFailed: nonEmptyString(value.interviewFailed),
+    employeeSent: nonEmptyString(value.employeeSent),
+    employeeFailed: nonEmptyString(value.employeeFailed),
+  };
+  if (
+    !validated.interviewSent
+    || !validated.interviewFailed
+    || !validated.employeeSent
+    || !validated.employeeFailed
+  ) {
+    throw new Error('List lịch sử email thiếu cấu hình stage bắt buộc.');
+  }
+  return {
+    interviewSent: validated.interviewSent,
+    interviewFailed: validated.interviewFailed,
+    employeeSent: validated.employeeSent,
+    employeeFailed: validated.employeeFailed,
+  };
+}
+
+function readItems(response: unknown): readonly unknown[] {
+  if (Array.isArray(response)) return response;
+  if (isRecord(response) && Array.isArray(response.items)) return response.items;
+  throw new Error('Dữ liệu lịch sử email không hợp lệ.');
+}
+
+function readCustomFieldValues(item: Readonly<Record<string, unknown>>): ReadonlyMap<string, unknown> {
+  const values = new Map<string, unknown>();
+  if (!Array.isArray(item.customFields)) return values;
+  for (const value of item.customFields) {
+    if (!isRecord(value)) continue;
+    const fieldId = nonEmptyString(value.fieldId) ?? nonEmptyString(value.fieldDefinitionId);
+    if (fieldId) values.set(fieldId, value.value);
+  }
+  return values;
+}
+
 export class EmailHistoryRepository {
   private readonly stores = new Map<string, Promise<EmailHistoryStore>>();
-  private readonly now: () => string;
-  private readonly createRecordId: () => string;
 
   constructor(
-    private readonly callTool: HubToolCaller,
-    dependencies: EmailHistoryRepositoryDependencies = {},
-  ) {
-    this.now = dependencies.now || (() => new Date().toISOString());
-    this.createRecordId = dependencies.createRecordId || (() => crypto.randomUUID());
-  }
+    private readonly gateway: RoomPlatformGateway,
+    private readonly dependencies: EmailHistoryRepositoryDependencies,
+    private readonly capabilities: EmailHistoryRepositoryCapabilities = {},
+  ) {}
 
   ensureStore(roomId: string): Promise<EmailHistoryStore> {
     const existing = this.stores.get(roomId);
@@ -158,6 +194,22 @@ export class EmailHistoryRepository {
     return pending;
   }
 
+  async assertReadyForTrackedWrite(
+    roomId: string,
+    requiresStageMovement: boolean,
+  ): Promise<void> {
+    if (!this.capabilities.discovery) {
+      throw new Error('Email history List discovery is not available');
+    }
+    if (!this.capabilities.stageLookup) {
+      throw new Error('Email history stage lookup is not available');
+    }
+    if (requiresStageMovement && !this.capabilities.stageMovement) {
+      throw new Error('Email history stage movement is not available');
+    }
+    await this.ensureStore(roomId);
+  }
+
   async createResult(
     roomId: string,
     payload: StoredEmailPayload,
@@ -166,8 +218,8 @@ export class EmailHistoryRepository {
     requestedBy?: string,
   ): Promise<EmailHistoryRecord> {
     const store = await this.ensureStore(roomId);
-    const timestamp = this.now();
-    const recordId = this.createRecordId();
+    const timestamp = this.dependencies.now();
+    const recordId = this.dependencies.createRecordId();
     const stageId = getStageId(store.stageIds, payload.source, status);
     const draft: EmailHistoryRecord = {
       id: '',
@@ -183,29 +235,28 @@ export class EmailHistoryRepository {
       requestedBy,
     };
 
-    const response = parseToolResponse(await this.callTool('privos.lists.createItem', {
-      listId: store.listId,
-      title: payload.subject,
-      stageId,
-      customFields: recordToCustomFields(draft, recordId),
-    }));
-    const item = response?.item || response;
-    const itemId = getListId(item);
-    if (!itemId) throw new Error('Không lấy được item ID sau khi tạo lịch sử email.');
-
-    await this.callTool('privos.lists.moveItemToStage', {
-      itemId,
-      stageId,
+    const response = await this.gateway.call<unknown>({
+      roomId,
+      requiredScope: 'lists:write',
+      toolName: 'mcpapp.lists.createItem',
+      arguments: {
+        listId: store.listId,
+        title: payload.subject,
+        stageId,
+        customFields: recordToCustomFields(draft, recordId),
+      },
     });
-
+    const item = isRecord(response) && response.item !== undefined ? response.item : response;
+    const itemId = getObjectId(item);
+    if (!itemId) throw new Error('Không lấy được item ID sau khi tạo lịch sử email.');
     return { ...draft, id: itemId };
   }
 
   async markSent(roomId: string, itemId: string): Promise<EmailHistoryRecord> {
     const store = await this.ensureStore(roomId);
     const current = await this.getRecord(roomId, itemId);
-    const timestamp = this.now();
-    return this.updateRecord({
+    const timestamp = this.dependencies.now();
+    return this.updateRecord(roomId, {
       ...current,
       stageId: getStageId(store.stageIds, current.source, 'sent'),
       status: 'sent',
@@ -219,11 +270,11 @@ export class EmailHistoryRepository {
   async markFailed(roomId: string, itemId: string, error: unknown): Promise<EmailHistoryRecord> {
     const store = await this.ensureStore(roomId);
     const current = await this.getRecord(roomId, itemId);
-    return this.updateRecord({
+    return this.updateRecord(roomId, {
       ...current,
       stageId: getStageId(store.stageIds, current.source, 'failed'),
       status: 'failed',
-      updatedAt: this.now(),
+      updatedAt: this.dependencies.now(),
       attemptCount: current.attemptCount + 1,
       lastError: normalizeError(error),
     });
@@ -237,92 +288,106 @@ export class EmailHistoryRepository {
     if (current.status !== 'failed') {
       throw new Error('Chỉ có thể gửi lại email ở trạng thái Gửi lỗi.');
     }
-
     return { record: current, payload: recordPayload(current) };
   }
 
   async getRecord(roomId: string, itemId: string): Promise<EmailHistoryRecord> {
     const store = await this.ensureStore(roomId);
-    const response = parseToolResponse(await this.callTool('privos.lists.getItems', {
-      listId: store.listId,
-      count: 1000,
-    }));
-    const items = Array.isArray(response) ? response : response?.items;
-    const item = Array.isArray(items)
-      ? items.find(candidate => (candidate?._id || candidate?.id) === itemId)
-      : undefined;
-    if (!item) throw new Error('Không tìm thấy email trong Room hiện tại.');
-
-    const record = parseEmailHistoryItem({ ...item, listId: store.listId }, store.stageIds);
+    const item = await this.getRawRecordItem(roomId, store.listId, itemId);
+    const record = parseEmailHistoryItem(item, store.stageIds);
     if (!record) throw new Error('Dữ liệu lịch sử email không hợp lệ.');
     return record;
   }
 
   private async findOrCreateStore(roomId: string): Promise<EmailHistoryStore> {
-    const allResponse = parseToolResponse(await this.callTool('privos.lists.getAll', { roomId }));
-    const lists = Array.isArray(allResponse) ? allResponse : allResponse?.lists;
-    const existing = Array.isArray(lists)
-      ? lists.find(list => list?.name === EMAIL_HISTORY_LIST_NAME)
-      : undefined;
+    if (!roomId.trim()) throw new Error('Email history Room is required');
+    const discovery = this.capabilities.discovery;
+    if (!discovery) throw new Error('Email history List discovery is not available');
+    const stageLookup = this.capabilities.stageLookup;
+    if (!stageLookup) throw new Error('Email history stage lookup is not available');
 
-    if (existing) {
-      const listId = getListId(existing);
-      let stages = existing.stages;
-      if (!resolveStageIds(stages) && listId) {
-        stages = parseToolResponse(await this.callTool('privos.stages.getByList', { listId }));
+    const discovered = await discovery.findList(roomId, EMAIL_HISTORY_LIST_NAME);
+    let listId: string;
+    if (discovered !== undefined) {
+      const discoveredListId = nonEmptyString(discovered.listId);
+      if (!discoveredListId) {
+        throw new Error('Email history List discovery returned an invalid List id');
       }
-      const stageIds = resolveStageIds(stages);
-      if (!listId || !stageIds) throw new Error('List lịch sử email thiếu cấu hình stage bắt buộc.');
-      return { listId, stageIds };
+      listId = discoveredListId;
+    } else {
+      const created = await this.gateway.call<unknown>({
+        roomId,
+        requiredScope: 'lists:write',
+        toolName: 'mcpapp.lists.create',
+        arguments: {
+          roomId,
+          name: EMAIL_HISTORY_LIST_NAME,
+          description: 'Lịch sử email dùng chung của HR Mini App. Không xóa List này.',
+          fieldDefinitions: FIELD_DEFINITIONS,
+          stages: STAGE_DEFINITIONS,
+        },
+      });
+      const list = isRecord(created) && created.list !== undefined ? created.list : created;
+      const createdListId = getListId(list);
+      if (!createdListId) throw new Error('Không thể khởi tạo List lịch sử email.');
+      listId = createdListId;
     }
 
-    const created = parseToolResponse(await this.callTool('privos.lists.create', {
-      roomId,
-      name: EMAIL_HISTORY_LIST_NAME,
-      description: 'Lịch sử email dùng chung của HR Mini App. Không xóa List này.',
-      fieldDefinitions: FIELD_DEFINITIONS,
-      stages: STAGE_DEFINITIONS,
-    }));
-    const list = created?.list || created;
-    const listId = getListId(list);
-    const stageIds = resolveStageIds(created?.stages || list?.stages);
-    if (!listId || !stageIds) throw new Error('Không thể khởi tạo List lịch sử email.');
+    const stageIds = validateStageIds(await stageLookup.getStageIds(roomId, listId));
     return { listId, stageIds };
   }
 
-  private async updateRecord(record: EmailHistoryRecord): Promise<EmailHistoryRecord> {
-    const currentItem = await this.getRawRecordItem(record.listId, record.id);
-    const recordIdField = Array.isArray(currentItem.customFields)
-      ? currentItem.customFields.find((field: any) => field?.fieldId === EMAIL_HISTORY_FIELD_IDS.recordId)
-      : undefined;
-    const recordId = typeof recordIdField?.value === 'string' && recordIdField.value
-      ? recordIdField.value
-      : record.id;
+  private async updateRecord(
+    roomId: string,
+    record: EmailHistoryRecord,
+  ): Promise<EmailHistoryRecord> {
+    const currentItem = await this.getRawRecordItem(roomId, record.listId, record.id);
+    const currentStageId = nonEmptyString(currentItem.stageId);
+    if (currentStageId !== record.stageId) {
+      const stageMovement = this.capabilities.stageMovement;
+      if (!stageMovement) {
+        throw new Error('Email history stage movement is not available');
+      }
+      await stageMovement.moveItemToStage(roomId, record.id, record.stageId);
+    }
 
-    if (currentItem.stageId !== record.stageId) {
-      await this.callTool('privos.lists.moveItemToStage', {
-        itemId: record.id,
-        stageId: record.stageId,
+    const currentValues = readCustomFieldValues(currentItem);
+    const recordId = nonEmptyString(currentValues.get(EMAIL_HISTORY_FIELD_IDS.recordId)) ?? record.id;
+    const desiredFields = recordToCustomFields(record, recordId);
+    for (const field of desiredFields) {
+      if (field.fieldId === EMAIL_HISTORY_FIELD_IDS.recordId) continue;
+      if (Object.is(currentValues.get(field.fieldId), field.value)) continue;
+      await this.gateway.call<unknown>({
+        roomId,
+        requiredScope: 'lists:write',
+        toolName: 'mcpapp.lists.updateCustomField',
+        arguments: {
+          itemId: record.id,
+          fieldId: field.fieldId,
+          value: field.value,
+        },
       });
     }
-    await this.callTool('privos.lists.updateItem', {
-      itemId: record.id,
-      title: record.subject,
-      customFields: recordToCustomFields(record, recordId),
-    });
     return record;
   }
 
-  private async getRawRecordItem(listId: string, itemId: string): Promise<any> {
-    const response = parseToolResponse(await this.callTool('privos.lists.getItems', {
-      listId,
-      count: 1000,
-    }));
-    const items = Array.isArray(response) ? response : response?.items;
-    const item = Array.isArray(items)
-      ? items.find(candidate => (candidate?._id || candidate?.id) === itemId)
-      : undefined;
-    if (!item) throw new Error('Không tìm thấy email trong Room hiện tại.');
+  private async getRawRecordItem(
+    roomId: string,
+    listId: string,
+    itemId: string,
+  ): Promise<Readonly<Record<string, unknown>>> {
+    const response = await this.gateway.call<unknown>({
+      roomId,
+      requiredScope: 'lists:read',
+      toolName: 'mcpapp.lists.getItems',
+      arguments: { listId, count: 1000 },
+    });
+    const item = readItems(response).find(candidate => (
+      isRecord(candidate)
+      && getObjectId(candidate) === itemId
+      && nonEmptyString(candidate.listId) === listId
+    ));
+    if (!isRecord(item)) throw new Error('Không tìm thấy email trong Room hiện tại.');
     return item;
   }
 }

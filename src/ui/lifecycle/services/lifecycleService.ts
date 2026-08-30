@@ -1,5 +1,11 @@
-import { McpApp } from '@privos/app-react';
-import { EmployeeProfile } from '../types';
+import type { ListsClient } from '../../platform/contracts';
+import type { EmployeeProfile } from '../types';
+
+export const LIFECYCLE_LIST_NAMES = ['[HR-MiniApp] Hồ sơ nhân sự', 'Hồ sơ nhân sự'] as const;
+
+export function isLifecycleListName(name: string): boolean {
+  return LIFECYCLE_LIST_NAMES.some(candidate => candidate === name);
+}
 
 export function getMockProfiles(): EmployeeProfile[] {
   return [
@@ -10,108 +16,38 @@ export function getMockProfiles(): EmployeeProfile[] {
   ];
 }
 
-export async function getHrListId(app: McpApp, roomId: string): Promise<string | null> {
-  try {
-    const res: any = await app.callServerTool({
-      name: 'privos.lists.getAll',
-      arguments: { channelId: roomId }
-    });
-
-    const text = res?.content?.[0]?.text;
-    if (!text) return null;
-
-    const parsed = JSON.parse(text);
-    const lists = Array.isArray(parsed) ? parsed : (parsed?.lists || []);
-
-    const hrList = lists.find((l: any) =>
-      ['nhan-su', 'nhansu', 'employee', 'lifecycle', 'hồ sơ'].some(kw =>
-        (l.name || '').toLowerCase().includes(kw)
-      )
-    );
-    
-    return hrList?._id || hrList?.id || null;
-  } catch (err) {
-    console.error('Failed to get HR List ID:', err);
-    return null;
-  }
+export async function getHrListId(lists: ListsClient, roomId: string): Promise<string | null> {
+  if (!roomId.trim()) throw new Error('Không xác định được Room lifecycle.');
+  return (await lists.listByRoom(roomId)).find(list => isLifecycleListName(list.name))?._id ?? null;
 }
 
-export async function createHrList(app: McpApp, roomId: string): Promise<string | null> {
-  try {
-    const res: any = await app.callServerTool({
-      name: 'privos.lists.create',
-      arguments: { channelId: roomId, name: 'Hồ sơ nhân sự' }
-    });
-    const parsed = JSON.parse(res?.content?.[0]?.text || '{}');
-    return parsed._id || parsed.id || null;
-  } catch (err) {
-    console.error('Failed to create HR List:', err);
-    return null;
-  }
+export async function createHrList(): Promise<never> {
+  throw new Error('Tự động tạo hoặc sửa List lifecycle chưa được xác minh.');
 }
 
-export async function fetchProfilesFromServer(app: McpApp, listId: string): Promise<EmployeeProfile[]> {
-  const res: any = await app.callServerTool({
-    name: 'privos.lists.getItems',
-    arguments: { listId }
-  });
-
-  const text = res?.content?.[0]?.text;
-  if (!text) return [];
-
-  const parsed = JSON.parse(text);
-  const items = Array.isArray(parsed) ? parsed : (parsed?.items || []);
-
-  return items.map((item: any) => ({
-    _id: item._id || item.id,
-    name: item.name || item.title || 'Không có tên',
-    status: item.status || item.stage || 'Mới nhận việc',
+export async function fetchProfilesFromServer(lists: ListsClient, listId: string): Promise<EmployeeProfile[]> {
+  const info = await lists.getInfo(listId);
+  const page = await lists.queryItems({ listId, count: 500 });
+  if (page.nextCursor) throw new Error('Danh sách lifecycle vượt giới hạn trang an toàn.');
+  return page.items.map(item => ({
+    _id: item._id,
+    name: item.name,
+    status: info.stages.find(stage => stage._id === item.stageId)?.name ?? 'Mới nhận việc',
   }));
 }
 
-export async function loadEmployeeProfiles(app: McpApp, roomId: string): Promise<EmployeeProfile[]> {
-  try {
-    const listId = await getHrListId(app, roomId);
-    if (!listId) {
-      console.log('[Lifecycle] Không tìm thấy list nhân sự trên server. Đang dùng data mẫu.');
-      return getMockProfiles();
-    }
-    return await fetchProfilesFromServer(app, listId);
-  } catch (err) {
-    console.warn('[Lifecycle] Lỗi khi load hồ sơ từ server. Dùng data mẫu:', err);
-    return getMockProfiles();
-  }
+export async function loadEmployeeProfiles(lists: ListsClient, roomId: string): Promise<EmployeeProfile[]> {
+  const listId = await getHrListId(lists, roomId);
+  if (!listId) throw new Error('Không tìm thấy List hồ sơ nhân sự.');
+  return fetchProfilesFromServer(lists, listId);
 }
 
-export async function createEmployeeProfile(app: McpApp, roomId: string, name: string): Promise<EmployeeProfile> {
-  const newProfile: EmployeeProfile = {
-    _id: `local-${Date.now()}`,
-    name,
-    status: 'Mới nhận việc'
-  };
-
-  try {
-    let listId = await getHrListId(app, roomId);
-    if (!listId) {
-      listId = await createHrList(app, roomId);
-    }
-
-    if (listId) {
-      await app.callServerTool({
-        name: 'privos.lists.create_item',
-        arguments: {
-          listId,
-          item: {
-            title: name,
-            name: name,
-            status: 'Mới nhận việc',
-            stage: 'Mới nhận việc'
-          }
-        }
-      });
-    }
-  } catch (err) {
-    console.warn(`[Lifecycle] Lỗi kết nối khi tạo hồ sơ. Fallback local.`, err);
-  }
-  return newProfile;
+export async function createEmployeeProfile(lists: ListsClient, roomId: string, name: string): Promise<EmployeeProfile> {
+  const listId = await getHrListId(lists, roomId);
+  if (!listId) throw new Error('Không tìm thấy List hồ sơ nhân sự.');
+  const info = await lists.getInfo(listId);
+  const stage = info.stages.find(candidate => candidate.name === 'Mới nhận việc') ?? info.stages[0];
+  if (!stage) throw new Error('List hồ sơ nhân sự thiếu stage khởi tạo.');
+  const item = await lists.createItem({ listId, title: name, stageId: stage._id, customFields: [] });
+  return { _id: item._id, name, status: stage.name ?? 'Mới nhận việc' };
 }

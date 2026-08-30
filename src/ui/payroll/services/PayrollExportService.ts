@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import type { McpApp } from '@privos/app-react';
+import type { McpApp } from '@privos_ai/app-react';
 import type { EmployeeProfile } from '../../lifecycle/types';
 import type { PayrollRecord } from '../types';
 import { calculateNetSalary } from '../utils';

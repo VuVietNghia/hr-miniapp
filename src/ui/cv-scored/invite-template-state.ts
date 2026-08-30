@@ -27,12 +27,13 @@ export function createInviteTemplateLoadState(): InviteTemplateLoadState {
 
 export async function loadActiveInviteTemplate(
   repository: ActiveTemplateRepository,
+  writeAvailable: boolean,
   isCurrent: () => boolean,
   updateState: (state: InviteTemplateLoadState) => void,
 ): Promise<void> {
   updateState({ activeTemplate: null, loadedRepository: null, loading: true, error: null });
   try {
-    await repository.ensureInitialized();
+    if (writeAvailable) await repository.ensureInitialized();
     const activeTemplate = await repository.getActiveTemplate();
     if (isCurrent()) {
       updateState({ activeTemplate, loadedRepository: repository, loading: false, error: null });

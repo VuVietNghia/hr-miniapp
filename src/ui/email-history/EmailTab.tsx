@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { usePrivosApp, usePrivosContext } from '@privos/app-react';
+import { usePrivosApp, usePrivosContext } from '@privos_ai/app-react';
 
 import type {
   EmailHistoryDateRange,
@@ -12,23 +12,39 @@ import { EmailHistoryService } from './email-history-service';
 import { toggleEmailSourceFilter } from './email-mailbox-state';
 import { EmailMailboxView } from './EmailMailboxView';
 import { createInterviewEmailTemplateRepository } from '../email-templates/interview-email-template-default';
+import { createRoomClients } from '../platform/create-room-clients';
+import { FEATURE_DEGRADED_BEHAVIOR, type FeatureCapabilities } from '../access/feature-capabilities';
+import { resolveInterviewTemplateAccess } from '../email-templates/interview-template-access';
 import './email-tab.css';
 
 export interface EmailTabProps {
   active: boolean;
+  capabilities: FeatureCapabilities;
 }
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export default function EmailTab({ active }: EmailTabProps) {
+export default function EmailTab({ active, capabilities }: EmailTabProps) {
   const app = usePrivosApp();
   const { roomId } = usePrivosContext();
-  const service = useMemo(() => app ? new EmailHistoryService(app) : null, [app]);
+  const roomClients = useMemo(() => app ? createRoomClients(app) : null, [app]);
+  const service = useMemo(() => {
+    if (!app || !roomClients) return null;
+    return new EmailHistoryService(roomClients.lists, {
+      async retry(input) { await app.callServerTool({ name: 'hrm.mail.retry', arguments: input }); },
+    });
+  }, [app, roomClients]);
+  const templateAccess = useMemo(
+    () => resolveInterviewTemplateAccess(capabilities, roomClients),
+    [capabilities, roomClients],
+  );
   const templateRepository = useMemo(
-    () => app && roomId ? createInterviewEmailTemplateRepository(app, roomId) : null,
-    [app, roomId],
+    () => app && roomId && roomClients && templateAccess.readable
+      ? createInterviewEmailTemplateRepository(app, roomId)
+      : null,
+    [app, roomId, roomClients, templateAccess.readable],
   );
   const requestRef = useRef(0);
   const hasLoadedRef = useRef(false);
@@ -63,8 +79,16 @@ export default function EmailTab({ active }: EmailTabProps) {
     setDeleteCandidate(null);
   }, [roomId]);
 
+  useEffect(() => {
+    if (capabilities.listsReadable) return;
+    requestRef.current += 1;
+    hasLoadedRef.current = false;
+    setRecords([]);
+    setSelectedId(null);
+  }, [capabilities.listsReadable]);
+
   const refresh = useCallback(async (showLoading = false) => {
-    if (!active || !service || !roomId) return;
+    if (!active || !service || !roomId || !capabilities.listsReadable) return;
     const requestId = ++requestRef.current;
     if (showLoading) setLoading(true);
 
@@ -83,7 +107,7 @@ export default function EmailTab({ active }: EmailTabProps) {
     } finally {
       if (showLoading && requestId === requestRef.current) setLoading(false);
     }
-  }, [active, roomId, service]);
+  }, [active, roomId, service, capabilities.listsReadable]);
 
   useEffect(() => {
     if (!active) return;
@@ -93,14 +117,14 @@ export default function EmailTab({ active }: EmailTabProps) {
   usePolling(
     () => refresh(false),
     {
-      enabled: active && Boolean(service && roomId),
+      enabled: active && capabilities.listsReadable && Boolean(service && roomId),
       interval: 1000,
       immediate: false,
     },
   );
 
   const handleRetry = async (record: EmailHistoryRecord) => {
-    if (!service || !roomId || retryingId) return;
+    if (!service || !roomId || retryingId || !capabilities.listsWritable) return;
     setRetryingId(record.id);
     setError(null);
     try {
@@ -115,7 +139,7 @@ export default function EmailTab({ active }: EmailTabProps) {
   };
 
   const handleConfirmDelete = async () => {
-    if (!service || !deleteCandidate || deletingId || retryingId === deleteCandidate.id) return;
+    if (!service || !deleteCandidate || deletingId || retryingId === deleteCandidate.id || !capabilities.listsWritable) return;
     const itemId = deleteCandidate.id;
     setDeletingId(itemId);
     setError(null);
@@ -140,11 +164,17 @@ export default function EmailTab({ active }: EmailTabProps) {
       dateRange={dateRange}
       active={active}
       loading={loading}
-      error={error}
+      error={error ?? (!capabilities.listsReadable
+        ? 'Email history is unavailable until List read permission is granted.'
+        : !capabilities.listsWritable
+          ? FEATURE_DEGRADED_BEHAVIOR.listsWritable
+          : null)}
+      writeAvailable={capabilities.listsWritable}
       retryingId={retryingId}
       deletingId={deletingId}
       deleteCandidate={deleteCandidate}
       templateRepository={templateRepository}
+      templateWriteAvailable={templateAccess.writable}
       templateCreateRequest={templateCreateRequest}
       templateCount={templateCount}
       templateReady={templateReady}

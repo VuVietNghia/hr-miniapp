@@ -1,14 +1,8 @@
-export interface PayrollRecord {
+import type { PayrollRecordInput } from '../../payroll/payroll-types';
+
+export interface PayrollRecord extends PayrollRecordInput {
   _id?: string;
-  employeeId: string;
-  baseSalary: number;
-  taxId: string;
-  bankAccount: string;
-  bankName?: string;
-  contractType?: string;
-  applyProbationRate?: boolean; // Checkbox phòng Hành chính kiểm soát (mặc định true khi thử việc 85%)
-  probationRate?: number; // Mặc định 85 (%)
-  roomId?: string; // Tùy chọn, dùng để filter data theo room nếu ứng dụng hỗ trợ nhiều room
+  roomId?: string;
 }
 
 export interface IPayrollService {

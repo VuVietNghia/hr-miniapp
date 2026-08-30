@@ -1,0 +1,359 @@
+{
+  "schemaVersion": 3,
+  "kind": "mcp-app",
+  "name": "ai.privos.demo-hr-management-ws",
+  "version": "2.0.0",
+  "title": "HR Mini app V3",
+  "description": "PrivOS Room-scoped HR management application for recruitment, CV processing, employee lifecycle, payroll, email history, and document drafting.",
+  "icon": "/public/images/company-logos/logo.svg",
+  "author": {
+    "name": "PrivOS AI",
+    "email": "dev@privos.ai",
+    "website": "https://privos.ai"
+  },
+  "homepage": "https://privos.ai",
+  "repository": "https://github.com/PrivOS-AI/privos-demo-hrm-ws",
+  "permissions": [
+    {
+      "scope": "basic:information",
+      "requirement": "required",
+      "context": "room",
+      "executionContext": "both",
+      "feature": "core.context",
+      "reason": "Room context consumers: src/ui/App.tsx, src/ui/bot-drafting-tab.tsx, src/ui/company-home.tsx, src/ui/contact-collector-form.tsx, src/ui/cv-scored/CVScoredTab.tsx, src/ui/email-history/EmailTab.tsx, src/ui/jd-chatbot-functional.tsx, src/ui/lifecycle/components/CreateDetailedProfileForm.tsx, src/ui/lifecycle/components/EmailComposerModal.tsx, src/ui/lifecycle/components/ProfileCard.tsx, src/ui/lifecycle/components/ProfileListView.tsx, src/ui/lifecycle/LifecycleDashboard.tsx, src/ui/pipeline-dashboard.tsx, src/ui/recruitment-panel.tsx, src/ui/theme-provider.tsx, and src/ui/training-dashboard.tsx use the verified Room context; src/ui/payroll/access/usePayrollAccessPolling.ts reads privos.context.get."
+    },
+    {
+      "scope": "lists:read",
+      "requirement": "required",
+      "context": "room",
+      "executionContext": "user",
+      "feature": "hr.lists.read",
+      "reason": "Room List reads are consumed by src/services/EmailHistoryRepository.ts, src/ui/contact-collector-form.tsx, src/ui/cv-scored/CVScoredTab.tsx, src/ui/email-history/email-history-service.ts, src/ui/lifecycle/services/lifecycleService.ts, src/ui/lifecycle/services/PrivOSLifecycleService.ts, src/ui/list-items-table.tsx, and src/ui/pipeline-service.ts."
+    },
+    {
+      "scope": "lists:query",
+      "requirement": "optional",
+      "context": "room",
+      "executionContext": "user",
+      "feature": "hr.lists.query",
+      "reason": "Room List query/search consumers are src/ui/cv-scored/CVScoredTab.tsx, src/ui/lifecycle/services/PrivOSLifecycleService.ts, and src/ui/pipeline-service.ts.",
+      "degradedBehavior": "List screens use the bounded non-query route and display that results may be capped."
+    },
+    {
+      "scope": "lists:write",
+      "requirement": "optional",
+      "context": "room",
+      "executionContext": "user",
+      "feature": "hr.lists.manage",
+      "reason": "Room List create, field, item, stage-move, update, and delete consumers are src/services/EmailHistoryRepository.ts, src/ui/contact-collector-form.tsx, src/ui/cv-scored/CVScoredTab.tsx, src/ui/email-history/email-history-service.ts, src/ui/lifecycle/services/lifecycleService.ts, src/ui/lifecycle/services/PrivOSLifecycleService.ts, src/ui/list-items-table.tsx, and src/ui/pipeline-service.ts.",
+      "degradedBehavior": "Recruitment, CV, lifecycle, and email-history writes are disabled; reads remain available."
+    },
+    {
+      "scope": "files:read",
+      "requirement": "optional",
+      "context": "room",
+      "executionContext": "user",
+      "feature": "hr.files.read",
+      "reason": "Room file/folder discovery, content, search, and preview consumers are src/ui/drafting/services/CompanyContextProvider.ts, src/ui/email-templates/interview-email-template-repository.ts, src/ui/pipeline-dashboard.tsx, src/ui/pipeline-service.ts, src/ui/privos-rest.ts, src/ui/recruitment-panel.tsx, and src/ui/training-dashboard.tsx.",
+      "degradedBehavior": "Existing document previews and Room file discovery are unavailable."
+    },
+    {
+      "scope": "files:write",
+      "requirement": "optional",
+      "context": "room",
+      "executionContext": "user",
+      "feature": "hr.files.manage",
+      "reason": "Room file/folder create, update, delete, and upload consumers are src/services/PrivosApi.ts, src/ui/bot-drafting-tab.tsx, src/ui/company-home.tsx, src/ui/contact-collector-form.tsx, src/ui/email-templates/interview-email-template-repository.ts, src/ui/jd-chatbot-functional.tsx, src/ui/lifecycle/components/CreateDetailedProfileForm.tsx, src/ui/onboarding/PrivosApi.ts, src/ui/onboarding/services/OnboardingService.ts, src/ui/payroll/services/PayrollExportService.ts, src/ui/pipeline-dashboard.tsx, src/ui/pipeline-service.ts, src/ui/privos-rest.ts, src/ui/recruitment-panel.tsx, and src/ui/training-dashboard.tsx.",
+      "degradedBehavior": "Upload, generated-document persistence, and payroll export upload are disabled."
+    },
+    {
+      "scope": "sandbox:skills:use",
+      "requirement": "optional",
+      "context": "room",
+      "executionContext": "user",
+      "feature": "hr.sandbox.skills",
+      "reason": "src/ui/pipeline-service.ts invokes the CV evaluator skill and src/ui/pipeline-dashboard.tsx invokes the JD generator skill from Room Files.",
+      "degradedBehavior": "Skill-backed drafting and screening controls are hidden."
+    },
+    {
+      "scope": "sandbox:botkey:push",
+      "requirement": "optional",
+      "context": "room",
+      "executionContext": "user",
+      "feature": "hr.sandbox.connect",
+      "reason": "Room AI workflow consumers src/ui/bot-drafting-tab.tsx, src/ui/company-home.tsx, src/ui/jd-chatbot-functional.tsx, src/ui/pipeline-dashboard.tsx, and src/ui/pipeline-service.ts depend on the sandbox bot-key connection.",
+      "degradedBehavior": "Sandbox bot-key connection actions are unavailable."
+    },
+    {
+      "scope": "sandbox:wake",
+      "requirement": "optional",
+      "context": "room",
+      "executionContext": "user",
+      "feature": "hr.sandbox.wake",
+      "reason": "Room AI workflow consumers src/ui/bot-drafting-tab.tsx, src/ui/company-home.tsx, src/ui/jd-chatbot-functional.tsx, src/ui/pipeline-dashboard.tsx, and src/ui/pipeline-service.ts depend on waking the Room sandbox before generation.",
+      "degradedBehavior": "Sandbox wake actions are unavailable."
+    },
+    {
+      "scope": "sandbox:generate",
+      "requirement": "optional",
+      "context": "room",
+      "executionContext": "user",
+      "feature": "hr.sandbox.generate",
+      "reason": "AI generation consumers src/ui/bot-drafting-tab.tsx, src/ui/company-home.tsx, src/ui/jd-chatbot-functional.tsx, src/ui/pipeline-dashboard.tsx, and src/ui/pipeline-service.ts start and poll Room generation work.",
+      "degradedBehavior": "AI generation and polling actions are disabled."
+    },
+    {
+      "scope": "sandbox:ai-chat",
+      "requirement": "optional",
+      "context": "room",
+      "executionContext": "user",
+      "feature": "hr.chat.read",
+      "reason": "AI chat consumers src/ui/bot-drafting-tab.tsx, src/ui/company-home.tsx, src/ui/jd-chatbot-functional.tsx, src/ui/pipeline-dashboard.tsx, and src/ui/pipeline-service.ts read Room generation/session results; the direct ai-messages.list calls are in src/ui/company-home.tsx and src/ui/pipeline-service.ts.",
+      "degradedBehavior": "Existing AI chat/session history is unavailable."
+    },
+    {
+      "scope": "sandbox:ai-chat:write",
+      "requirement": "optional",
+      "context": "room",
+      "executionContext": "user",
+      "feature": "hr.chat.write",
+      "reason": "AI chat write consumers src/ui/bot-drafting-tab.tsx, src/ui/company-home.tsx, src/ui/jd-chatbot-functional.tsx, src/ui/pipeline-dashboard.tsx, and src/ui/pipeline-service.ts create Room messages and generation work; direct ai-messages.send/startGeneration calls are in src/ui/company-home.tsx and src/ui/pipeline-service.ts.",
+      "degradedBehavior": "New AI chat/generation actions are disabled."
+    },
+    {
+      "scope": "db:read",
+      "requirement": "optional",
+      "context": "room",
+      "executionContext": "user",
+      "feature": "hr.payroll.read",
+      "reason": "src/ui/payroll/services/PayrollService.ts and src/ui/payroll/components/PayrollDashboard.tsx call hrm.payroll.query for payroll_records, and src/mcp-message-handlers.ts currently forwards it to PrivOS DB. Backend owner authorization is additional to this PrivOS grant.",
+      "degradedBehavior": "Payroll is unavailable."
+    },
+    {
+      "scope": "db:write",
+      "requirement": "optional",
+      "context": "room",
+      "executionContext": "user",
+      "feature": "hr.payroll.manage",
+      "reason": "src/ui/payroll/services/PayrollService.ts calls hrm.payroll.create, hrm.payroll.update, and hrm.payroll.delete for payroll_records, and src/mcp-message-handlers.ts currently forwards them to PrivOS DB. Backend owner authorization is additional to this PrivOS grant.",
+      "degradedBehavior": "Payroll create/update/delete is unavailable."
+    },
+    {
+      "scope": "db:schema:read",
+      "requirement": "optional",
+      "context": "room",
+      "executionContext": "user",
+      "feature": "hr.payroll.schema.read",
+      "reason": "No current schema-read call exists; this grant is reserved for Task 8 src/payroll/PayrollRepository.ts to verify payroll_records through the backend repository boundary. Backend owner authorization is additional to this PrivOS grant.",
+      "degradedBehavior": "Payroll schema verification is unavailable."
+    },
+    {
+      "scope": "db:schema:write",
+      "requirement": "optional",
+      "context": "room",
+      "executionContext": "user",
+      "feature": "hr.payroll.schema.manage",
+      "reason": "src/ui/payroll/services/PayrollService.ts currently calls privos.db.registerCollection for payroll_records; Task 8 moves registration to src/payroll/PayrollRepository.ts. Backend owner authorization is additional to this PrivOS grant.",
+      "degradedBehavior": "Payroll collection registration is unavailable."
+    }
+  ],
+  "dataPolicy": {
+    "version": "2026-08-29",
+    "retention": "HR records, including tracked email content and delivery metadata, remain in the PrivOS Room until an authorized user deletes them; the stateless app container keeps no local persistent copy.",
+    "externalProcessing": true
+  },
+  "availabilityTier": "single",
+  "capabilities": {
+    "verifiedActor": true
+  },
+  "agentBot": {
+    "name": "HR Mini App Service",
+    "slug": "hr-mini-app-service"
+  },
+  "tools": [
+    {
+      "name": "hr_management_dashboard",
+      "title": "HR Mini app V3",
+      "description": "Open the Room-scoped HR management dashboard.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "roomId": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "ui": {
+        "resourceUri": "ui://demo-hr-management/form.html"
+      }
+    },
+    {
+      "name": "hrm.payroll.query",
+      "title": "Query payroll records",
+      "description": "Query payroll_records for the verified Room.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "hrm.mail.send",
+      "title": "Send tracked HR email",
+      "description": "Send an HR email and track delivery in the Room email-history List.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "toName": { "type": "string" },
+          "toEmail": { "type": "string" },
+          "subject": { "type": "string" },
+          "htmlContent": { "type": "string" },
+          "roomId": { "type": "string" },
+          "source": { "type": "string", "enum": ["cv_scored", "lifecycle"] },
+          "cvItemId": { "type": "string" },
+          "cvListId": { "type": "string" },
+          "jdName": { "type": "string" }
+        },
+        "required": ["toName", "toEmail", "subject", "htmlContent"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "hrm.mail.retry",
+      "title": "Retry tracked HR email",
+      "description": "Retry one failed tracked email from the Room email-history List.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "roomId": { "type": "string" },
+          "itemId": { "type": "string" }
+        },
+        "required": ["roomId", "itemId"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "hrm.payroll.create",
+      "title": "Create payroll record",
+      "description": "Create a payroll_records entry in the verified Room.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "record": {
+            "type": "object",
+            "properties": {
+              "employeeId": { "type": "string" },
+              "baseSalary": { "type": "number" },
+              "taxId": { "type": "string" },
+              "bankAccount": { "type": "string" },
+              "bankName": { "type": "string" },
+              "contractType": { "type": "string" },
+              "applyProbationRate": { "type": "boolean" },
+              "probationRate": { "type": "number" }
+            },
+            "required": ["employeeId", "baseSalary", "taxId", "bankAccount"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["record"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "hrm.payroll.update",
+      "title": "Update payroll record",
+      "description": "Update a payroll_records entry in the verified Room.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "record": {
+            "type": "object",
+            "properties": {
+              "employeeId": { "type": "string" },
+              "baseSalary": { "type": "number" },
+              "taxId": { "type": "string" },
+              "bankAccount": { "type": "string" },
+              "bankName": { "type": "string" },
+              "contractType": { "type": "string" },
+              "applyProbationRate": { "type": "boolean" },
+              "probationRate": { "type": "number" }
+            },
+            "required": ["employeeId", "baseSalary", "taxId", "bankAccount"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "record"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "hrm.payroll.delete",
+      "title": "Delete payroll record",
+      "description": "Delete a payroll_records entry from the verified Room.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" }
+        },
+        "required": ["id"],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "port": 3000,
+  "resources": {
+    "memoryMb": 256,
+    "cpus": 0.25,
+    "tmpSizeMb": 64
+  },
+  "volumes": [],
+  "stateless": true,
+  "license": {
+    "tiers": [
+      {
+        "id": "default",
+        "name": "Free",
+        "features": []
+      }
+    ]
+  },
+  "env": [
+    {
+      "key": "EMAILJS_SERVICE_ID",
+      "description": "EmailJS service identifier used by the HR email delivery client.",
+      "required": true,
+      "secret": false
+    },
+    {
+      "key": "EMAILJS_TEMPLATE_ID",
+      "description": "EmailJS template identifier used for tracked HR email delivery.",
+      "required": true,
+      "secret": false
+    },
+    {
+      "key": "EMAILJS_PUBLIC_KEY",
+      "description": "EmailJS public runtime key used for tracked HR email delivery.",
+      "required": true,
+      "secret": false
+    },
+    {
+      "key": "EMAILJS_PRIVATE_KEY",
+      "description": "Optional EmailJS private key for authenticated HR email delivery.",
+      "required": false,
+      "secret": true
+    },
+    {
+      "key": "PRIVOS_AGENT_BOT_CREDENTIAL",
+      "description": "Installation agent-bot credential injected by the PrivOS platform.",
+      "required": false,
+      "secret": true
+    },
+    {
+      "key": "PRIVOS_AGENT_BOT_USER_ID",
+      "description": "Installation agent-bot user identifier injected by the PrivOS platform.",
+      "required": false,
+      "secret": false
+    }
+  ],
+  "resourceManifestTemplate": []
+}

@@ -8,10 +8,8 @@ export interface TaskQueueOptions {
 
 type Task<T> = () => Promise<T>;
 
-interface QueueItem<T> {
-  task: Task<T>;
-  resolve: (value: T | PromiseLike<T>) => void;
-  reject: (reason?: any) => void;
+interface QueueItem {
+  run(): Promise<void>;
 }
 
 /**
@@ -22,8 +20,8 @@ interface QueueItem<T> {
  * - Chuẩn Clean Code: Single Responsibility (Chỉ làm nhiệm vụ xếp hàng và chạy).
  */
 export class TaskQueue {
-  private queue: QueueItem<any>[] = [];
-  private isProcessing: boolean = false;
+  private queue: QueueItem[] = [];
+  private isProcessing = false;
   private readonly delayMs: number;
 
   constructor(options: TaskQueueOptions = {}) {
@@ -39,8 +37,16 @@ export class TaskQueue {
    */
   public enqueue<T>(task: Task<T>): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      this.queue.push({ task, resolve, reject });
-      this.processNextTask();
+      this.queue.push({
+        run: async () => {
+          try {
+            resolve(await task());
+          } catch (error) {
+            reject(error);
+          }
+        },
+      });
+      void this.processNextTask();
     });
   }
 
@@ -61,15 +67,12 @@ export class TaskQueue {
     }
 
     try {
-      const result = await item.task();
-      item.resolve(result);
-    } catch (error) {
-      item.reject(error);
+      await item.run();
     } finally {
       // Đợi hết delayMs trước khi cho phép chạy task tiếp theo
       setTimeout(() => {
         this.isProcessing = false;
-        this.processNextTask();
+        void this.processNextTask();
       }, this.delayMs);
     }
   }

@@ -1,3 +1,15 @@
+export interface AttachedFileReference {
+  _id?: string;
+  id?: string;
+  name?: string;
+  downloadUrl?: string;
+  url?: string;
+  link?: string;
+  fileUrl?: string;
+  title?: string;
+  fileName?: string;
+}
+
 export interface EmployeeProfile {
   _id: string;
   name: string;
@@ -8,7 +20,9 @@ export interface EmployeeProfile {
   department?: string;
   startDate?: string;
   sourceCandidateId?: string;
-  attachedFileObj?: any;
+  attachedFileObj?: AttachedFileReference | string;
+  attachedFileId?: string;
+  attachedFileUrl?: string;
 }
 
 export interface KanbanColumnDef {
@@ -39,8 +53,9 @@ export interface PassedCandidate {
 }
 
 export interface ILifecycleService {
+  readonly capabilities: Readonly<{ stageMovement: boolean }>;
   loadProfiles(roomId: string): Promise<EmployeeProfile[]>;
   loadPassedCandidates(roomId: string): Promise<PassedCandidate[]>;
-  createProfile(roomId: string, data: Omit<EmployeeProfile, '_id' | 'status'> & { attachedFileObj?: any }): Promise<EmployeeProfile>;
+  createProfile(roomId: string, data: Omit<EmployeeProfile, '_id' | 'status'>): Promise<EmployeeProfile>;
   updateProfileStatus(roomId: string, profileId: string, newStatus: string): Promise<void>;
 }

@@ -1,10 +1,12 @@
 type JDChatbotHeaderProps = {
   busy: boolean;
+  libraryAvailable: boolean;
+  createAvailable: boolean;
   onOpenLibrary: () => void;
   onCreateNew: () => void;
 };
 
-export function JDChatbotHeader({ busy, onOpenLibrary, onCreateNew }: JDChatbotHeaderProps) {
+export function JDChatbotHeader({ busy, libraryAvailable, createAvailable, onOpenLibrary, onCreateNew }: JDChatbotHeaderProps) {
   return (
     <header className="jd-chatbot-page-header">
       <div>
@@ -15,14 +17,14 @@ export function JDChatbotHeader({ busy, onOpenLibrary, onCreateNew }: JDChatbotH
         <button
           className="jd-chatbot-library-trigger"
           onClick={onOpenLibrary}
-          disabled={busy}
+          disabled={busy || !libraryAvailable}
         >
           Danh sách JD
         </button>
         <button
           className="jd-chatbot-preview-badge"
           onClick={onCreateNew}
-          disabled={busy}
+          disabled={busy || !createAvailable}
         >
           Tạo JD mới
         </button>

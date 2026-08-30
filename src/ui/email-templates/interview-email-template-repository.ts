@@ -1,4 +1,5 @@
-import type { McpApp } from '@privos/app-react';
+import { OptionalFeatureUnavailableError } from '../privos-rest';
+import type { FilesClient, FoldersClient } from '../platform/contracts';
 import {
   ACTIVE_TEMPLATE_FILE_NAME,
   createUniqueTemplateId,
@@ -10,22 +11,9 @@ import {
   type InterviewEmailTemplateDocument,
   type InterviewEmailTemplateDraft,
 } from './interview-email-template';
-import {
-  createOrUpdateFile,
-  ensureFolderPath,
-  restCall,
-} from '../privos-rest';
 
 const CANONICAL_TEMPLATE_FILE_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
 const DEFAULT_INTERVIEW_TEMPLATE_ID = 'moi-phong-van-mac-dinh';
-
-type InterviewEmailTemplateFileResponse = {
-  ok: boolean;
-  status: number;
-  text(): Promise<string>;
-};
-
-type InterviewEmailTemplateFileFetcher = (url: string) => Promise<InterviewEmailTemplateFileResponse>;
 
 function isCanonicalTemplateFileName(fileName: string): boolean {
   return CANONICAL_TEMPLATE_FILE_NAME_PATTERN.test(fileName);
@@ -83,6 +71,7 @@ export interface InterviewEmailTemplateFile {
 }
 
 export interface InterviewEmailTemplateFileGateway {
+  findFolder(): Promise<string | null>;
   ensureFolder(): Promise<string>;
   listFiles(folderId: string): Promise<InterviewEmailTemplateFile[]>;
   read(fileName: string, fileId?: string, downloadUrl?: string): Promise<string>;
@@ -135,7 +124,8 @@ export class InterviewEmailTemplateRepository implements IInterviewEmailTemplate
   }
 
   async listTemplates(): Promise<InterviewEmailTemplateSnapshot> {
-    const folderId = await this.gateway.ensureFolder();
+    const folderId = await this.gateway.findFolder();
+    if (!folderId) return { templates: [], activeTemplateId: null };
     const files = await this.gateway.listFiles(folderId);
     const pointerFile = files.find(file => file.name === ACTIVE_TEMPLATE_FILE_NAME);
     const templateFiles = files.filter(file => file.name !== ACTIVE_TEMPLATE_FILE_NAME && file.name.endsWith('.md'));
@@ -273,129 +263,58 @@ export class InterviewEmailTemplateRepository implements IInterviewEmailTemplate
 
 export class PrivosInterviewEmailTemplateFileGateway implements InterviewEmailTemplateFileGateway {
   constructor(
-    private readonly app: McpApp,
     private readonly roomId: string,
-    private readonly fetchFile: InterviewEmailTemplateFileFetcher = url => fetch(url),
+    private readonly files: FilesClient,
+    private readonly folders: FoldersClient,
   ) {}
 
-  async ensureFolder(): Promise<string> {
-    const folderId = await ensureFolderPath(this.app, this.roomId, [...INTERVIEW_EMAIL_TEMPLATE_FOLDER]);
-    if (!folderId) {
-      throw new Error('Không thể truy cập thư mục mẫu email phỏng vấn');
+  async findFolder(): Promise<string | null> {
+    if (!this.folders.capabilities.findByPath) {
+      throw new OptionalFeatureUnavailableError('files:read:folder');
     }
-    return folderId;
+    return (await this.folders.findByPath(this.roomId, INTERVIEW_EMAIL_TEMPLATE_FOLDER))?._id ?? null;
+  }
+
+  async ensureFolder(): Promise<string> {
+    if (!this.folders.capabilities.ensurePath) {
+      throw new OptionalFeatureUnavailableError('files:write:folder');
+    }
+    return (await this.folders.ensurePath(this.roomId, INTERVIEW_EMAIL_TEMPLATE_FOLDER))._id;
   }
 
   async listFiles(folderId: string): Promise<InterviewEmailTemplateFile[]> {
-    const response = await this.app.callServerTool({
-      name: 'privos.files.getByChannel',
-      arguments: { channelId: this.roomId, folderId },
-    });
-
-    return this.parseFiles(response);
+    if (!this.files.capabilities.folderScopedRead) {
+      throw new OptionalFeatureUnavailableError('files:read:folder');
+    }
+    return (await this.files.listFolderFiles(this.roomId, folderId)).map(file => ({ id: file._id, name: file.name }));
   }
 
   async read(fileName: string, fileId?: string, downloadUrl?: string): Promise<string> {
     assertSafeTemplateGatewayFileName(fileName);
-    let resolvedDownloadUrl = downloadUrl;
-    if (!resolvedDownloadUrl) {
-      if (!fileId) {
-        throw new Error(`Room Files file identity is missing: ${fileName}`);
-      }
-      const response = await this.app.callServerTool({
-        name: 'privos.files.get',
-        arguments: { fileId },
-      });
-      resolvedDownloadUrl = this.parseDownloadUrl(response);
-    }
-
-    const downloadResponse = await this.fetchFile(resolvedDownloadUrl);
-    if (!downloadResponse.ok) {
-      throw new Error(`Room Files download failed (${downloadResponse.status})`);
-    }
-    return downloadResponse.text();
+    void downloadUrl;
+    if (!fileId) throw new Error(`Room Files file identity is missing: ${fileName}`);
+    return this.files.readFile(fileId, fileName);
   }
 
   async write(fileName: string, content: string): Promise<void> {
     assertSafeTemplateGatewayFileName(fileName);
-    await createOrUpdateFile(this.app, `${this.roomId}/hr-miniapp/email/phong-van/${fileName}`, content);
-  }
-
-  async delete(fileId: string): Promise<void> {
-    await restCall(this.app, 'POST', 'mcp.callTool', {
-      body: { name: 'privos.files.delete', arguments: { fileId } },
+    if (!this.files.capabilities.folderScopedWrite) {
+      throw new OptionalFeatureUnavailableError('files:write:folder');
+    }
+    const folderId = await this.ensureFolder();
+    const bytes = new TextEncoder().encode(content);
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    await this.files.uploadToFolder({
+      roomId: this.roomId,
+      folderId,
+      fileName,
+      base64Data: `data:text/markdown;base64,${btoa(binary)}`,
+      mimeType: 'text/markdown',
     });
   }
 
-  private parseFiles(response: unknown): InterviewEmailTemplateFile[] {
-    const content = this.asRecord(response)?.content;
-    if (!Array.isArray(content) || content.length === 0) {
-      throw new Error('Invalid Room Files listing response');
-    }
-    const text = this.asRecord(content[0])?.text;
-    if (typeof text !== 'string') {
-      throw new Error('Invalid Room Files listing response');
-    }
-
-    try {
-      const parsed: unknown = JSON.parse(text);
-      const collection = Array.isArray(parsed) ? parsed : this.asRecord(parsed)?.files;
-      if (!Array.isArray(collection)) {
-        throw new Error('Invalid Room Files listing response');
-      }
-
-      return collection.map(item => {
-        const record = this.asRecord(item);
-        const id = typeof record?._id === 'string' ? record._id : record?.id;
-        const name = record?.name;
-        const downloadUrl = record?.downloadUrl;
-        if (typeof id !== 'string' || typeof name !== 'string') {
-          throw new Error('Invalid Room Files listing response');
-        }
-        return {
-          id,
-          name,
-          ...(typeof downloadUrl === 'string' && downloadUrl ? { downloadUrl } : {}),
-        };
-      });
-    } catch {
-      throw new Error('Invalid Room Files listing response');
-    }
-  }
-
-  private parseDownloadUrl(response: unknown): string {
-    const record = this.asRecord(response);
-    if (record?.isError === true) {
-      const errorContent = Array.isArray(record.content) ? record.content : [];
-      const errorText = this.asRecord(errorContent[0])?.text;
-      throw new Error(typeof errorText === 'string' && errorText.trim()
-        ? errorText
-        : 'Room Files file detail request failed');
-    }
-    if (typeof record?.downloadUrl === 'string' && record.downloadUrl) return record.downloadUrl;
-
-    const dataRecord = this.asRecord(record?.data);
-    if (typeof dataRecord?.downloadUrl === 'string' && dataRecord.downloadUrl) {
-      return dataRecord.downloadUrl;
-    }
-
-    if (Array.isArray(record?.content) && record.content.length > 0) {
-      const text = this.asRecord(record.content[0])?.text;
-      if (typeof text === 'string') {
-        try {
-          const parsed: unknown = JSON.parse(text);
-          const parsedRecord = this.asRecord(parsed);
-          if (typeof parsedRecord?.downloadUrl === 'string' && parsedRecord.downloadUrl) {
-            return parsedRecord.downloadUrl;
-          }
-        } catch {}
-      }
-    }
-
-    throw new Error('Room Files file detail did not include a download URL');
-  }
-
-  private asRecord(value: unknown): Record<string, unknown> | undefined {
-    return typeof value === 'object' && value !== null ? value as Record<string, unknown> : undefined;
+  async delete(_fileId: string): Promise<void> {
+    throw new OptionalFeatureUnavailableError('files:write');
   }
 }

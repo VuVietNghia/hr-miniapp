@@ -30,6 +30,7 @@ import './interview-email-template.css';
 
 export interface InterviewEmailTemplatePanelProps {
   repository: IInterviewEmailTemplateRepository;
+  writeAvailable: boolean;
   category: 'cv_scored' | 'lifecycle';
   active: boolean;
   createRequest: number;
@@ -58,6 +59,7 @@ function toPreview(value: string): string {
 
 export function InterviewEmailTemplatePanel({
   repository,
+  writeAvailable,
   category,
   active,
   createRequest,
@@ -104,7 +106,7 @@ export function InterviewEmailTemplatePanel({
     }
 
     const request = Promise.resolve()
-      .then(() => initialLoad ? repository.ensureInitialized() : repository.listTemplates())
+      .then(() => initialLoad && writeAvailable ? repository.ensureInitialized() : repository.listTemplates())
       .then(nextSnapshot => {
         if (loadGeneration !== operationGenerationRef.current) return;
         updatePanel(current => initialLoad
@@ -132,7 +134,7 @@ export function InterviewEmailTemplatePanel({
       });
     refreshInFlightRef.current = request;
     return request;
-  }, [active, category, onCountChange, onReadyChange, repository, updatePanel]);
+  }, [active, category, onCountChange, onReadyChange, repository, updatePanel, writeAvailable]);
 
   usePolling(refreshTemplates, {
     enabled: active && category === 'cv_scored',
@@ -147,11 +149,11 @@ export function InterviewEmailTemplatePanel({
 
   useEffect(() => {
     if (handledCreateRequest.current === createRequest) return;
-    if (!active || category !== 'cv_scored' || panel.working || panel.loadStatus !== 'ready') return;
+    if (!writeAvailable || !active || category !== 'cv_scored' || panel.working || panel.loadStatus !== 'ready') return;
     handledCreateRequest.current = createRequest;
     updatePanel(openTemplatePanelCreate);
     setFocusedField(null);
-  }, [active, category, createRequest, panel.loadStatus, panel.working, updatePanel]);
+  }, [active, category, createRequest, panel.loadStatus, panel.working, updatePanel, writeAvailable]);
 
   if (getTemplatePanelMode(category) === 'lifecycle-empty') {
     return <div className="interview-template-panel interview-template-empty">Chưa có mẫu email nhân sự</div>;
@@ -161,7 +163,7 @@ export function InterviewEmailTemplatePanel({
   const snapshot = panel.snapshot;
   const activeTemplateId = snapshot?.activeTemplateId ?? null;
   const loading = panel.loadStatus === 'loading';
-  const mutationsLocked = panel.loadStatus !== 'ready' || panel.working !== null;
+  const mutationsLocked = !writeAvailable || panel.loadStatus !== 'ready' || panel.working !== null;
   const savedTemplate = detailIdentity
     ? findTemplateByFileIdentity(snapshot?.templates ?? [], detailIdentity) ?? null
     : null;
@@ -174,7 +176,7 @@ export function InterviewEmailTemplatePanel({
     body: savedTemplate.body,
   }) : false;
   const draftError = getTemplateDraftValidationError(panel.draft);
-  const canDelete = Boolean(savedTemplate && snapshot && canDeleteTemplate(savedTemplate, snapshot));
+  const canDelete = writeAvailable && Boolean(savedTemplate && snapshot && canDeleteTemplate(savedTemplate, snapshot));
   const isCurrentTemplate = Boolean(savedTemplate && snapshot?.activeTemplateId === savedTemplate.id);
   const canUse = Boolean(savedTemplate)
     && !isCurrentTemplate
@@ -199,6 +201,7 @@ export function InterviewEmailTemplatePanel({
   };
 
   const save = async (): Promise<boolean> => {
+    if (!writeAvailable) return false;
     const nextValidationError = getTemplateDraftValidationError(panelRef.current.draft);
     if (nextValidationError) {
       updatePanel(current => ({ ...current, validationError: nextValidationError }));
@@ -222,6 +225,7 @@ export function InterviewEmailTemplatePanel({
   };
 
   const useTemplate = async () => {
+    if (!writeAvailable) return;
     if (!savedTemplate || !canUse) return;
     const operationGeneration = ++operationGenerationRef.current;
     const pending = updatePanel(current => beginTemplatePanelMutation(current, 'use', operationGeneration));
@@ -238,6 +242,7 @@ export function InterviewEmailTemplatePanel({
   };
 
   const deleteTemplate = async () => {
+    if (!writeAvailable) return;
     if (!savedTemplate || !canDelete || !window.confirm(`Xóa mẫu email “${savedTemplate.name}”?`)) return;
     const operationGeneration = ++operationGenerationRef.current;
     const pending = updatePanel(current => beginTemplatePanelMutation(current, 'delete', operationGeneration));
@@ -300,13 +305,13 @@ export function InterviewEmailTemplatePanel({
         <h2>{panel.view.kind === 'create' ? 'Tạo mẫu email' : 'Chi tiết mẫu email'}</h2>
       </div>
 
-      <label className="interview-template-field"><span>Tên mẫu</span><input disabled={panel.working !== null} value={panel.draft.name} onChange={event => updateDraft('name', event.target.value)} /></label>
-      <label className="interview-template-field"><span>Tiêu đề</span><input ref={subjectRef} disabled={panel.working !== null} value={panel.draft.subject} onFocus={() => setFocusedField('subject')} onChange={event => updateDraft('subject', event.target.value)} /></label>
-      <label className="interview-template-field"><span>Nội dung</span><textarea ref={bodyRef} disabled={panel.working !== null} rows={12} value={panel.draft.body} onFocus={() => setFocusedField('body')} onChange={event => updateDraft('body', event.target.value)} /></label>
+      <label className="interview-template-field"><span>Tên mẫu</span><input disabled={!writeAvailable || panel.working !== null} value={panel.draft.name} onChange={event => updateDraft('name', event.target.value)} /></label>
+      <label className="interview-template-field"><span>Tiêu đề</span><input ref={subjectRef} disabled={!writeAvailable || panel.working !== null} value={panel.draft.subject} onFocus={() => setFocusedField('subject')} onChange={event => updateDraft('subject', event.target.value)} /></label>
+      <label className="interview-template-field"><span>Nội dung</span><textarea ref={bodyRef} disabled={!writeAvailable || panel.working !== null} rows={12} value={panel.draft.body} onFocus={() => setFocusedField('body')} onChange={event => updateDraft('body', event.target.value)} /></label>
 
       <div className="interview-template-variables" aria-label="Biến email">
         <span>Chèn biến vào {focusedField === 'subject' ? 'tiêu đề' : focusedField === 'body' ? 'nội dung' : 'trường đang chọn'}:</span>
-        {VARIABLES.map(variable => <button type="button" key={variable.token} className="email-action-btn" disabled={!focusedField || panel.working !== null} onClick={() => insertVariable(variable.token)}>{variable.label}</button>)}
+        {VARIABLES.map(variable => <button type="button" key={variable.token} className="email-action-btn" disabled={!writeAvailable || !focusedField || panel.working !== null} onClick={() => insertVariable(variable.token)}>{variable.label}</button>)}
       </div>
 
       {panel.loadStatus === 'error' ? (

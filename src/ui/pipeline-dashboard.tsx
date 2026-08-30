@@ -1,14 +1,70 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { usePrivosApp, usePrivosContext } from '@privos/app-react';
-import { PipelineService, CVFile, ProcessingStatus } from './pipeline-service';
-import { MarkdownPathContextBuilder } from './cv-context-builder';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { usePrivosApp, usePrivosContext } from '@privos_ai/app-react';
+import { PipelineService, CVFile, ProcessingStatus, type KanbanBatchResult, type KanbanCandidateResult } from './pipeline-service';
 import { getCvPipelineDisplayReason } from './cv-pipeline-display-reason';
-import { createOrUpdateFile, getFileContent } from './privos-rest';
 import { usePolling } from './hooks/usePolling';
+import { createRoomClients } from './platform/create-room-clients';
+import type { FilesClient, FoldersClient } from './platform/contracts';
+import { FEATURE_DEGRADED_BEHAVIOR, type FeatureCapabilities, type SandboxFeaturePolicy } from './access/feature-capabilities';
+
+export interface PipelineCapabilityProjection {
+  readonly canReadFolderFiles: boolean;
+  readonly canOpenJdGenerator: boolean;
+  readonly canUploadJD: boolean;
+  readonly canUploadCV: boolean;
+  readonly canGenerateJD: boolean;
+  readonly canScoreCV: boolean;
+  readonly canSaveJD: boolean;
+  readonly degradedReason: string | null;
+}
+
+interface PipelineCapabilitySource {
+  files: Pick<FilesClient, 'capabilities'>;
+  folders: Pick<FoldersClient, 'capabilities'>;
+  sandbox: object;
+}
+
+export function projectPipelineCapabilities(
+  source: PipelineCapabilitySource | null,
+): PipelineCapabilityProjection {
+  const canReadFolderFiles = Boolean(
+    source?.files.capabilities.folderScopedRead
+    && source.folders.capabilities.findByPath,
+  );
+  const canWriteFolderFiles = Boolean(
+    source?.files.capabilities.folderScopedWrite
+    && source.folders.capabilities.ensurePath,
+  );
+  const canGenerateWithAI = Boolean(
+    source
+    && 'startGeneration' in source.sandbox
+    && typeof source.sandbox.startGeneration === 'function',
+  );
+  const fullGenerationDependencies = canReadFolderFiles && canWriteFolderFiles && canGenerateWithAI;
+
+  return {
+    canReadFolderFiles,
+    canOpenJdGenerator: fullGenerationDependencies,
+    canUploadJD: canReadFolderFiles && canWriteFolderFiles,
+    canUploadCV: canReadFolderFiles && canWriteFolderFiles,
+    canGenerateJD: fullGenerationDependencies,
+    canScoreCV: fullGenerationDependencies,
+    canSaveJD: canWriteFolderFiles,
+    degradedReason: canReadFolderFiles && canWriteFolderFiles && canGenerateWithAI
+      ? null
+      : 'Room chưa hỗ trợ đọc/ghi file theo thư mục và khởi chạy AI.',
+  };
+}
+
+export function runPipelineCapabilityAction<T>(available: boolean, operation: () => T): T {
+  if (!available) throw new Error('Pipeline action is unavailable.');
+  return operation();
+}
 
 // Dependency Injection Interface
 // Swap implementation easily in the future (e.g. mock for testing)
 export interface IPipelineService {
+  readonly capabilities?: PipelineCapabilityProjection;
   fetchAvailableFiles(): Promise<CVFile[]>;
   uploadCV(file: File): Promise<CVFile>;
   uploadJD?(file: File): Promise<CVFile>;
@@ -20,18 +76,48 @@ export interface IPipelineService {
     onLog?: (msg: string) => void
   ): Promise<void>;
   getMarkdownContent(normalizedName: string): Promise<string>;
+  saveJDMarkdown?(fileName: string, content: string): Promise<void>;
   ensureTemplatesExist?(forceReset?: boolean): Promise<void>;
   fetchAvailableJDs?(onLog?: (msg: string) => void): Promise<CVFile[]>;
   askAI?(prompt: string, fileName?: string, fileId?: string, onLog?: (msg: string) => void, customFlowChatId?: string): Promise<{ text: string }>;
   createKanbanBatchViaAI?(
-    results: Array<{ originalName: string; normalizedName?: string; score?: number; category?: string; reason?: string }>,
+    results: KanbanCandidateResult[],
     jdName: string,
     onLog?: (msg: string) => void
-  ): Promise<void>;
+  ): Promise<KanbanBatchResult>;
+}
+
+export interface KanbanBatchOutcome {
+  kind: 'success' | 'partial' | 'failure';
+  succeeded: number;
+  failed: number;
+}
+
+export async function runKanbanBatch(
+  operation: () => Promise<KanbanBatchResult>,
+): Promise<KanbanBatchOutcome> {
+  try {
+    const result = await operation();
+    const succeeded = result.succeededOperationIds.length;
+    const failed = result.failedOperationIds.length;
+    return {
+      kind: failed === 0 && succeeded > 0 ? 'success' : succeeded > 0 ? 'partial' : 'failure',
+      succeeded,
+      failed,
+    };
+  } catch {
+    return { kind: 'failure', succeeded: 0, failed: 0 };
+  }
 }
 
 interface PipelineDashboardProps {
+  capabilities: FeatureCapabilities;
+  sandboxPolicy: SandboxFeaturePolicy;
   serviceFactory?: (app: ReturnType<typeof usePrivosApp>, roomId: string) => IPipelineService;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 type JDFormState = {
@@ -432,9 +518,46 @@ function renderFormattedMarkdown(mdText: string) {
 
 // Main Component
 
-export default function PipelineDashboard({ serviceFactory }: PipelineDashboardProps = {}) {
+export default function PipelineDashboard({ capabilities, sandboxPolicy, serviceFactory }: PipelineDashboardProps) {
   const app = usePrivosApp();
   const { roomId } = usePrivosContext();
+  const roomClients = useMemo(() => app ? createRoomClients(app) : null, [app]);
+  const roomClientCapabilities = useMemo(() => {
+    const platform = projectPipelineCapabilities(roomClients);
+    const canReadFolderFiles = capabilities.filesReadable && platform.canReadFolderFiles;
+    const canWriteFolderFiles = capabilities.filesWritable;
+    const canUseAI = sandboxPolicy.botKeyActionsAvailable
+      && sandboxPolicy.wakeActionsAvailable
+      && sandboxPolicy.generationActionsAvailable
+      && sandboxPolicy.aiChatHistoryAvailable
+      && sandboxPolicy.aiChatWriteAvailable;
+    const canPersistLists = capabilities.listsWritable;
+    return {
+      canReadFolderFiles,
+      canOpenJdGenerator: platform.canOpenJdGenerator && canReadFolderFiles && canWriteFolderFiles && canUseAI,
+      canUploadJD: platform.canUploadJD && canReadFolderFiles && canWriteFolderFiles,
+      canUploadCV: platform.canUploadCV && canReadFolderFiles && canWriteFolderFiles,
+      canGenerateJD: platform.canGenerateJD && canReadFolderFiles && canWriteFolderFiles && canUseAI,
+      canScoreCV: platform.canScoreCV && canReadFolderFiles && canWriteFolderFiles && canUseAI
+        && sandboxPolicy.skillBackedControlsVisible && canPersistLists,
+      canSaveJD: platform.canSaveJD && canWriteFolderFiles,
+      degradedReason: !capabilities.filesReadable
+        ? FEATURE_DEGRADED_BEHAVIOR.filesReadable
+        : !capabilities.filesWritable
+          ? FEATURE_DEGRADED_BEHAVIOR.filesWritable
+          : !capabilities.listsWritable
+            ? FEATURE_DEGRADED_BEHAVIOR.listsWritable
+            : platform.degradedReason,
+    };
+  },
+    [
+      roomClients,
+      capabilities.filesReadable,
+      capabilities.filesWritable,
+      capabilities.listsWritable,
+      sandboxPolicy,
+    ],
+  );
 
   const [files, setFiles] = useState<CVFile[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -458,94 +581,28 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   const [useCompanyInfo, setUseCompanyInfo] = useState(false);
   const [isGeneratingJD, setIsGeneratingJD] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [pipelineCapabilities, setPipelineCapabilities] = useState<PipelineCapabilityProjection>(roomClientCapabilities);
   const toastTimerRef = useRef<number | null>(null);
   const jdDropdownRef = useRef<HTMLDivElement>(null);
   const serviceRef = useRef<IPipelineService | null>(null);
 
-  const loadJdContent = async (name: string, fileId?: string) => {
-    if (!name) return '';
+  const requirePipelineCapability = useCallback((available: boolean): boolean => {
+    try {
+      return runPipelineCapabilityAction(available, () => true);
+    } catch {
+      setToast({
+        message: pipelineCapabilities.degradedReason ?? 'Chức năng Pipeline này hiện không khả dụng.',
+        type: 'error',
+      });
+      return false;
+    }
+  }, [pipelineCapabilities.degradedReason]);
+
+  const loadJdContent = async (name: string, _fileId?: string) => {
+    if (!name || !requirePipelineCapability(pipelineCapabilities.canReadFolderFiles)) return '';
     setJdLoadingContent(true);
     try {
       const baseName = name.split('/').pop()?.split('\\').pop() || name;
-      const targetFile = availableJDs.find(f => f.name === name || f.name === baseName || (fileId && f._id === fileId));
-
-      // Method 1: Download directly via presigned downloadUrl if available on CVFile
-      if (targetFile?.downloadUrl) {
-        try {
-          const resp = await fetch(targetFile.downloadUrl);
-          if (resp.ok) {
-            const text = await resp.text();
-            if (text && text.trim()) {
-              setJdContent(text);
-              return text;
-            }
-          }
-        } catch (e) {
-          console.warn('[JD Load] Fetch targetFile.downloadUrl failed:', e);
-        }
-      }
-
-      // Method 2: Call privos.files.get to retrieve file details & downloadUrl
-      const resolvedFileId = fileId || targetFile?._id;
-      if (resolvedFileId) {
-        try {
-          const getRes: any = await app.callServerTool({
-            name: 'privos.files.get',
-            arguments: { fileId: resolvedFileId }
-          });
-          let url: string | undefined = getRes?.downloadUrl;
-          if (!url && getRes?.content?.[0]?.text) {
-            try {
-              const parsed = JSON.parse(getRes.content[0].text);
-              url = parsed?.downloadUrl;
-            } catch (e) {}
-          }
-          if (url) {
-            const resp = await fetch(url);
-            if (resp.ok) {
-              const text = await resp.text();
-              if (text && text.trim()) {
-                setJdContent(text);
-                return text;
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('[JD Load] privos.files.get failed:', e);
-        }
-      }
-
-      // Method 3: Call privos.files.search to search file by name in channel
-      try {
-        const searchRes: any = await app.callServerTool({
-          name: 'privos.files.search',
-          arguments: { channelId: roomId, query: baseName }
-        });
-        let searchList: any[] = [];
-        if (searchRes?.content?.[0]?.text) {
-          try {
-            const parsed = JSON.parse(searchRes.content[0].text);
-            searchList = Array.isArray(parsed) ? parsed : (parsed?.files || []);
-          } catch (e) {}
-        } else {
-          searchList = Array.isArray(searchRes) ? searchRes : (searchRes?.files || []);
-        }
-        const matched = searchList.find((f: any) => f.name === baseName || f.name === name);
-        if (matched?.downloadUrl) {
-          const resp = await fetch(matched.downloadUrl);
-          if (resp.ok) {
-            const text = await resp.text();
-            if (text && text.trim()) {
-              setJdContent(text);
-              return text;
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('[JD Load] privos.files.search failed:', e);
-      }
-
-      // Method 4: Fallback to getMarkdownContent in PipelineService
       if (serviceRef.current) {
         const fetched = await serviceRef.current.getMarkdownContent(baseName);
         if (fetched && fetched.trim()) {
@@ -554,26 +611,8 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
         }
       }
 
-      // Method 5: Fallback to getFileContent via REST API
-      const pathsToTry = [
-        `${roomId}/hr-miniapp/jds/${baseName}`,
-        `hr-miniapp/jds/${baseName}`,
-        `${roomId}/hr-miniapp/jds/${name}`,
-        `hr-miniapp/jds/${name}`,
-      ];
-      for (const p of pathsToTry) {
-        try {
-          const res = await getFileContent(app, p);
-          if (res && res.trim()) {
-            setJdContent(res);
-            return res;
-          }
-        } catch (e) {
-          // ignore
-        }
-      }
-    } catch (err) {
-      console.error('Lỗi khi nạp nội dung JD:', err);
+    } catch {
+      console.error('Lỗi khi nạp nội dung JD.');
     } finally {
       setJdLoadingContent(false);
     }
@@ -581,7 +620,7 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   };
 
   const handleOpenJdModal = async () => {
-    if (!jdName) return;
+    if (!jdName || !requirePipelineCapability(pipelineCapabilities.canReadFolderFiles)) return;
     setIsEditingJd(false);
     setJdModalOpen(true);
     if (!jdContent || jdContent.startsWith('Selected JD:')) {
@@ -593,19 +632,21 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   };
 
   const handleSaveJdContent = async () => {
+    if (!requirePipelineCapability(pipelineCapabilities.canSaveJD)) return;
     if (!jdName || !jdEditDraft.trim() || !app || !roomId) return;
     setIsSavingJd(true);
     try {
-      const fullPath = `${roomId}/hr-miniapp/jds/${jdName}`;
-      await createOrUpdateFile(app, fullPath, jdEditDraft);
+      if (!serviceRef.current?.saveJDMarkdown) throw new Error('JD persistence is unavailable.');
+      await serviceRef.current.saveJDMarkdown(jdName, jdEditDraft);
       setJdContent(jdEditDraft);
       setIsEditingJd(false);
       showToast(`Đã lưu thay đổi vào file RoomFiles/hr-miniapp/jds/${jdName}`, 'success');
-      addLog(`[JD Editor] Đã cập nhật file JD: hr-miniapp/jds/${jdName}`);
-    } catch (err: any) {
-      console.error('Lỗi khi lưu file JD:', err);
-      showToast(`Lỗi khi lưu file JD: ${err.message || err}`, 'error');
-      addLog(`[LỖI] Không thể lưu file JD: ${err.message || err}`);
+      addLog('[JD Editor] Đã cập nhật file JD trong hr-miniapp/jds.');
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
+      console.error('Lỗi khi lưu file JD:', message);
+      showToast(`Lỗi khi lưu file JD: ${message}`, 'error');
+      addLog('[LỖI] Không thể lưu file JD.');
     } finally {
       setIsSavingJd(false);
     }
@@ -635,31 +676,72 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
     if (!app || !roomId) return;
     serviceRef.current = serviceFactory
       ? serviceFactory(app, roomId)
-      : new PipelineService(app, roomId, new MarkdownPathContextBuilder());
+      : roomClients
+        ? new PipelineService(roomId, roomClients.lists, roomClients.files, roomClients.folders, roomClients.sandbox)
+        : null;
+    const injectedCapabilities = serviceRef.current?.capabilities ?? roomClientCapabilities;
+    const effectiveCapabilities: PipelineCapabilityProjection = {
+      canReadFolderFiles: capabilities.filesReadable && injectedCapabilities.canReadFolderFiles,
+      canOpenJdGenerator: capabilities.filesReadable && capabilities.filesWritable
+        && sandboxPolicy.botKeyActionsAvailable && sandboxPolicy.wakeActionsAvailable
+        && sandboxPolicy.generationActionsAvailable && sandboxPolicy.aiChatHistoryAvailable
+        && sandboxPolicy.aiChatWriteAvailable
+        && injectedCapabilities.canOpenJdGenerator,
+      canUploadJD: capabilities.filesReadable && capabilities.filesWritable && injectedCapabilities.canUploadJD,
+      canUploadCV: capabilities.filesReadable && capabilities.filesWritable && injectedCapabilities.canUploadCV,
+      canGenerateJD: capabilities.filesReadable && capabilities.filesWritable
+        && sandboxPolicy.botKeyActionsAvailable && sandboxPolicy.wakeActionsAvailable
+        && sandboxPolicy.generationActionsAvailable && sandboxPolicy.aiChatHistoryAvailable
+        && sandboxPolicy.aiChatWriteAvailable
+        && injectedCapabilities.canGenerateJD,
+      canScoreCV: capabilities.filesReadable && capabilities.filesWritable && capabilities.listsWritable
+        && sandboxPolicy.skillBackedControlsVisible && sandboxPolicy.botKeyActionsAvailable
+        && sandboxPolicy.wakeActionsAvailable && sandboxPolicy.generationActionsAvailable
+        && sandboxPolicy.aiChatHistoryAvailable && sandboxPolicy.aiChatWriteAvailable
+        && injectedCapabilities.canScoreCV,
+      canSaveJD: capabilities.filesWritable && injectedCapabilities.canSaveJD,
+      degradedReason: roomClientCapabilities.degradedReason ?? injectedCapabilities.degradedReason,
+    };
+    setPipelineCapabilities(effectiveCapabilities);
 
     const initPipeline = async () => {
       setJdLoading(true);
       try {
-        await serviceRef.current?.ensureTemplatesExist?.(false);
-        await loadFiles();
-        await loadJDs();
+        if (effectiveCapabilities.canOpenJdGenerator) {
+          await serviceRef.current?.ensureTemplatesExist?.(false);
+        }
+        if (effectiveCapabilities.canReadFolderFiles) {
+          await loadFiles(effectiveCapabilities.canReadFolderFiles);
+          await loadJDs(effectiveCapabilities.canReadFolderFiles);
+        }
       } finally {
         setJdLoading(false);
       }
     };
 
-    initPipeline().catch(console.error);
-  }, [app, roomId]);
+    initPipeline().catch(() => console.error('Không thể khởi tạo CV pipeline.'));
+  }, [app, capabilities, roomClientCapabilities, roomClients, roomId, sandboxPolicy, serviceFactory]);
 
-  const loadJDs = async (): Promise<CVFile[]> => {
-    if (!serviceRef.current?.fetchAvailableJDs) return [];
+  useEffect(() => {
+    if (capabilities.filesReadable) return;
+    setFiles([]);
+    setAvailableJDs([]);
+    setJdContent('');
+    setJdName('');
+    setJdModalOpen(false);
+  }, [capabilities.filesReadable]);
+
+  const loadJDs = async (
+    canReadFolderFiles = pipelineCapabilities.canReadFolderFiles,
+  ): Promise<CVFile[]> => {
+    if (!canReadFolderFiles || !serviceRef.current?.fetchAvailableJDs) return [];
     setJdLoading(true);
     try {
       const jds = await serviceRef.current.fetchAvailableJDs(addLog);
       setAvailableJDs(jds);
       return jds;
-    } catch (err) {
-      console.error('Loi tai danh sach JD:', err);
+    } catch {
+      console.error('Loi tai danh sach JD.');
       return [];
     } finally {
       setJdLoading(false);
@@ -678,7 +760,7 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   useEffect(() => {
     if (!jdDropdownOpen) return;
     const handleClickOutside = (event: MouseEvent) => {
-      if (!jdDropdownRef.current?.contains(event.target as Node)) {
+      if (!(event.target instanceof Node) || !jdDropdownRef.current?.contains(event.target)) {
         setJdDropdownOpen(false);
       }
     };
@@ -702,16 +784,18 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
     };
   }, []);
 
-  const loadFiles = async () => {
-    if (!serviceRef.current) return;
+  const loadFiles = async (
+    canReadFolderFiles = pipelineCapabilities.canReadFolderFiles,
+  ) => {
+    if (!canReadFolderFiles || !serviceRef.current) return;
     setLoading(true);
     try { setFiles(await serviceRef.current.fetchAvailableFiles()); }
-    catch (err) { console.error(err); }
+    catch { console.error('Không thể tải danh sách CV.'); }
     finally { setLoading(false); }
   };
 
   const reconcileSelectedFiles = useCallback(async () => {
-    if (!serviceRef.current || processing) return;
+    if (!pipelineCapabilities.canReadFolderFiles || !serviceRef.current || processing) return;
 
     const [currentFiles, currentJDs] = await Promise.all([
       serviceRef.current.fetchAvailableFiles(),
@@ -725,11 +809,7 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
     const removedCVIds = [...selectedIds].filter(id => !currentFileIds.has(id));
     if (removedCVIds.length > 0) {
       setSelectedIds(previous => new Set([...previous].filter(id => currentFileIds.has(id))));
-      const removedNames = files
-        .filter(file => removedCVIds.includes(file._id))
-        .map(file => file.name);
-      const label = removedNames.length > 0 ? removedNames.join(', ') : `${removedCVIds.length} CV`;
-      addLog(`[CẢNH BÁO] CV đã chọn không còn trong Room Files: ${label}. Đã bỏ khỏi danh sách chấm.`);
+      addLog('[CẢNH BÁO] Một CV đã chọn không còn trong Room Files. Đã bỏ khỏi danh sách chấm.');
       showToast('Một hoặc nhiều CV đã chọn đã bị xóa. Hệ thống đã bỏ lựa chọn.', 'error');
     }
 
@@ -738,13 +818,13 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
       setJdContent('');
       setJdEditDraft('');
       setJdModalOpen(false);
-      addLog(`[CẢNH BÁO] JD "${jdName}" không còn trong Room Files. Vui lòng chọn lại JD trước khi chấm.`);
+      addLog('[CẢNH BÁO] JD đã chọn không còn trong Room Files. Vui lòng chọn lại JD trước khi chấm.');
       showToast('JD đã chọn đã bị xóa. Vui lòng chọn lại JD.', 'error');
     }
-  }, [addLog, files, jdName, processing, selectedIds, showToast]);
+  }, [addLog, files, jdName, pipelineCapabilities.canReadFolderFiles, processing, selectedIds, showToast]);
 
   usePolling(reconcileSelectedFiles, {
-    enabled: !processing && (selectedIds.size > 0 || Boolean(jdName)),
+    enabled: pipelineCapabilities.canReadFolderFiles && !processing && (selectedIds.size > 0 || Boolean(jdName)),
     interval: 1000,
     immediate: false,
   });
@@ -754,6 +834,10 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   };
 
   const handleUploadCV = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!requirePipelineCapability(pipelineCapabilities.canUploadCV)) {
+      e.target.value = '';
+      return;
+    }
     const uploadedFiles = e.target.files;
     if (!uploadedFiles || uploadedFiles.length === 0 || !serviceRef.current) return;
 
@@ -762,10 +846,10 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
       const uploadPromises = Array.from(uploadedFiles).map(async (file) => {
         try {
           await serviceRef.current!.uploadCV(file);
-          addLog(`\u0110\u00e3 t\u1ea3i l\u00ean: ${file.name}`);
+          addLog('\u0110\u00e3 t\u1ea3i l\u00ean m\u1ed9t CV.');
           return file.name;
         } catch {
-          addLog(`L\u1ed7i t\u1ea3i l\u00ean: ${file.name}`);
+          addLog('L\u1ed7i t\u1ea3i l\u00ean m\u1ed9t CV.');
           return null;
         }
       });
@@ -793,20 +877,25 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
   };
 
   const handleUploadJD = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!requirePipelineCapability(pipelineCapabilities.canUploadJD)) {
+      e.target.value = '';
+      return;
+    }
     const file = e.target.files?.[0];
     if (!file || !serviceRef.current?.uploadJD) return;
 
     setLoading(true);
     try {
       const res = await serviceRef.current.uploadJD(file);
-      addLog(`\u0110\u00e3 t\u1ea3i l\u00ean JD: ${res.name}`);
+      addLog('\u0110\u00e3 t\u1ea3i l\u00ean JD.');
       await loadJDs(); // Refresh dropdown
       if (res._id) {
         await handleSelectJD(res._id); // Auto select new JD
       }
-    } catch (err: any) {
-      alert('L\u1ed7i t\u1ea3i l\u00ean JD: ' + err.message);
-      addLog(`L\u1ed7i t\u1ea3i l\u00ean JD: ${err.message}`);
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
+      alert('L\u1ed7i t\u1ea3i l\u00ean JD: ' + message);
+      addLog('L\u1ed7i t\u1ea3i l\u00ean JD.');
     } finally {
       setLoading(false);
       e.target.value = '';
@@ -820,13 +909,20 @@ export default function PipelineDashboard({ serviceFactory }: PipelineDashboardP
       setJdModalOpen(false);
       return;
     }
+    if (!requirePipelineCapability(pipelineCapabilities.canReadFolderFiles)) return;
     const jdFile = jdList.find(f => f._id === fileId);
     if (!jdFile) return;
     setJdName(jdFile.name);
     await loadJdContent(jdFile.name, jdFile._id);
   };
 
+  const handleOpenJdGenerator = () => {
+    if (!requirePipelineCapability(pipelineCapabilities.canOpenJdGenerator)) return;
+    setJdFormOpen(true);
+  };
+
   const handleGenerateJD = async () => {
+    if (!requirePipelineCapability(pipelineCapabilities.canGenerateJD)) return;
     if (!jdPrompt.trim() || !serviceRef.current?.askAI) return;
     const beforeJDNames = new Set(availableJDs.map(jd => jd.name));
     setIsGeneratingJD(true);
@@ -900,7 +996,7 @@ REQUIRED:
             }
             
             // Normalize Vietnamese and remove special characters
-            let cleanTitle = positionName
+            const cleanTitle = positionName
               .normalize('NFD')
               .replace(/[\u0300-\u036f]/g, '')
               .replace(/đ/g, 'd').replace(/Đ/g, 'D')
@@ -910,22 +1006,23 @@ REQUIRED:
           }
 
           if (extractedJD && app) {
-            addLog(`[Self-Healing] Đang tự động lưu file JD vào Room Files: hr-miniapp/jds/${jdFileName}...`);
+            addLog('[Self-Healing] Đang tự động lưu file JD vào Room Files.');
             try {
-              await createOrUpdateFile(app, `${roomId}/hr-miniapp/jds/${jdFileName}`, extractedJD);
+              if (!serviceRef.current?.saveJDMarkdown) throw new Error('JD persistence is unavailable.');
+              await serviceRef.current.saveJDMarkdown(jdFileName, extractedJD);
               refreshedJDs = await loadJDs();
               createdJD = refreshedJDs.find(jd => jd.name === jdFileName || !beforeJDNames.has(jd.name));
               if (createdJD) {
-                addLog(`[Self-Healing] Đã lưu thành công file JD: ${jdFileName}`);
+                addLog('[Self-Healing] Đã lưu thành công file JD.');
               }
-            } catch (saveErr: any) {
-              console.warn('[Self-Healing] Lỗi ghi fallback JD file:', saveErr);
+            } catch {
+              console.warn('[Self-Healing] Lỗi ghi fallback JD file.');
             }
           }
         }
 
         if (createdJD) {
-          addLog(`AI đã tạo JD mới: ${createdJD.name}`);
+          addLog('AI đã tạo JD mới.');
           setJdPrompt('');
           setJdForm(emptyJDForm);
           setJdFormOpen(false);
@@ -939,14 +1036,15 @@ REQUIRED:
         addLog(`AI \u0111\u00e3 x\u1eed l\u00fd nh\u01b0ng kh\u00f4ng nh\u1eadn \u0111\u01b0\u1ee3c k\u1ebft qu\u1ea3 text.`);
         showToast('AI ph\u1ea3n h\u1ed3i ch\u1eadm ho\u1eb7c c\u00f3 l\u1ed7i. Vui l\u00f2ng ki\u1ec3m tra l\u1ea1i.', 'error');
       }
-    } catch (err: any) {
-      showToast('L\u1ed7i g\u1eedi y\u00eau c\u1ea7u: ' + err.message, 'error');
+    } catch (error: unknown) {
+      showToast('L\u1ed7i g\u1eedi y\u00eau c\u1ea7u: ' + getErrorMessage(error), 'error');
     } finally {
       setIsGeneratingJD(false);
     }
   };
 
   const startPipeline = async () => {
+    if (!requirePipelineCapability(pipelineCapabilities.canScoreCV)) return;
     if (!serviceRef.current || selectedIds.size === 0) return;
     if (!jdContent) { alert('Vui l\u00f2ng t\u1ea3i l\u00ean file JD tr\u01b0\u1edbc khi b\u1eaft \u0111\u1ea7u.'); return; }
     setProcessing(true);
@@ -958,7 +1056,7 @@ REQUIRED:
       ...Object.fromEntries(filesToProcess.map(f => [f._id, { fileId: f._id, originalName: f.name, status: 'pending' as const }]))
     }));
 
-    const resultsForKanban: Array<{ originalName: string; normalizedName?: string; score?: number; category?: string; reason?: string; email?: string; sdt?: string; phone?: string }> = [];
+    const resultsForKanban: KanbanCandidateResult[] = [];
 
     const checkScoringFiles = async (cv: CVFile): Promise<'available' | 'cv-deleted' | 'jd-deleted'> => {
       try {
@@ -970,8 +1068,8 @@ REQUIRED:
         if (!currentJds.some(jd => jd.name === jdName)) return 'jd-deleted';
         if (!currentFiles.some(file => file._id === cv._id)) return 'cv-deleted';
         return 'available';
-      } catch (err: any) {
-        addLog(`[Cảnh báo] Không thể kiểm tra trạng thái CV/JD: ${err.message || err}`);
+      } catch {
+        addLog('[Cảnh báo] Không thể kiểm tra trạng thái CV/JD.');
         return 'available';
       }
     };
@@ -979,11 +1077,11 @@ REQUIRED:
     for (const cv of filesToProcess) {
       const beforeStatus = await checkScoringFiles(cv);
       if (beforeStatus === 'jd-deleted') {
-        addLog(`[CẢNH BÁO] JD "${jdName}" đã bị xóa khỏi Room Files. Dừng batch chấm CV.`);
+        addLog('[CẢNH BÁO] JD đã bị xóa khỏi Room Files. Dừng batch chấm CV.');
         break;
       }
       if (beforeStatus === 'cv-deleted') {
-        addLog(`[CẢNH BÁO] CV "${cv.name}" đã bị xóa khỏi Room Files. Bỏ qua CV này.`);
+        addLog('[CẢNH BÁO] Một CV đã bị xóa khỏi Room Files. Bỏ qua CV này.');
         setStatuses(prev => ({
           ...prev,
           [cv._id]: { ...prev[cv._id], status: 'error', errorMsg: 'CV đã bị xóa khỏi Room Files.' }
@@ -992,8 +1090,8 @@ REQUIRED:
         continue;
       }
 
-      addLog(`\u0110ang x\u1eed l\u00fd: ${cv.name}`);
-      let currentStatus: any = { originalName: cv.name };
+      addLog('\u0110ang x\u1eed l\u00fd m\u1ed9t CV.');
+      let currentStatus: ProcessingStatus = { fileId: cv._id, originalName: cv.name, status: 'pending' };
       
       await serviceRef.current.processCV(
         cv,
@@ -1006,11 +1104,11 @@ REQUIRED:
 
       const afterStatus = await checkScoringFiles(cv);
       if (afterStatus === 'jd-deleted') {
-        addLog(`[CẢNH BÁO] JD "${jdName}" đã bị xóa trong lúc chấm "${cv.name}". Dừng batch chấm CV.`);
+        addLog('[CẢNH BÁO] JD đã bị xóa trong lúc chấm CV. Dừng batch chấm CV.');
         break;
       }
       if (afterStatus === 'cv-deleted') {
-        addLog(`[CẢNH BÁO] CV "${cv.name}" đã bị xóa trong lúc chấm. Bỏ qua kết quả CV này.`);
+        addLog('[CẢNH BÁO] Một CV đã bị xóa trong lúc chấm. Bỏ qua kết quả CV này.');
         setSelectedIds(prev => { const next = new Set(prev); next.delete(cv._id); return next; });
         continue;
       }
@@ -1018,33 +1116,39 @@ REQUIRED:
       if (currentStatus.status === 'completed') {
         resultsForKanban.push(currentStatus);
       } else {
-        addLog(`[CẢNH BÁO] Không lưu kết quả "${cv.name}": ${currentStatus.errorMsg || 'AI không hoàn tất chấm CV.'}`);
+        addLog('[CẢNH BÁO] Không lưu kết quả CV vì xử lý không hoàn tất.');
       }
       setSelectedIds(prev => { const n = new Set(prev); n.delete(cv._id); return n; });
-      addLog(currentStatus.status === 'completed' ? `Xong: ${cv.name}` : `Dừng xử lý: ${cv.name}`);
+      addLog(currentStatus.status === 'completed' ? 'Xong một CV.' : 'Dừng xử lý một CV.');
     }
 
+    let batchOutcome: KanbanBatchOutcome = { kind: 'failure', succeeded: 0, failed: 0 };
     if (serviceRef.current.createKanbanBatchViaAI && resultsForKanban.length > 0) {
       addLog(`Bắt đầu tạo List Kanban và lưu kết quả ${resultsForKanban.length} CV...`);
-      try {
-        await serviceRef.current.createKanbanBatchViaAI(resultsForKanban, jdName, addLog);
-        
+      batchOutcome = await runKanbanBatch(
+        () => serviceRef.current!.createKanbanBatchViaAI!(resultsForKanban, jdName, addLog),
+      );
+      if (batchOutcome.kind !== 'failure') {
         // Log thống kê thông tin liên hệ trích xuất được
         const missingContacts = resultsForKanban.filter(r => !r.email && !(r.sdt || r.phone));
         if (missingContacts.length > 0) {
-          addLog(`[Cảnh báo] Có ${missingContacts.length}/${resultsForKanban.length} CV không đọc được Email/SĐT: ${missingContacts.map(c => c.originalName).join(', ')}`);
+          addLog(`[Cảnh báo] Có ${missingContacts.length}/${resultsForKanban.length} CV không đọc được Email/SĐT.`);
         } else {
           addLog(`[Thành công] Đã trích xuất thành công Email/SĐT cho ${resultsForKanban.length} CV!`);
         }
-      } catch (err: any) {
-        addLog(`Lỗi tạo Kanban: ${err.message}`);
       }
     }
 
     setProcessing(false);
     addLog('\u2014 Pipeline k\u1ebft th\u00fac \u2014');
     await loadFiles();
-    showToast('\u0110\u00e3 ch\u1ea5m \u0111i\u1ec3m xong v\u00e0 l\u01b0u k\u1ebft qu\u1ea3 v\u00e0o list.');
+    if (batchOutcome.kind === 'success') {
+      showToast(`Đã lưu toàn bộ ${batchOutcome.succeeded} kết quả CV vào List.`);
+    } else if (batchOutcome.kind === 'partial') {
+      showToast(`Chỉ lưu được ${batchOutcome.succeeded} kết quả; ${batchOutcome.failed} kết quả thất bại.`, 'error');
+    } else {
+      showToast('Không thể lưu kết quả CV vào List.', 'error');
+    }
   };
 
 
@@ -1299,6 +1403,7 @@ REQUIRED:
                 <button
                   type="button"
                   onClick={handleOpenJdModal}
+                  disabled={!pipelineCapabilities.canReadFolderFiles}
                   className="pl-jd-link-btn"
                   title={`Xem n\u1ed9i dung file RoomFiles/hr-miniapp/jds/${jdName}`}
                 >
@@ -1310,6 +1415,12 @@ REQUIRED:
             </p>
           </div>
         </header>
+
+        {pipelineCapabilities.degradedReason && (
+          <p role="alert" style={{ margin: '-12px 0 20px', color: '#b45309', fontSize: '13px' }}>
+            {pipelineCapabilities.degradedReason} Các thao tác tạo, tải lên, chấm điểm và lưu JD đang tạm khóa.
+          </p>
+        )}
 
         {/* Pipeline Layout */}
         <div className="pl-page-grid">
@@ -1331,8 +1442,12 @@ REQUIRED:
                     <button
                       type="button"
                       className={`pl-dropdown-button${jdDropdownOpen ? ' open' : ''}`}
-                      onClick={() => !jdLoading && setJdDropdownOpen(open => !open)}
-                      disabled={jdLoading}
+                      onClick={() => {
+                        if (!jdLoading && requirePipelineCapability(pipelineCapabilities.canReadFolderFiles)) {
+                          setJdDropdownOpen(open => !open);
+                        }
+                      }}
+                      disabled={jdLoading || !pipelineCapabilities.canReadFolderFiles}
                     >
                       <span>{jdDropdownLabel}</span>
                       <span className="pl-dropdown-caret">{"\u2304"}</span>
@@ -1382,8 +1497,8 @@ REQUIRED:
                 <button
                   className="pl-btn pl-btn-primary"
                   style={{ flex: 1, justifyContent: 'center' }}
-                  onClick={() => setJdFormOpen(true)}
-                  disabled={isGeneratingJD}
+                  onClick={handleOpenJdGenerator}
+                  disabled={isGeneratingJD || !pipelineCapabilities.canOpenJdGenerator}
                 >
                   {isGeneratingJD ? 'Đang tạo...' : <><span>{'\u2728'}</span> {'Tạo bằng form'}</>}
                 </button>
@@ -1391,8 +1506,10 @@ REQUIRED:
               {/* JD Upload Fallback */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingTop: '12px', borderTop: '1px dashed var(--border-light)', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{'Ho\u1eb7c t\u1ea3i file t\u1eeb m\u00e1y t\u00ednh:'}</span>
-                <input type="file" id="jd-upload" style={{ display: 'none' }} onChange={handleUploadJD} accept=".md,.txt" />
-                <button className="pl-btn" style={{ fontSize: '12px', padding: '4px 8px' }} onClick={() => document.getElementById('jd-upload')?.click()} disabled={processing}>
+                <input type="file" id="jd-upload" style={{ display: 'none' }} onChange={handleUploadJD} accept=".md,.txt" disabled={!pipelineCapabilities.canUploadJD} />
+                <button className="pl-btn" style={{ fontSize: '12px', padding: '4px 8px' }} onClick={() => {
+                  if (requirePipelineCapability(pipelineCapabilities.canUploadJD)) document.getElementById('jd-upload')?.click();
+                }} disabled={processing || !pipelineCapabilities.canUploadJD}>
                   {'\u2191 Upload'}
                 </button>
               </div>
@@ -1407,7 +1524,7 @@ REQUIRED:
                 </span>
               </div>
 
-              <input type="file" id="cv-upload" style={{ display: 'none' }} multiple onChange={handleUploadCV} accept=".pdf,.doc,.docx,.jpg,.png" />
+              <input type="file" id="cv-upload" style={{ display: 'none' }} multiple onChange={handleUploadCV} accept=".pdf,.doc,.docx,.jpg,.png" disabled={!pipelineCapabilities.canUploadCV} />
 
               <div style={{ marginBottom: '16px' }}>
                 <p style={{ fontSize: '13px', fontWeight: 500, margin: '0 0 6px 0' }}>{'CV \u0111\u00e3 upload'}</p>
@@ -1429,16 +1546,18 @@ REQUIRED:
                 </div>
               </div>
 
-              <div style={{ marginBottom: '16px' }}>
+              {sandboxPolicy.skillBackedControlsVisible && <div style={{ marginBottom: '16px' }}>
                 <button className="pl-btn pl-btn-primary" style={{ width: '100%', justifyContent: 'center' }}
-                  onClick={startPipeline} disabled={selectedIds.size === 0 || processing || !jdContent}>
+                  onClick={startPipeline} disabled={!pipelineCapabilities.canScoreCV || selectedIds.size === 0 || processing || !jdContent}>
                   {processing ? '\u27f3 \u0110ang x\u1eed l\u00fd\u2026' : `Ch\u1ea5m \u0111i\u1ec3m (${selectedIds.size})`}
                 </button>
-              </div>
+              </div>}
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingTop: '12px', borderTop: '1px dashed var(--border-light)', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{'Ho\u1eb7c t\u1ea3i CV t\u1eeb m\u00e1y t\u00ednh:'}</span>
-                <button className="pl-btn" style={{ fontSize: '12px', padding: '4px 8px' }} onClick={() => document.getElementById('cv-upload')?.click()} disabled={loading || processing}>
+                <button className="pl-btn" style={{ fontSize: '12px', padding: '4px 8px' }} onClick={() => {
+                  if (requirePipelineCapability(pipelineCapabilities.canUploadCV)) document.getElementById('cv-upload')?.click();
+                }} disabled={loading || processing || !pipelineCapabilities.canUploadCV}>
                   {'\u2191 Upload'}
                 </button>
               </div>
@@ -1546,14 +1665,14 @@ REQUIRED:
                 <button
                   className="pl-btn"
                   onClick={() => { setJdForm(emptyJDForm); setJdPrompt(''); }}
-                  disabled={isGeneratingJD || !isJDFormReady}
+                  disabled={isGeneratingJD || !pipelineCapabilities.canGenerateJD || !isJDFormReady}
                 >
                   {'X\u00f3a form'}
                 </button>
                 <button
                   className="pl-btn pl-btn-primary"
                   onClick={handleGenerateJD}
-                  disabled={isGeneratingJD || !isJDFormReady}
+                  disabled={isGeneratingJD || !pipelineCapabilities.canGenerateJD || !isJDFormReady}
                 >
                   {isGeneratingJD ? '\u0110ang g\u1eedi y\u00eau c\u1ea7u...' : 'G\u1eedi AI t\u1ea1o JD'}
                 </button>
@@ -1702,7 +1821,7 @@ REQUIRED:
                       type="button"
                       className="pl-btn pl-btn-primary"
                       onClick={handleSaveJdContent}
-                      disabled={isSavingJd || !jdEditDraft.trim()}
+                      disabled={isSavingJd || !pipelineCapabilities.canSaveJD || !jdEditDraft.trim()}
                       style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                     >
                       <span>💾</span>

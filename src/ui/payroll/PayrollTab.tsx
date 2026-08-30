@@ -1,20 +1,23 @@
-import React, { useMemo, useEffect, useState } from 'react';
-import { usePrivosApp } from '@privos/app-react';
+import { useMemo, useEffect, useState } from 'react';
+import { usePrivosApp } from '@privos_ai/app-react';
 import { PayrollDashboard } from './components/PayrollDashboard';
 import { PayrollService } from './services/PayrollService';
 import { PayrollExportService } from './services/PayrollExportService';
 import { PrivOSLifecycleService } from '../lifecycle/services/PrivOSLifecycleService';
+import { createRoomClients } from '../platform/create-room-clients';
 import { canMountPayroll } from './access/payroll-mount-policy';
+import type { FeatureCapabilities } from '../access/feature-capabilities';
 
 type PayrollTabProps = Readonly<{
   roomId: string;
   userRoles: readonly string[] | null | undefined;
+  capabilities: FeatureCapabilities;
 }>;
 
-export default function PayrollTab({ roomId, userRoles }: PayrollTabProps) {
+export default function PayrollTab({ roomId, userRoles, capabilities }: PayrollTabProps) {
   const app = usePrivosApp();
   const [schemaInitialized, setSchemaInitialized] = useState(false);
-  const canMount = canMountPayroll({
+  const canMount = capabilities.payrollReadable && canMountPayroll({
     hasApp: app !== null,
     roomId,
     userRoles,
@@ -29,7 +32,7 @@ export default function PayrollTab({ roomId, userRoles }: PayrollTabProps) {
     const ps = new PayrollService(app, roomId);
     
     // LifecycleService needs app
-    const ls = new PrivOSLifecycleService(app);
+    const ls = new PrivOSLifecycleService(createRoomClients(app).lists);
     const pes = new PayrollExportService(app, roomId);
     
     return { payrollService: ps, lifecycleService: ls, payrollExportService: pes };
@@ -38,6 +41,10 @@ export default function PayrollTab({ roomId, userRoles }: PayrollTabProps) {
   useEffect(() => {
     setSchemaInitialized(false);
     if (!payrollService) return;
+    if (!capabilities.payrollWritable) {
+      setSchemaInitialized(true);
+      return;
+    }
 
     let cancelled = false;
 
@@ -56,7 +63,7 @@ export default function PayrollTab({ roomId, userRoles }: PayrollTabProps) {
     return () => {
       cancelled = true;
     };
-  }, [payrollService]);
+  }, [payrollService, capabilities.payrollWritable]);
 
   if (!canMount) {
     return null;
@@ -77,6 +84,8 @@ export default function PayrollTab({ roomId, userRoles }: PayrollTabProps) {
       payrollService={payrollService} 
       lifecycleService={lifecycleService} 
       payrollExportService={payrollExportService}
+      writable={capabilities.payrollWritable}
+      exportUploadAvailable={capabilities.filesWritable}
     />
   );
 }

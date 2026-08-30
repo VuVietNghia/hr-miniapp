@@ -1,9 +1,12 @@
 node_modules/
 dist/
-.env
+dist-source/
+.env*
+!.env.example
+privos-standalone-identity*.json
 *.tsbuildinfo
-.test-outputs
+.test-outputs/
+coverage/
 AGENTS.md
 CLAUDE.md
 tools_files.md
-docs

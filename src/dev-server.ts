@@ -14,8 +14,22 @@
  *     binary. If PUBLIC_URL is set, that tunnel is reused and nothing is spawned.
  */
 import { spawn, type ChildProcess } from 'child_process';
+import { fileURLToPath } from 'node:url';
 
 const DEFAULT_VITE_PORT = 5179;
+
+type HmrOptions = Readonly<{
+	protocol: 'ws' | 'wss';
+	host: string;
+	clientPort: number;
+}>;
+
+type ResolvedTransport = Readonly<{
+	publicUrl: string;
+	hmr: HmrOptions;
+	allowedHosts: true | string[];
+	tunnelProc?: ChildProcess;
+}>;
 
 export interface DevUiServer {
 	/** Origin the iframe loads UI assets from (http://localhost:<port> or https tunnel). */
@@ -70,7 +84,7 @@ function startCloudflaredTunnel(port: number): Promise<{ url: string; proc: Chil
 /** Resolve the public origin + matching Vite HMR config for the chosen transport. */
 async function resolveTransport(
 	port: number,
-): Promise<{ publicUrl: string; hmr: any; allowedHosts: true | string[]; tunnelProc?: ChildProcess }> {
+): Promise<ResolvedTransport> {
 	const mode = (process.env.DEV_TUNNEL || 'localhost').toLowerCase();
 
 	if (mode === 'localhost') {
@@ -116,7 +130,7 @@ export async function startDevUiServer(): Promise<DevUiServer> {
 	const { createServer } = await import('vite');
 	const vite = await createServer({
 		configFile: false,
-		root: 'src/ui',
+		root: fileURLToPath(new URL('./ui/', import.meta.url)),
 		base: '/ui/',
 		plugins: [(await import('@vitejs/plugin-react')).default()],
 		server: { port, strictPort: true, cors: true, allowedHosts, hmr },

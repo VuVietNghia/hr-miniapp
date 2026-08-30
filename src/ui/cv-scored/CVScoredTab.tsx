@@ -1,17 +1,21 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { usePrivosApp, usePrivosContext } from '@privos/app-react';
+import { usePrivosApp, usePrivosContext } from '@privos_ai/app-react';
 import '../hr-premium-styles.css';
 import { getKanbanColumnScrollDistance } from './kanban-scroll';
 import { getInviteEmailValidationError } from './invite-email-validation';
 import { getInviteMailButtonState } from './invite-mail-status';
 import { markInviteMailSent, wasInviteMailSent, INVITE_MAIL_SENT_FIELD_ID } from './invite-mail-persistence';
 import { canShowInviteMailButton, getCVColumnLabel, getCVColumnsForStages, getInterviewPendingStageId, type CVKanbanColumn } from './kanban-stages';
-import { restCall } from '../privos-rest';
 import { usePolling } from '../hooks/usePolling';
 import { CVBoardPollingGuard } from './polling-sync';
-import { buildTrackedInviteEmailRequest } from './invite-email-request';
-import { createInterviewEmailTemplateRepository } from '../email-templates/interview-email-template-default';
+import { buildTrackedInviteEmailRequest, type TrackedInviteEmailRequest } from './invite-email-request';
+import { createRoomClients } from '../platform/create-room-clients';
+import type { ListsClient } from '../platform/contracts';
+import { OptionalFeatureUnavailableError } from '../privos-rest';
+import { createInterviewEmailTemplateRepositoryWithClients } from '../email-templates/interview-email-template-default';
 import type { InterviewEmailTemplateDocument } from '../email-templates/interview-email-template';
+import { FEATURE_DEGRADED_BEHAVIOR, type FeatureCapabilities } from '../access/feature-capabilities';
+import { resolveInterviewTemplateAccess } from '../email-templates/interview-template-access';
 import {
   canSendInviteWithTemplate,
   loadActiveInviteTemplate,
@@ -32,20 +36,71 @@ export interface CVProfile {
   inviteMailSent?: boolean;
 }
 
+export interface ScoredCvMailClient {
+  send(request: TrackedInviteEmailRequest): Promise<void>;
+}
+
+export function isStageMovementAvailable(lists: Pick<ListsClient, 'capabilities'> | null): boolean {
+  return Boolean(lists?.capabilities.stageMovement);
+}
+
+interface ScoredCvInvitationInput {
+  roomId: string;
+  cvItemId: string;
+  cvListId: string;
+  jdName?: string;
+  candidateName: string;
+  email: string;
+  subject: string;
+  body: string;
+  itemName: string;
+  customFields: unknown;
+  interviewPendingStageId?: string;
+}
+
+export async function sendScoredCvInvitation(
+  input: ScoredCvInvitationInput,
+  mail: ScoredCvMailClient,
+  lists: ListsClient,
+): Promise<{ customFields: ReturnType<typeof markInviteMailSent>; inviteMailSent: true; status?: string }> {
+  if (input.interviewPendingStageId && !isStageMovementAvailable(lists)) {
+    throw new OptionalFeatureUnavailableError('lists:stage:write');
+  }
+  await mail.send(buildTrackedInviteEmailRequest({
+    roomId: input.roomId,
+    cvItemId: input.cvItemId,
+    cvListId: input.cvListId,
+    ...(input.jdName ? { jdName: input.jdName } : {}),
+    toName: input.candidateName,
+    toEmail: input.email,
+    subject: input.subject,
+    body: input.body,
+  }));
+  const customFields = markInviteMailSent(input.customFields);
+  const updateFields = customFields.flatMap(field => {
+    const fieldId = field.fieldId ?? field.fieldDefinitionId;
+    return fieldId ? [{ fieldId, value: field.value }] : [];
+  });
+  await lists.updateItem({ itemId: input.cvItemId, title: input.itemName, customFields: updateFields });
+  if (input.interviewPendingStageId) await lists.moveItemToStage(input.cvItemId, input.interviewPendingStageId);
+  return { customFields, inviteMailSent: true, ...(input.interviewPendingStageId ? { status: '07_Chua_Phong_Van' } : {}) };
+}
+
 function CVCard({ 
   cv, 
   listName,
-  onMove, 
   onInvite,
   onSelectDetail,
-  isInviteSent
+  isInviteSent,
+  stageMovementAvailable,
 }: { 
   cv: CVProfile, 
   listName: string,
   onMove: (id: string, newStatus: string) => void, 
   onInvite: (cv: CVProfile, posName?: string) => void,
   onSelectDetail: (cv: CVProfile, listName: string) => void,
-  isInviteSent: boolean
+  isInviteSent: boolean,
+  stageMovementAvailable: boolean,
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const initials = cv.name.substring(0, 2).toUpperCase();
@@ -53,6 +108,10 @@ function CVCard({
   const inviteMailButton = getInviteMailButtonState(isInviteSent);
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!stageMovementAvailable) {
+      e.preventDefault();
+      return;
+    }
     e.dataTransfer.setData('text/plain', cv._id);
     e.dataTransfer.effectAllowed = 'move';
     setIsDragging(true);
@@ -61,7 +120,7 @@ function CVCard({
   return (
     <div 
       className={`hr-card ${isDragging ? 'is-dragging' : ''}`}
-      draggable={true}
+      draggable={stageMovementAvailable}
       onDragStart={handleDragStart}
       onDragEnd={() => setIsDragging(false)}
       onClick={() => onSelectDetail(cv, listName)}
@@ -89,7 +148,7 @@ function CVCard({
                 <button
                   onClick={(e) => { e.stopPropagation(); onInvite(cv); }}
                   className={inviteMailButton.className}
-                  disabled={inviteMailButton.disabled}
+                  disabled={inviteMailButton.disabled || !stageMovementAvailable}
                   style={{
                     marginLeft: '4px',
                     fontSize: '10px', 
@@ -139,7 +198,8 @@ function CVColumn({
   onMove, 
   onInvite,
   onSelectDetail,
-  isInviteSent
+  isInviteSent,
+  stageMovementAvailable,
 }: { 
   column: CVKanbanColumn,
   cvs: CVProfile[], 
@@ -147,13 +207,15 @@ function CVColumn({
   onMove: (id: string, newStatus: string) => void, 
   onInvite: (cv: CVProfile, posName?: string) => void,
   onSelectDetail: (cv: CVProfile, listName: string) => void,
-  isInviteSent: (id: string) => boolean
+  isInviteSent: (id: string) => boolean,
+  stageMovementAvailable: boolean,
 }) {
   const [isDragOver, setIsDragOver] = useState(false);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
+    if (!stageMovementAvailable) return;
     const id = e.dataTransfer.getData('text/plain');
     if (id) onMove(id, column.status);
   };
@@ -162,9 +224,14 @@ function CVColumn({
     <div 
       className={`hr-kanban-col ${isDragOver ? 'drag-over' : ''}`}
       style={{ flex: '0 0 calc((100% - 48px) / 3)', minWidth: '280px', alignSelf: 'stretch' }}
-      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setIsDragOver(true); }}
+      onDragOver={(e) => {
+        if (!stageMovementAvailable) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        setIsDragOver(true);
+      }}
       onDragLeave={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+        if (!(e.relatedTarget instanceof Node) || !e.currentTarget.contains(e.relatedTarget)) {
           setIsDragOver(false);
         }
       }}
@@ -192,6 +259,7 @@ function CVColumn({
               onInvite={onInvite} 
               onSelectDetail={onSelectDetail}
               isInviteSent={isInviteSent(cv._id)}
+              stageMovementAvailable={stageMovementAvailable}
             />
           ))
         )}
@@ -212,13 +280,15 @@ export function CVBoard({
   onMove, 
   onInvite,
   onSelectDetail,
-  isInviteSent
+  isInviteSent,
+  stageMovementAvailable,
 }: { 
   board: CVBoardData, 
   onMove: (listId: string, id: string, newStatus: string) => void, 
   onInvite: (cv: CVProfile, posName?: string) => void,
   onSelectDetail: (cv: CVProfile, listName: string) => void,
-  isInviteSent: (id: string) => boolean
+  isInviteSent: (id: string) => boolean,
+  stageMovementAvailable: boolean,
 }) {
   const boardRef = React.useRef<HTMLDivElement>(null);
   const [isCollapsed, setIsCollapsed] = React.useState(true);
@@ -283,6 +353,7 @@ export function CVBoard({
             onInvite={(cv) => onInvite(cv, board.listName.replace(/^JD\s+/i, ''))}
             onSelectDetail={onSelectDetail}
             isInviteSent={isInviteSent}
+            stageMovementAvailable={stageMovementAvailable}
           />
         ))}
       </div>
@@ -358,12 +429,30 @@ function renderFormattedReason(reasonText: string) {
   );
 }
 
-export default function CVScoredTab() {
+export interface CVScoredTabProps {
+  capabilities: FeatureCapabilities;
+}
+
+export default function CVScoredTab({ capabilities }: CVScoredTabProps) {
   const app = usePrivosApp();
   const { roomId } = usePrivosContext();
+  const roomClients = useMemo(() => app ? createRoomClients(app) : null, [app]);
+  const stageMovementAvailable = capabilities.listsWritable
+    && isStageMovementAvailable(roomClients?.lists ?? null);
+  const mailClient = useMemo<ScoredCvMailClient | null>(() => app ? ({
+    async send(request) {
+      await app.callServerTool({ name: 'hrm.mail.send', arguments: request });
+    },
+  }) : null, [app]);
+  const templateAccess = useMemo(
+    () => resolveInterviewTemplateAccess(capabilities, roomClients),
+    [capabilities, roomClients],
+  );
   const templateRepository = useMemo(
-    () => app && roomId ? createInterviewEmailTemplateRepository(app, roomId) : null,
-    [app, roomId],
+    () => roomClients && roomId && templateAccess.readable
+      ? createInterviewEmailTemplateRepositoryWithClients(roomId, roomClients.files, roomClients.folders)
+      : null,
+    [roomClients, roomId, templateAccess.readable],
   );
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -407,7 +496,7 @@ export default function CVScoredTab() {
   }, templateRepository);
 
   const handleSendInviteEmail = async () => {
-    if (!app || !roomId || !selectedCVForInvite) return;
+    if (!roomClients || !mailClient || !roomId || !selectedCVForInvite || !capabilities.listsWritable || !stageMovementAvailable) return;
     if (!inviteTemplateSendReady) return;
     const targetEmail = inviteEmail.trim();
 
@@ -425,52 +514,37 @@ export default function CVScoredTab() {
         throw new Error('Không tìm thấy đợt tuyển dụng của CV này.');
       }
 
-      await app.callServerTool({
-        name: 'hrm.mail.send',
-        arguments: buildTrackedInviteEmailRequest({
-          roomId,
-          cvItemId: selectedCVForInvite._id,
-          cvListId: selectedBoard.listId,
-          jdName: selectedBoard.listName,
-          toName: inviteCandidateName || 'Ứng viên',
-          toEmail: targetEmail,
-          subject: inviteSubject,
-          body: inviteEmailBody,
-        }),
-      });
-
-      const updatedCustomFields = markInviteMailSent(selectedCVForInvite.customFields);
-      await restCall(app, 'POST', 'items.update', {
-        body: {
-          itemId: selectedCVForInvite._id,
-          name: selectedCVForInvite.name,
-          customFields: updatedCustomFields,
-        },
-      });
       const interviewPendingStageId = getInterviewPendingStageId(selectedBoard.stagesMap);
-      if (interviewPendingStageId) {
-        await app.callServerTool({
-          name: 'privos.lists.moveItemToStage',
-          arguments: { itemId: selectedCVForInvite._id, stageId: interviewPendingStageId },
-        });
-      }
+      const persisted = await sendScoredCvInvitation({
+        roomId,
+        cvItemId: selectedCVForInvite._id,
+        cvListId: selectedBoard.listId,
+        jdName: selectedBoard.listName,
+        candidateName: inviteCandidateName || 'Ứng viên',
+        email: targetEmail,
+        subject: inviteSubject,
+        body: inviteEmailBody,
+        itemName: selectedCVForInvite.name,
+        customFields: selectedCVForInvite.customFields,
+        ...(interviewPendingStageId ? { interviewPendingStageId } : {}),
+      }, mailClient, roomClients.lists);
       setSentInviteCVIds((previous) => new Set(previous).add(selectedCVForInvite._id));
       setBoards((previous) => previous.map((board) => ({
         ...board,
         cvs: board.cvs.map((cv) => cv._id === selectedCVForInvite._id
           ? {
               ...cv,
-              customFields: updatedCustomFields,
-              inviteMailSent: true,
-              ...(interviewPendingStageId ? { status: '07_Chua_Phong_Van' } : {}),
+              customFields: persisted.customFields,
+              inviteMailSent: persisted.inviteMailSent,
+              ...(persisted.status ? { status: persisted.status } : {}),
             }
           : cv),
       })));
       alert(`Đã gửi email mời phỏng vấn thành công tới ${targetEmail}!`);
       setInviteModalOpen(false);
-    } catch (err: any) {
-      console.error('Lỗi gửi email:', err);
-      alert('Lỗi gửi email: ' + (err.message || err));
+    } catch (error: unknown) {
+      console.error('Lỗi gửi email.');
+      alert('Lỗi gửi email: ' + (error instanceof Error ? error.message : String(error)));
     } finally {
       setIsSendingInvite(false);
     }
@@ -502,7 +576,7 @@ export default function CVScoredTab() {
     }
 
     let current = true;
-    void loadActiveInviteTemplate(templateRepository, () => current, state => {
+    void loadActiveInviteTemplate(templateRepository, templateAccess.writable, () => current, state => {
       setActiveInviteTemplate(state.activeTemplate);
       setLoadedInviteTemplateRepository(state.loadedRepository);
       setInviteTemplateLoading(state.loading);
@@ -513,7 +587,7 @@ export default function CVScoredTab() {
       }
     });
     return () => { current = false; };
-  }, [inviteModalOpen, templateRepository]);
+  }, [inviteModalOpen, templateRepository, templateAccess.writable]);
 
   useEffect(() => {
     if (
@@ -543,30 +617,15 @@ export default function CVScoredTab() {
   ]);
 
   const loadData = useCallback(async () => {
-    if (!app || !roomId) return;
+    if (!roomClients || !roomId || !capabilities.listsReadable) return;
     const reqId = ++requestRef.current;
     pollingGuardRef.current.beginForegroundRefresh();
     
     setLoading(true);
     try {
-      const res: any = await app.callServerTool({
-        name: 'privos.lists.getAll',
-        arguments: { roomId }
-      });
-      const parsed = JSON.parse(res?.content?.[0]?.text || '{}');
-      const allLists = Array.isArray(parsed) ? parsed : (parsed.lists || []);
-      
-      // Get all screening lists and sort newest updated first
-      const targetLists = allLists
-        .filter((l: any) => (l.name || '').includes('SCREENING'))
-        .sort((a: any, b: any) => {
-          const tA = new Date(a.updatedAt || a.updated_at || a.createdAt || a.created_at || 0).getTime();
-          const tB = new Date(b.updatedAt || b.updated_at || b.createdAt || b.created_at || 0).getTime();
-          if (tA !== tB && tA > 0 && tB > 0) return tB - tA;
-          const idA = a._id || a.id || '';
-          const idB = b._id || b.id || '';
-          return idB.localeCompare(idA);
-        });
+      const targetLists = [...await roomClients.lists.listByRoom(roomId)]
+        .filter(list => list.name.includes('SCREENING'))
+        .sort((left, right) => right._id.localeCompare(left._id));
       
       if (targetLists.length === 0) {
         if (reqId === requestRef.current) {
@@ -578,102 +637,46 @@ export default function CVScoredTab() {
       const loadedBoards: CVBoardData[] = [];
 
       for (const targetList of targetLists) {
-        const lId = targetList._id || targetList.id;
-        
-        let sMap: Record<string, string> = {};
-        let fMap: Record<string, string> = {};
-        let hasInviteMailSentField = false;
-        
-        try {
-          const detailRes: any = await app.callServerTool({
-            name: 'privos.lists.get',
-            arguments: { listId: lId }
+        const lId = targetList._id;
+        const detail = await roomClients.lists.getInfo(lId);
+        if (detail.stages.length === 0) throw new Error(`List ${lId} không có cấu hình stage hợp lệ.`);
+        const sMap: Record<string, string> = Object.fromEntries(
+          detail.stages.filter(stage => stage.name).map(stage => [stage._id, stage.name ?? '']),
+        );
+        const fMap: Record<string, string> = Object.fromEntries(
+          (detail.list.fieldDefinitions ?? []).map(field => [field._id, field.name]),
+        );
+        if (capabilities.listsWritable && !detail.list.fieldDefinitions?.some(field => field._id === INVITE_MAIL_SENT_FIELD_ID)) {
+          await roomClients.lists.addField({
+            listId: lId,
+            fieldId: INVITE_MAIL_SENT_FIELD_ID,
+            name: 'Đã gửi mail phỏng vấn',
+            type: 'CHECKBOX',
           });
-          const detailParsed = JSON.parse(detailRes?.content?.[0]?.text || '{}');
-          
-          let stagesArr = detailParsed.stages || detailParsed.list?.stages || targetList.stages || [];
-          
-          if (!stagesArr || stagesArr.length === 0) {
-            // Try to find the system config item
-            const searchRes: any = await app.callServerTool({
-              name: 'privos.lists.searchItems',
-              arguments: { listId: lId, query: '[Hệ thống] Không xoá' }
-            });
-            const searchParsed = JSON.parse(searchRes?.content?.[0]?.text || '[]');
-            const configItem = searchParsed.find((i: any) => (i.name || i.title || '').includes('[Hệ thống] Không xoá'));
-            if (configItem && configItem.description) {
-              try { stagesArr = JSON.parse(configItem.description); } catch (e) {}
-            }
-          }
-
-          if (Array.isArray(stagesArr)) {
-            stagesArr.forEach((s: any) => sMap[s._id || s.id] = s.name);
-          }
-
-          const fieldsArr = detailParsed.fieldDefinitions || detailParsed.list?.fieldDefinitions || targetList.fieldDefinitions || [];
-          if (Array.isArray(fieldsArr)) {
-            fieldsArr.forEach((fd: any) => {
-              const fieldId = fd._id || fd.id;
-              fMap[fieldId] = fd.name;
-              if (fieldId === INVITE_MAIL_SENT_FIELD_ID) hasInviteMailSentField = true;
-            });
-
-            if (!hasInviteMailSentField) {
-              try {
-                await app.callServerTool({
-                  name: 'privos.lists.addField',
-                  arguments: {
-                    listId: lId,
-                    fieldId: INVITE_MAIL_SENT_FIELD_ID,
-                    name: 'Đã gửi mail phỏng vấn',
-                    type: 'CHECKBOX',
-                  },
-                });
-                fMap[INVITE_MAIL_SENT_FIELD_ID] = 'Đã gửi mail phỏng vấn';
-              } catch (fieldError) {
-                console.warn('Không thể thêm field trạng thái gửi mail', fieldError);
-              }
-            }
-          }
-        } catch (err) {
-          console.error("Failed to fetch full list details for stages", err);
+          fMap[INVITE_MAIL_SENT_FIELD_ID] = 'Đã gửi mail phỏng vấn';
         }
+        const bounded = await roomClients.lists.listItemsBounded(lId);
+        if (bounded.truncated) throw new Error(`List ${lId} vượt giới hạn tải an toàn.`);
+        const items = bounded.items.filter(item => !item.name.includes('[Hệ thống] Không xoá'));
 
-        const itemsRes: any = await app.callServerTool({
-          name: 'privos.lists.getItems',
-          arguments: { listId: lId }
-        });
-        const itemsParsed = JSON.parse(itemsRes?.content?.[0]?.text || '[]');
-        let items = Array.isArray(itemsParsed) ? itemsParsed : (itemsParsed.items || []);
-        items = items.filter((item: any) => !(item.name || item.title || '').includes('[Hệ thống] Không xoá'));
-
-        const loadedCvs: CVProfile[] = items.map((item: any) => {
-          let score, category, reason, email, sdt;
+        const loadedCvs: CVProfile[] = items.map(item => {
+          let score: number | undefined;
+          let category: string | undefined;
+          let reason: string | undefined;
+          let email: string | undefined;
+          let sdt: string | undefined;
           const inviteMailSent = wasInviteMailSent(item.customFields);
-          if (Array.isArray(item.customFields)) {
-            item.customFields.forEach((cf: any) => {
-              const fieldIdStr = cf.fieldId || cf.fieldDefinitionId;
-              const fieldName = (fMap[fieldIdStr] || fieldIdStr || '').toLowerCase();
-              if (fieldName.includes('tổng điểm') || fieldName.includes('tong_diem') || fieldName.includes('điểm')) score = cf.value;
-              else if (fieldName.includes('phân loại') || fieldName.includes('phan_loai') || fieldName.includes('loại')) category = cf.value;
-              else if (fieldName.includes('lý do') || fieldName.includes('ly_do') || fieldName.includes('nhận xét')) reason = cf.value;
-              else if (fieldName.includes('email') || fieldName.includes('thu_dien_tu')) email = cf.value;
-              else if (fieldName.includes('sdt') || fieldName.includes('sđt') || fieldName.includes('phone') || fieldName.includes('điện thoại')) sdt = cf.value;
-            });
-          } else if (item.customFields && typeof item.customFields === 'object') {
-            Object.keys(item.customFields).forEach(key => {
-              const fieldName = (fMap[key] || key || '').toLowerCase();
-              const val = item.customFields[key];
-              if (fieldName.includes('tổng điểm') || fieldName.includes('tong_diem') || fieldName.includes('điểm')) score = val;
-              else if (fieldName.includes('phân loại') || fieldName.includes('phan_loai') || fieldName.includes('loại')) category = val;
-              else if (fieldName.includes('lý do') || fieldName.includes('ly_do') || fieldName.includes('nhận xét')) reason = val;
-              else if (fieldName.includes('email') || fieldName.includes('thu_dien_tu')) email = val;
-              else if (fieldName.includes('sdt') || fieldName.includes('sđt') || fieldName.includes('phone') || fieldName.includes('điện thoại')) sdt = val;
-            });
+          for (const field of item.customFields ?? []) {
+            const fieldName = (fMap[field.fieldId] || field.fieldId).toLowerCase();
+            if ((fieldName.includes('tổng điểm') || fieldName.includes('tong_diem') || fieldName.includes('điểm')) && typeof field.value === 'number') score = field.value;
+            else if ((fieldName.includes('phân loại') || fieldName.includes('phan_loai') || fieldName.includes('loại')) && typeof field.value === 'string') category = field.value;
+            else if ((fieldName.includes('lý do') || fieldName.includes('ly_do') || fieldName.includes('nhận xét')) && typeof field.value === 'string') reason = field.value;
+            else if ((fieldName.includes('email') || fieldName.includes('thu_dien_tu')) && typeof field.value === 'string') email = field.value;
+            else if ((fieldName.includes('sdt') || fieldName.includes('sđt') || fieldName.includes('phone') || fieldName.includes('điện thoại')) && typeof field.value === 'string') sdt = field.value;
           }
 
           // Fallback: scanner for candidate email if not present in customFields
-          const textToScan = `${item.name || ''} ${item.title || ''} ${reason || ''} ${item.description || ''}`;
+          const textToScan = `${item.name} ${reason || ''} ${item.description || ''}`;
           if (!email) {
             const gmailMatch = textToScan.match(/[a-zA-Z0-9._%+-]+@gmail\.com/i);
             if (gmailMatch) {
@@ -694,7 +697,7 @@ export default function CVScoredTab() {
           }
 
           // Fallback deduce stageId if sMap is missing this specific stageId
-          if (!sMap[item.stageId] && item.stageId && category) {
+          if (item.stageId && !sMap[item.stageId] && category) {
             const normalized = String(category || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/Đ/g, 'D').trim();
             if (normalized.includes('SAI JD')) {
               sMap[item.stageId] = '06_Sai_JD';
@@ -708,9 +711,9 @@ export default function CVScoredTab() {
           }
 
           return {
-            _id: item._id || item.id,
-            name: item.name || item.title || 'Không tên',
-            status: sMap[item.stageId] || item.stage || item.status || '01_Dau_Vao',
+            _id: item._id,
+            name: item.name || 'Không tên',
+            status: (item.stageId ? sMap[item.stageId] : undefined) || '01_Dau_Vao',
             score,
             category,
             reason,
@@ -732,8 +735,8 @@ export default function CVScoredTab() {
       if (reqId === requestRef.current) {
         setBoards(loadedBoards);
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
+      console.error('Không thể tải dữ liệu CV đã chấm.');
       if (reqId === requestRef.current) {
         setBoards([]);
       }
@@ -744,14 +747,23 @@ export default function CVScoredTab() {
       }
       if (shouldRunPendingPoll) pendingPollRunnerRef.current();
     }
-  }, [app, roomId]);
+  }, [roomClients, roomId, capabilities.listsReadable, capabilities.listsWritable]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    if (capabilities.listsReadable) return;
+    requestRef.current += 1;
+    setBoards([]);
+    setSelectedCVForDetail(null);
+    setDetailModalOpen(false);
+    setInviteModalOpen(false);
+  }, [capabilities.listsReadable]);
+
   const pollStageMoves = useCallback(async (required = false) => {
-    if (!app || boards.length === 0) return;
+    if (!roomClients || !capabilities.listsReadable || boards.length === 0) return;
     const pollId = required
       ? pollingGuardRef.current.requestPoll()
       : pollingGuardRef.current.tryBeginPoll();
@@ -759,20 +771,13 @@ export default function CVScoredTab() {
 
     try {
       const snapshots = await Promise.all(boards.map(async (board) => {
-        const itemsRes: any = await app.callServerTool({
-          name: 'privos.lists.getItems',
-          arguments: { listId: board.listId }
-        });
-        const parsed = JSON.parse(itemsRes?.content?.[0]?.text || '[]');
-        const items = Array.isArray(parsed) ? parsed : (parsed.items || []);
+        const bounded = await roomClients.lists.listItemsBounded(board.listId);
+        if (bounded.truncated) throw new Error(`List ${board.listId} vượt giới hạn tải an toàn.`);
         const statuses = new Map<string, string>();
 
-        for (const item of items) {
-          const itemId = item._id || item.id;
-          const status = board.stagesMap[item.stageId]
-            || (typeof item.stage === 'string' ? item.stage : undefined)
-            || (typeof item.status === 'string' ? item.status : undefined);
-          if (itemId && status) statuses.set(itemId, status);
+        for (const item of bounded.items) {
+          const status = item.stageId ? board.stagesMap[item.stageId] : undefined;
+          if (status) statuses.set(item._id, status);
         }
 
         return { listId: board.listId, statuses };
@@ -800,14 +805,14 @@ export default function CVScoredTab() {
         });
         return boardsChanged ? nextBoards : previous;
       });
-    } catch (error) {
-      console.error('[CVScoredTab] Không thể đồng bộ stage CV:', error);
+    } catch {
+      console.error('[CVScoredTab] Không thể đồng bộ stage CV.');
     } finally {
       if (pollingGuardRef.current.finishPoll(pollId)) {
         pendingPollRunnerRef.current();
       }
     }
-  }, [app, boards]);
+  }, [boards, roomClients, capabilities.listsReadable]);
 
   useEffect(() => {
     pendingPollRunnerRef.current = () => { void pollStageMoves(); };
@@ -816,14 +821,14 @@ export default function CVScoredTab() {
   usePolling(
     pollStageMoves,
     {
-      enabled: Boolean(app && roomId),
+      enabled: capabilities.listsReadable && Boolean(app && roomId),
       interval: 1000,
       immediate: false,
     }
   );
 
   const handleMove = async (listId: string, id: string, newStatus: string) => {
-    if (!app) return;
+    if (!roomClients || !stageMovementAvailable) return;
     
     const board = boards.find(b => b.listId === listId);
     if (!board) return;
@@ -836,31 +841,17 @@ export default function CVScoredTab() {
     if (!stageId) return;
 
     if (!pollingGuardRef.current.beginMove(id)) return;
-    const previousStatus = board.cvs.find(cv => cv._id === id)?.status;
-
-    // Optimistic
-    setBoards(prev => prev.map(b => {
-      if (b.listId === listId) {
-        return { ...b, cvs: b.cvs.map(cv => cv._id === id ? { ...cv, status: newStatus } : cv) };
-      }
-      return b;
-    }));
 
     try {
-      await app.callServerTool({
-        name: 'privos.lists.moveItemToStage',
-        arguments: { itemId: id, stageId }
-      });
-    } catch (err) {
-      console.error(err);
-      if (previousStatus) {
-        setBoards(prev => prev.map(b => {
-          if (b.listId === listId) {
-            return { ...b, cvs: b.cvs.map(cv => cv._id === id ? { ...cv, status: previousStatus } : cv) };
-          }
-          return b;
-        }));
-      }
+      await roomClients.lists.moveItemToStage(id, stageId);
+      setBoards(prev => prev.map(b => {
+        if (b.listId === listId) {
+          return { ...b, cvs: b.cvs.map(cv => cv._id === id ? { ...cv, status: newStatus } : cv) };
+        }
+        return b;
+      }));
+    } catch {
+      console.error('Không thể làm mới dữ liệu CV đã chấm.');
     } finally {
       pollingGuardRef.current.endMove(id);
       void pollStageMoves(true);
@@ -874,6 +865,7 @@ export default function CVScoredTab() {
   }, [boards, searchQuery]);
 
   const handleRefresh = () => {
+    if (!capabilities.listsReadable) return;
     setSearchQuery('');
     void loadData();
   };
@@ -894,7 +886,7 @@ export default function CVScoredTab() {
             value={searchQuery} 
             onChange={e => setSearchQuery(e.target.value)} 
           />
-          <button className="hr-btn" onClick={handleRefresh} disabled={loading} style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+          <button className="hr-btn" onClick={handleRefresh} disabled={loading || !capabilities.listsReadable} style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
             </svg>
@@ -902,6 +894,22 @@ export default function CVScoredTab() {
           </button>
         </div>
       </header>
+
+      {!capabilities.listsReadable && (
+        <p role="alert" style={{ margin: '0 0 16px', color: '#b45309' }}>Email and CV List views are unavailable until List read permission is granted.</p>
+      )}
+      {capabilities.listsReadable && !capabilities.listsQueryable && (
+        <p role="status" style={{ margin: '0 0 16px', color: '#b45309' }}>{FEATURE_DEGRADED_BEHAVIOR.listsQueryable}</p>
+      )}
+      {!capabilities.listsWritable && (
+        <p role="alert" style={{ margin: '0 0 16px', color: '#b45309' }}>{FEATURE_DEGRADED_BEHAVIOR.listsWritable}</p>
+      )}
+
+      {!stageMovementAvailable && (
+        <p role="alert" style={{ margin: '0 0 16px', color: '#b45309' }}>
+          Chuyển stage và gửi thư mời đang tạm khóa vì Room chưa hỗ trợ cập nhật stage.
+        </p>
+      )}
 
       {loading ? (
         <div className="kanban-loading">
@@ -920,6 +928,7 @@ export default function CVScoredTab() {
               board={board} 
               onMove={handleMove} 
               onInvite={(cv, posName) => {
+                if (!stageMovementAvailable) return;
                 let cleanName = cv.name.replace(/\.md$/i, '');
                 const cvIndex = cleanName.indexOf('_CV_');
                 if (cvIndex !== -1) {
@@ -945,6 +954,7 @@ export default function CVScoredTab() {
               isInviteSent={(cvId) => sentInviteCVIds.has(cvId) || board.cvs.some((cv) =>
                 cv._id === cvId && cv.inviteMailSent === true,
               )}
+              stageMovementAvailable={stageMovementAvailable}
             />
           ))}
         </div>
@@ -1231,7 +1241,7 @@ export default function CVScoredTab() {
               }}>Tải email về</button>
               <button 
                 className="hr-btn hr-btn-primary" 
-                disabled={isSendingInvite || !inviteTemplateSendReady || Boolean(inviteValidationError)}
+                disabled={isSendingInvite || !stageMovementAvailable || !inviteTemplateSendReady || Boolean(inviteValidationError)}
                 style={{ backgroundColor: '#156FF5', color: '#fff', borderColor: '#156FF5' }} 
                 onClick={handleSendInviteEmail}
               >

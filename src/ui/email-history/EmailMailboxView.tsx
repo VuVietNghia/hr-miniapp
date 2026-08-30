@@ -40,10 +40,12 @@ export interface EmailMailboxViewProps {
   active: boolean;
   loading: boolean;
   error: string | null;
+  writeAvailable: boolean;
   retryingId: string | null;
   deletingId: string | null;
   deleteCandidate: EmailHistoryRecord | null;
   templateRepository: IInterviewEmailTemplateRepository | null;
+  templateWriteAvailable: boolean;
   templateCreateRequest: number;
   templateCount: number;
   templateReady: boolean;
@@ -182,10 +184,12 @@ export function EmailMailboxView({
   active,
   loading,
   error,
+  writeAvailable,
   retryingId,
   deletingId,
   deleteCandidate,
   templateRepository,
+  templateWriteAvailable,
   templateCreateRequest,
   templateCount,
   templateReady,
@@ -273,7 +277,7 @@ export function EmailMailboxView({
                 <button
                   type="button"
                   className="email-create-template-button"
-                  disabled={!canCreateInterviewTemplate(active, sourceFilter, Boolean(templateRepository), templateReady)}
+                  disabled={!templateWriteAvailable || !canCreateInterviewTemplate(active, sourceFilter, Boolean(templateRepository), templateReady)}
                   onClick={onCreateTemplate}
                 >
                   Tạo mẫu Email
@@ -361,6 +365,7 @@ export function EmailMailboxView({
                 <div hidden={contentMode !== 'interview-templates'}>
                   <InterviewEmailTemplatePanel
                     repository={templateRepository}
+                    writeAvailable={templateWriteAvailable}
                     category="cv_scored"
                     active={active && contentMode === 'interview-templates'}
                     createRequest={templateCreateRequest}
@@ -430,7 +435,7 @@ export function EmailMailboxView({
                 <button
                   type="button"
                   className="email-action-btn is-primary"
-                  disabled={retryingId === selected.id}
+                  disabled={!writeAvailable || retryingId === selected.id}
                   onClick={() => onRetry(selected)}
                 >
                   <ReloadOutlined />
@@ -441,7 +446,7 @@ export function EmailMailboxView({
                 <button
                   type="button"
                   className="email-action-btn is-danger"
-                  disabled={deletingId === selected.id || retryingId === selected.id}
+                  disabled={!writeAvailable || deletingId === selected.id || retryingId === selected.id}
                   onClick={() => onRequestDelete(selected)}
                 >
                   <DeleteOutlined />

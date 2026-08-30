@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { usePrivosApp } from '@privos/app-react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { usePrivosApp } from '@privos_ai/app-react';
 import { usePolling } from '../../hooks/usePolling';
 import { IPayrollService, PayrollRecord } from '../types';
 import { EmployeeProfile, ILifecycleService } from '../../lifecycle/types';
@@ -10,6 +10,7 @@ import {
   isProbationContract 
 } from '../utils';
 import { formatPayrollDebugOutput } from '../debug-format';
+import { buildPayrollQueryToolPayload } from '../../../payroll/payroll-tool-payloads';
 import {
   type IPayrollExportService,
   type PayrollExportDestination,
@@ -22,6 +23,8 @@ interface PayrollDashboardProps {
   payrollService: IPayrollService;
   lifecycleService: ILifecycleService;
   payrollExportService: IPayrollExportService;
+  writable: boolean;
+  exportUploadAvailable: boolean;
 }
 
 const BANK_OPTIONS = [
@@ -160,6 +163,8 @@ export function PayrollDashboard({
   payrollService,
   lifecycleService,
   payrollExportService,
+  writable,
+  exportUploadAvailable,
 }: PayrollDashboardProps) {
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
   const [payrolls, setPayrolls] = useState<PayrollRecord[]>([]);
@@ -170,7 +175,6 @@ export function PayrollDashboard({
   const [formData, setFormData] = useState<Partial<PayrollRecord>>({});
   const [debugData, setDebugData] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [copiedBankId, setCopiedBankId] = useState<string | null>(null);
   const [exportingAction, setExportingAction] = useState<string | null>(null);
 
@@ -201,7 +205,7 @@ export function PayrollDashboard({
       const activeEmpIds = new Set(empData.map(e => e._id));
       const orphanedPayrolls = payData.filter(p => !activeEmpIds.has(p.employeeId));
       
-      if (!isSilent && orphanedPayrolls.length > 0) {
+      if (writable && !isSilent && orphanedPayrolls.length > 0) {
         console.log(`Tiến hành dọn rác: Xoá ${orphanedPayrolls.length} bản ghi lương mồ côi.`);
         await Promise.all(orphanedPayrolls.map(p => {
           if (p._id) return payrollService.deleteRecord(p._id);
@@ -220,7 +224,7 @@ export function PayrollDashboard({
       isRefreshingDataRef.current = false;
       if (!isSilent) setLoading(false);
     }
-  }, [lifecycleService, payrollService, roomId]);
+  }, [lifecycleService, payrollService, roomId, writable]);
 
   useEffect(() => {
     void loadData();
@@ -233,13 +237,7 @@ export function PayrollDashboard({
   );
 
   const showRawPayrollDebug = async () => {
-    const request = {
-      name: 'hrm.payroll.query',
-      arguments: {
-        collection: 'payroll_records',
-        where: [{ field: 'roomId', op: '==', value: roomId }]
-      }
-    };
+    const request = buildPayrollQueryToolPayload();
 
     try {
       const result = await app.callServerTool(request);
@@ -250,6 +248,7 @@ export function PayrollDashboard({
   };
 
   const handleEdit = (emp: EmployeeProfile) => {
+    if (!writable) return;
     const existing = payrollByEmployeeId.get(emp._id);
     setEditingId(emp._id);
     setFormData(existing || {
@@ -265,6 +264,7 @@ export function PayrollDashboard({
   };
 
   const handleSave = async () => {
+    if (!writable) return;
     if (!formData.employeeId) return;
 
     // Validate mức lương (bỏ dấu chấm/phẩy nếu người dùng nhập)
@@ -400,6 +400,7 @@ export function PayrollDashboard({
     format: PayrollExportFormat,
     destination: PayrollExportDestination,
   ) => {
+    if (destination === 'privos' && !exportUploadAvailable) return;
     const sourceEmployees = scope === 'filtered' ? filteredEmployees : employees;
     const actionKey = `${scope}-${format}-${destination}`;
     if (sourceEmployees.length === 0) {
@@ -445,6 +446,8 @@ export function PayrollDashboard({
 
   return (
     <div className="hr-terminal-ui">
+      {!writable && <div className="hr-status-banner hr-status-error">Payroll create/update/delete is unavailable.</div>}
+      {!exportUploadAvailable && <div className="hr-status-banner hr-status-error">Upload, generated-document persistence, and payroll export upload are disabled.</div>}
       {/* Header */}
       <header className="hr-header-block">
         <div className="header-content">
@@ -493,7 +496,7 @@ export function PayrollDashboard({
                           key={actionKey}
                           type="button"
                           className={`payroll-export-action payroll-export-action-${action.destination}`}
-                          disabled={sourceCount === 0 || isExporting}
+                          disabled={sourceCount === 0 || isExporting || (action.destination === 'privos' && !exportUploadAvailable)}
                           onClick={() => handleExport(group.scope, action.format, action.destination)}
                           title={`${action.label} ${group.label.toLowerCase()}`}
                         >
@@ -744,7 +747,7 @@ export function PayrollDashboard({
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         <div style={{ display: 'inline-flex', gap: '6px' }}>
-                          <button onClick={handleSave} className="hr-btn hr-btn-accent" style={{ padding: '5px 12px', fontSize: '0.8rem' }}>
+                          <button onClick={handleSave} disabled={!writable} className="hr-btn hr-btn-accent" style={{ padding: '5px 12px', fontSize: '0.8rem' }}>
                             Lưu
                           </button>
                           <button onClick={() => setEditingId(null)} className="hr-btn" style={{ padding: '5px 10px', fontSize: '0.8rem' }}>
@@ -828,6 +831,7 @@ export function PayrollDashboard({
                       <td style={{ textAlign: 'right' }}>
                         <button 
                           onClick={() => handleEdit(emp)} 
+                          disabled={!writable}
                           className="hr-btn"
                           style={{ padding: '5px 12px', fontSize: '0.8rem' }}
                         >

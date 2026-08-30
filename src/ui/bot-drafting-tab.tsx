@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { usePrivosApp, usePrivosContext, type McpApp } from '@privos/app-react';
+import { usePrivosApp, usePrivosContext, type McpApp } from '@privos_ai/app-react';
 import {
   IDraftingTemplateProvider,
   BuiltinTemplateProvider,
@@ -10,13 +10,21 @@ import {
 } from './drafting-templates';
 import type { DraftingTemplate, ICompanyContextProvider } from './drafting/types';
 import { PipelineService } from './pipeline-service';
-import { MarkdownPathContextBuilder } from './cv-context-builder';
-import { createOrUpdateFile } from './privos-rest';
+import { createRoomClients } from './platform/create-room-clients';
 import { DocxExportService } from './docx-export-service';
 import './hr-premium-styles.css';
 import './bot-drafting.css';
+import { FEATURE_DEGRADED_BEHAVIOR, type FeatureCapabilities, type SandboxFeaturePolicy } from './access/feature-capabilities';
+
+export type BotDraftingLogger = (event: string) => void;
+
+export function createBotDraftingLogger(injectedLogger?: BotDraftingLogger): BotDraftingLogger {
+  return injectedLogger ?? (() => undefined);
+}
 
 export interface BotDraftingTabProps {
+  capabilities: FeatureCapabilities;
+  sandboxPolicy: SandboxFeaturePolicy;
   app?: McpApp | null;
   roomId?: string | null;
   onLog?: (msg: string) => void;
@@ -31,19 +39,17 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
 
   const app = props.app !== undefined ? props.app : contextApp;
   const roomId = props.roomId !== undefined ? props.roomId : (contextRoomInfo?.roomId ?? null);
-  const onLog = useCallback((msg: string) => {
-    if (props.onLog) {
-      props.onLog(msg);
-    } else {
-      console.log(`[BotDrafting] ${msg}`);
-    }
-  }, [props.onLog]);
+  const onLog = useMemo(() => createBotDraftingLogger(props.onLog), [props.onLog]);
+
+  const roomClients = useMemo(() => app ? createRoomClients(app) : null, [app]);
 
   const pipelineService = useMemo(() => {
     if (props.pipelineService !== undefined) return props.pipelineService;
-    if (app && roomId) return new PipelineService(app, roomId, new MarkdownPathContextBuilder());
+    if (roomClients && roomId) {
+      return new PipelineService(roomId, roomClients.lists, roomClients.files, roomClients.folders, roomClients.sandbox);
+    }
     return null;
-  }, [props.pipelineService, app, roomId]);
+  }, [props.pipelineService, roomClients, roomId]);
 
   const templateProvider = useMemo(() => {
     if (props.templateProvider) return props.templateProvider;
@@ -51,12 +57,20 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
   }, [props.templateProvider]);
 
   const companyContextProvider = useMemo(() => {
+    if (!props.capabilities.filesReadable) return null;
     if (props.companyContextProvider !== undefined) return props.companyContextProvider;
-    if (app && roomId) return new CompanyContextProvider(app, roomId);
+    if (roomClients && roomId) return new CompanyContextProvider(roomClients.files, roomClients.folders, roomId);
     return null;
-  }, [props.companyContextProvider, app, roomId]);
+  }, [props.companyContextProvider, props.capabilities.filesReadable, roomClients, roomId]);
 
   const templates = useMemo(() => templateProvider.getTemplates(), [templateProvider]);
+  const draftingAvailable = props.capabilities.draftingAvailable
+    && props.capabilities.aiChatReadable
+    && props.capabilities.aiChatWritable
+    && props.capabilities.filesReadable
+    && Boolean(props.pipelineService && props.companyContextProvider);
+  const roomSaveAvailable = props.capabilities.filesWritable
+    && Boolean(roomClients?.folders.capabilities.ensurePath && roomClients.files.capabilities.folderScopedWrite);
 
   // UI States
   const [viewMode, setViewMode] = useState<'a4' | 'raw'>('a4');
@@ -97,13 +111,18 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
   const handleAiAction = async () => {
     if (!userPrompt.trim() || isGenerating) return;
 
+    if (!draftingAvailable) {
+      showToast('AI drafting đang tắt vì company folder/generation chưa được xác minh.');
+      return;
+    }
+
     if (!pipelineService || !app || !roomId || !companyContextProvider) {
       showToast('Chưa kết nối PrivOS. Vui lòng mở trong ứng dụng PrivOS.');
       return;
     }
 
     setIsGenerating(true);
-    onLog(`[AI DRAFTING] Bắt đầu xử lý pipeline 2 bước với prompt: "${userPrompt}"`);
+    onLog('drafting.pipeline.started');
 
     try {
       const companyContext = await companyContextProvider.getContext();
@@ -116,7 +135,7 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
       
       const routerMatch = routerText.match(/<router_result>\s*([\s\S]*?)\s*<\/router_result>/i);
       const templateId = routerMatch ? routerMatch[1].trim() : 'unknown';
-      onLog(`[AI DRAFTING] Kết quả phân loại: ${templateId}`);
+      onLog('drafting.router.completed');
 
       // BƯỚC 2: Sinh văn bản
       let generatorPrompt = '';
@@ -148,11 +167,10 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
         setPollingStatus('Không nhận được nội dung từ AI');
         showToast('AI không trả về nội dung hợp lệ.');
       }
-    } catch (err: any) {
-      console.error('Lỗi khi gọi AI soạn thảo:', err);
-      onLog(`[LỖI] ${err.message || err}`);
+    } catch {
+      onLog('drafting.pipeline.failed');
       setPollingStatus('Gặp lỗi khi xử lý AI');
-      showToast(`Lỗi: ${err.message || err}`);
+      showToast('Không thể hoàn tất AI drafting. Vui lòng thử lại.');
     } finally {
       setIsGenerating(false);
     }
@@ -170,8 +188,7 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
     try {
       await navigator.clipboard.writeText(documentContent);
       showToast('Đã sao chép nội dung văn bản vào bộ nhớ tạm!');
-    } catch (e) {
-      console.error(e);
+    } catch {
       showToast('Không thể sao chép văn bản.');
     }
   };
@@ -195,14 +212,13 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
       const filename = `VanBan_${dateStr}.docx`;
       await DocxExportService.downloadDocx(filename, documentContent);
       showToast(`Đã xuất file Word "${filename}" chuẩn Nghị định 30 thành công!`);
-    } catch (err: any) {
-      console.error('Lỗi khi xuất Word .docx:', err);
-      showToast(`Lỗi khi tạo file Word: ${err.message || err}`);
+    } catch {
+      showToast('Không thể tạo file Word. Vui lòng thử lại.');
     }
   };
 
   const handleSaveToPrivos = async () => {
-    if (!app || !roomId) {
+    if (!roomClients || !roomId) {
       showToast('Chưa kết nối PrivOS để lưu file vào Room.');
       return;
     }
@@ -210,13 +226,19 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
     try {
       const dateStr = new Date().toISOString().split('T')[0];
       const filename = `VanBan_${dateStr}.md`;
-      const targetPath = `${roomId}/hr-miniapp/van-ban/${filename}`;
-      await createOrUpdateFile(app, targetPath, documentContent);
-      showToast(`Đã lưu tài liệu vào Room PrivOS: ${targetPath}`);
-      onLog(`[LƯU FILE] Thành công lưu "${targetPath}" vào phòng.`);
-    } catch (err: any) {
-      console.error('Lỗi lưu file PrivOS:', err);
-      showToast(`Lỗi khi lưu vào Room: ${err.message || err}`);
+      if (!roomClients.folders.capabilities.ensurePath || !roomClients.files.capabilities.folderScopedWrite) {
+        throw new Error('Lưu văn bản theo thư mục không khả dụng.');
+      }
+      const folder = await roomClients.folders.ensurePath(roomId, ['hr-miniapp', 'van-ban']);
+      await roomClients.files.uploadToFolder({
+        roomId, folderId: folder._id, fileName: filename,
+        base64Data: `data:text/markdown;charset=utf-8,${encodeURIComponent(documentContent)}`,
+        mimeType: 'text/markdown',
+      });
+      showToast('Đã lưu tài liệu vào Room PrivOS.');
+      onLog('drafting.file.saved');
+    } catch {
+      showToast('Không thể lưu văn bản vào Room. Vui lòng thử lại.');
     }
   };
 
@@ -366,15 +388,18 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
            <button type="button" className="hr-btn hr-btn-accent" onClick={handleDownloadDocx}>
              <span>💾</span> Xuất Word (.docx)
            </button>
-           <button type="button" className="hr-btn" onClick={handleSaveToPrivos}>
+           <button type="button" className="hr-btn" onClick={handleSaveToPrivos} disabled={!roomSaveAvailable}>
              <span>☁️</span> Lưu PrivOS Room
            </button>
         </div>
       </header>
 
       <div className="bot-minimal-container">
+        {!props.capabilities.filesReadable && <div className="hr-status-banner hr-status-error">{FEATURE_DEGRADED_BEHAVIOR.filesReadable}</div>}
+        {!props.capabilities.filesWritable && <div className="hr-status-banner hr-status-error">{FEATURE_DEGRADED_BEHAVIOR.filesWritable}</div>}
+        {!draftingAvailable && <div className="hr-status-banner hr-status-error">AI drafting đang ở chế độ chỉ đọc vì các capability bắt buộc chưa được xác minh.</div>}
         {/* Chat / Prompt Panel */}
-        <section className="bot-chat-panel">
+        {props.sandboxPolicy.skillBackedControlsVisible && <section className="bot-chat-panel">
            <div className="bot-chat-header">
              <h3>Giao tiếp với AI</h3>
              <span className="bot-chat-subtitle">Ngầm hiểu {templates.length} mẫu văn bản</span>
@@ -412,12 +437,12 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
              <button 
                className="hr-btn hr-btn-accent bot-chat-send-btn"
                onClick={handleAiAction}
-               disabled={isGenerating || !userPrompt.trim()}
+               disabled={isGenerating || !userPrompt.trim() || !draftingAvailable}
              >
                {isGenerating ? 'Đang xử lý...' : 'Gửi yêu cầu soạn thảo'}
              </button>
            </div>
-        </section>
+        </section>}
 
         {/* Preview Panel */}
         <section className="bot-preview-panel">
@@ -465,9 +490,7 @@ export default function BotDraftingTab(props: BotDraftingTabProps) {
               <div className="bot-a4-sheet-container">
                 <article
                   className="bot-a4-paper"
-                  style={{
-                    zoom: zoomLevel !== 100 ? zoomLevel / 100 : undefined
-                  } as any}
+                  style={{ zoom: zoomLevel !== 100 ? zoomLevel / 100 : undefined } as React.CSSProperties & { zoom?: number }}
                 >
                   {renderFormattedA4(documentContent)}
                 </article>

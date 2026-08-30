@@ -1,33 +1,46 @@
-import assert from 'node:assert/strict';
-import test from 'node:test';
+import { describe, expect, it } from 'vitest';
 
 import { isPayrollOwnerFromContextResult } from '../src/ui/payroll/access/payroll-access-context';
 import { refreshPayrollAccess } from '../src/ui/payroll/access/usePayrollAccessPolling';
 
-test('allows Payroll only when the context result contains the exact owner role', () => {
-  assert.equal(isPayrollOwnerFromContextResult({
-    content: [{ text: '{"userRoles":["member","owner"]}' }],
-  }), true);
-});
-
-test('denies Payroll when the context result does not contain owner', () => {
-  assert.equal(isPayrollOwnerFromContextResult({
-    content: [{ text: '{"userRoles":["member"]}' }],
-  }), false);
-});
-
-test('denies Payroll when the context result is malformed', () => {
-  assert.equal(isPayrollOwnerFromContextResult({
-    content: [{ text: 'not-json' }],
-  }), false);
-});
-
-test('denies Payroll when the role refresh request fails', async () => {
-  const isOwner = await refreshPayrollAccess({
-    callServerTool: async () => {
-      throw new Error('context request failed');
-    },
+describe('payroll access context', () => {
+  it('allows Payroll only when the context result contains the exact owner role', () => {
+    expect(isPayrollOwnerFromContextResult({
+      content: [{ text: '{"userRoles":["member","owner"]}' }],
+    })).toBe(true);
   });
 
-  assert.equal(isOwner, false);
+  it('denies Payroll when the context result does not contain owner', () => {
+    expect(isPayrollOwnerFromContextResult({
+      content: [{ text: '{"userRoles":["member"]}' }],
+    })).toBe(false);
+  });
+
+  it('denies Payroll when the context result is malformed', () => {
+    expect(isPayrollOwnerFromContextResult({
+      content: [{ text: 'not-json' }],
+    })).toBe(false);
+  });
+
+  it('denies Payroll when the role refresh request fails', async () => {
+    const isOwner = await refreshPayrollAccess({
+      callServerTool: async () => {
+        throw new Error('context request failed');
+      },
+    });
+
+    expect(isOwner).toBe(false);
+  });
+
+  it('uses the mediated current-Room context tool for the owner refresh', async () => {
+    let request: unknown;
+    await refreshPayrollAccess({
+      callServerTool: async (input) => {
+        request = input;
+        return { content: [{ text: '{"userRoles":["owner"]}' }] };
+      },
+    });
+
+    expect(request).toEqual({ name: 'mcpapp.context.get', arguments: {} });
+  });
 });

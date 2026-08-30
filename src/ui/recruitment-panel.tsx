@@ -1,8 +1,9 @@
-import { FormEvent, useState, useEffect } from 'react';
-import { usePrivosApp, usePrivosContext } from '@privos/app-react';
-import { createOrUpdateFile } from './privos-rest';
+import { FormEvent, useMemo, useState, useEffect } from 'react';
+import { usePrivosApp, usePrivosContext } from '@privos_ai/app-react';
 import { PipelineService } from './pipeline-service';
-import { MarkdownPathContextBuilder } from './cv-context-builder';
+import { createRoomClients } from './platform/create-room-clients';
+import type { FilesClient, FoldersClient } from './platform/contracts';
+import { FEATURE_DEGRADED_BEHAVIOR, type FeatureCapabilities } from './access/feature-capabilities';
 
 type Department = string;
 
@@ -26,6 +27,70 @@ interface Job {
   benefits?: string[];
   contact_email?: string;
   contact_title?: string;
+}
+
+export interface RecruitmentPersistenceJob {
+  title: string;
+}
+
+interface RecruitmentPersistenceInput<TJob extends RecruitmentPersistenceJob> {
+  roomId: string;
+  fileName: string;
+  content: string;
+  job: TJob;
+}
+
+interface RecruitmentPersistenceClients {
+  files: Pick<FilesClient, 'capabilities' | 'uploadToFolder'>;
+  folders: Pick<FoldersClient, 'capabilities' | 'ensurePath'>;
+}
+
+export function isRecruitmentPersistenceAvailable(
+  clients: Readonly<{
+    files: Pick<FilesClient, 'capabilities'>;
+    folders: Pick<FoldersClient, 'capabilities'>;
+  }> | null,
+): boolean {
+  return Boolean(
+    clients?.files.capabilities.folderScopedWrite
+    && clients.folders.capabilities.ensurePath,
+  );
+}
+
+function markdownDataUri(content: string): string {
+  const bytes = new TextEncoder().encode(content);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return `data:text/markdown;base64,${btoa(binary)}`;
+}
+
+export function upsertPersistedRecruitmentJob<TJob extends RecruitmentPersistenceJob>(
+  jobs: readonly TJob[],
+  persisted: TJob,
+): TJob[] {
+  const duplicateIndex = jobs.findIndex(job => job.title === persisted.title);
+  if (duplicateIndex < 0) return [...jobs, persisted];
+  return jobs.map((job, index) => index === duplicateIndex ? persisted : job);
+}
+
+export async function persistRecruitmentJD<TJob extends RecruitmentPersistenceJob>(
+  input: RecruitmentPersistenceInput<TJob>,
+  clients: RecruitmentPersistenceClients,
+  commit: (persisted: TJob) => void,
+): Promise<void> {
+  if (!input.roomId.trim()) throw new Error('Room is required to persist a JD.');
+  if (!isRecruitmentPersistenceAvailable(clients)) {
+    throw new Error('Folder-scoped JD persistence is unavailable.');
+  }
+  const folder = await clients.folders.ensurePath(input.roomId, ['hr-miniapp', 'jds']);
+  await clients.files.uploadToFolder({
+    roomId: input.roomId,
+    folderId: folder._id,
+    fileName: input.fileName,
+    base64Data: markdownDataUri(input.content),
+    mimeType: 'text/markdown',
+  });
+  commit(input.job);
 }
 
 interface JobDraft {
@@ -60,22 +125,22 @@ const EMPTY_DRAFT: JobDraft = {
   contact_title: '',
 };
 
-const DEPARTMENTS: { id: Department; label: string; count?: number }[] = [
-  { id: 'it', label: 'IT' },
-  { id: 'marketing', label: 'Marketing' },
-  { id: 'hr', label: 'HR' },
-  { id: 'other', label: 'Khác' },
-];
-
 const IT_JOBS: Job[] = [];
 
 function splitLines(value: string) {
   return value.split('\n').map((item) => item.trim()).filter(Boolean);
 }
 
-export default function RecruitmentPanel() {
+export interface RecruitmentPanelProps {
+  capabilities: FeatureCapabilities;
+}
+
+export default function RecruitmentPanel({ capabilities }: RecruitmentPanelProps) {
   const app = usePrivosApp();
   const { roomId } = usePrivosContext();
+  const roomClients = useMemo(() => app ? createRoomClients(app) : null, [app]);
+  const recruitmentPersistenceAvailable = capabilities.filesWritable
+    && isRecruitmentPersistenceAvailable(roomClients);
 
   const [departments, setDepartments] = useState<{ id: Department; label: string; count?: number }[]>([
     { id: 'it', label: 'IT' },
@@ -97,10 +162,16 @@ export default function RecruitmentPanel() {
   const [saveJDError, setSaveJDError] = useState('');
 
   useEffect(() => {
-    if (!app || !roomId) return;
+    if (!roomClients || !roomId || !capabilities.filesReadable) return;
     const loadJDs = async () => {
       try {
-        const service = new PipelineService(app, roomId, new MarkdownPathContextBuilder());
+        const service = new PipelineService(
+          roomId,
+          roomClients.lists,
+          roomClients.files,
+          roomClients.folders,
+          roomClients.sandbox,
+        );
         const jds = await service.fetchAvailableJDs();
         
         const nextJobsByDept: Record<string, Job[]> = {
@@ -121,17 +192,8 @@ export default function RecruitmentPanel() {
           
           let content = '';
           try {
-            if (jd.downloadUrl) {
-              const res = await fetch(jd.downloadUrl);
-              content = await res.text();
-            } else {
-              const res: any = await app.callServerTool({
-                name: 'privos.files.getContent',
-                arguments: { path: `${roomId}/hr-miniapp/jds/${jd.name}` }
-              });
-              content = typeof res === 'string' ? res : (res?.data || '');
-            }
-          } catch (e: any) {
+            content = await service.getMarkdownContent(jd.name);
+          } catch {
             content = await service.getMarkdownContent(jd.name);
           }
           if (!content) {
@@ -205,12 +267,18 @@ export default function RecruitmentPanel() {
 
         setDepartments(nextDepts);
         setJobsByDept(nextJobsByDept);
-      } catch (e: any) {
-        console.error("Failed to load JDs from room files", e);
+      } catch (error: unknown) {
+        setSaveJDError(`KhÃ´ng thá»ƒ táº£i JD tá»« Room Files: ${error instanceof Error ? error.message : String(error)}`);
       }
     };
     loadJDs();
-  }, [app, roomId]);
+  }, [roomClients, roomId, capabilities.filesReadable]);
+
+  useEffect(() => {
+    if (capabilities.filesReadable) return;
+    setJobsByDept({ it: [], marketing: [], hr: [], other: [] });
+    setSelectedJob(null);
+  }, [capabilities.filesReadable]);
 
   const selectDepartment = (nextDepartment: Department) => {
     setDepartment(nextDepartment);
@@ -221,7 +289,7 @@ export default function RecruitmentPanel() {
     event.preventDefault();
     if (isSavingJD) return;
     if (!draft.title.trim() || !draft.summary.trim() || !draft.type.trim() || !draft.salary.trim() || !draft.req_professional.trim()) return;
-    if (!app || !roomId) {
+    if (!roomClients || !roomId) {
       setSaveJDError('Không thể lưu JD vì chưa kết nối được với Room Files.');
       return;
     }
@@ -310,15 +378,16 @@ _Đăng ngày: ${new Date().toISOString().slice(0, 10)}_
     setIsSavingJD(true);
     setSaveJDError('');
     try {
-      await createOrUpdateFile(app, `${roomId}/hr-miniapp/jds/${fileName}`, content);
-      setJobsByDept(prev => ({
-        ...prev,
-        [department]: [...(prev[department] || []), newJob]
-      }));
+      await persistRecruitmentJD({ roomId, fileName, content, job: newJob }, roomClients, persisted => {
+        setJobsByDept(prev => ({
+          ...prev,
+          [department]: upsertPersistedRecruitmentJob(prev[department] || [], persisted),
+        }));
+      });
       setDraft(EMPTY_DRAFT);
       setShowForm(false);
     } catch (error: unknown) {
-      console.error('Failed to save JD to Room Files', error);
+      console.error('Failed to save JD to Room Files.');
       const message = error instanceof Error ? error.message : String(error);
       setSaveJDError(`Không thể lưu JD vào Room Files: ${message}`);
     } finally {
@@ -377,10 +446,21 @@ _Đăng ngày: ${new Date().toISOString().slice(0, 10)}_
                 <span>{jobs.length > 0 ? 'ĐANG TUYỂN' : 'TỰ TẠO JD'}</span>
                 <h2>Phòng Ban: {departmentLabel}</h2>
               </div>
-              <button type="button" className="add-job-button" onClick={() => setShowForm(true)}>
+              <button type="button" className="add-job-button" disabled={!recruitmentPersistenceAvailable} onClick={() => setShowForm(true)}>
                 <span aria-hidden="true">+</span> Thêm JD
               </button>
             </div>
+
+            {!capabilities.filesReadable && (
+              <p className="job-form-save-error" role="alert">{FEATURE_DEGRADED_BEHAVIOR.filesReadable}</p>
+            )}
+            {!recruitmentPersistenceAvailable && (
+              <p className="job-form-save-error" role="alert">
+                {capabilities.filesWritable
+                  ? 'Chưa hỗ trợ lưu JD đúng thư mục Room Files; chức năng tạo JD đang tạm khóa.'
+                  : FEATURE_DEGRADED_BEHAVIOR.filesWritable}
+              </p>
+            )}
 
             {showForm && (
               <form className="job-form" onSubmit={submitJob}>
@@ -489,7 +569,7 @@ _Đăng ngày: ${new Date().toISOString().slice(0, 10)}_
                 </div>
                 <div className="job-form-actions">
                   <button type="button" onClick={() => setShowForm(false)}>Hủy</button>
-                  <button type="submit" disabled={isSavingJD} aria-label={isSavingJD ? 'Đang lưu JD' : undefined}>
+                  <button type="submit" disabled={isSavingJD || !recruitmentPersistenceAvailable} aria-label={isSavingJD ? 'Đang lưu JD' : undefined}>
                     {isSavingJD ? <span className="recruitment-save-spinner" aria-hidden="true" /> : 'Lưu JD'}
                   </button>
                 </div>

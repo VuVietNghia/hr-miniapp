@@ -45,8 +45,8 @@ export class MockPipelineService implements IPipelineService {
   async processCV(
     cv: CVFile,
     updateStatus: (s: Partial<ProcessingStatus>) => void,
-    jdContent: string,
-    jdName: string,
+    _jdContent: string,
+    _jdName: string,
     onLog?: (msg: string) => void
   ): Promise<void> {
     if (onLog) onLog(`[MOCK] Bắt đầu xử lý CV ảo: ${cv.name}`);

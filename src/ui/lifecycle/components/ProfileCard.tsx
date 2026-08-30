@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { usePrivosContext } from '@privos/app-react';
+import { usePrivosContext } from '@privos_ai/app-react';
 import { EmployeeProfile, KANBAN_COLUMNS } from '../types';
 import { getInitials, calculateTimelineInfo } from '../utils';
 import { EmailComposerModal } from './EmailComposerModal';
@@ -9,45 +9,37 @@ interface ProfileCardProps {
   onMoveProfile?: (profileId: string, newStatus: string) => void;
 }
 
+export function resolveAttachedFileUrl(profile: EmployeeProfile, roomId: string): string {
+  const attachment = profile.attachedFileObj;
+  if (!attachment) {
+    if (profile.attachedFileId) return `/group/${roomId}/file-viewer/${profile.attachedFileId}`;
+    if (profile.attachedFileUrl && profile.attachedFileUrl !== 'null') return profile.attachedFileUrl;
+    return '#';
+  }
+
+  if (typeof attachment === 'string') {
+    if (attachment.startsWith('http') || attachment.startsWith('/')) return attachment;
+    return `/group/${roomId}/file-viewer/${attachment}`;
+  }
+
+  const id = attachment._id || attachment.id;
+  if (id) return `/group/${roomId}/file-viewer/${id}`;
+  return attachment.url || attachment.downloadUrl || attachment.link || attachment.fileUrl || '#';
+}
+
+export function resolveAttachedFileName(profile: EmployeeProfile): string {
+  const attachment = profile.attachedFileObj;
+  if (!attachment) return 'Hồ sơ đính kèm';
+  if (typeof attachment === 'string') return 'Tài liệu đính kèm';
+  const name = attachment.name || attachment.title || attachment.fileName || 'Hồ sơ đính kèm';
+  return name.length > 25 ? `${name.substring(0, 25)}...` : name;
+}
+
 export function ProfileCard({ profile, onMoveProfile }: ProfileCardProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const { roomId } = usePrivosContext();
-
-  const getFileUrl = (p: EmployeeProfile) => {
-    const obj = p.attachedFileObj;
-    if (!obj) {
-      if ((p as any).attachedFileId) return `/group/${roomId}/file-viewer/${(p as any).attachedFileId}`;
-      if ((p as any).attachedFileUrl && (p as any).attachedFileUrl !== 'null') return (p as any).attachedFileUrl;
-      return '#';
-    }
-    
-    if (typeof obj === 'string') {
-      if (obj.startsWith('http') || obj.startsWith('/')) return obj;
-      return `/group/${roomId}/file-viewer/${obj}`;
-    }
-    
-    // Prioritize ID-based URL for cross-machine compatibility
-    const id = obj._id || obj.id;
-    if (id) {
-      return `/group/${roomId}/file-viewer/${id}`;
-    }
-    
-    // Fallback to machine-specific URLs (may not work across machines)
-    const url = obj.url || obj.downloadUrl || obj.link || obj.fileUrl;
-    if (url) return url;
-    
-    return '#';
-  };
-
-  const getFileName = (p: EmployeeProfile) => {
-    const obj = p.attachedFileObj;
-    if (!obj) return 'Hồ sơ đính kèm';
-    if (typeof obj === 'string') return 'Tài liệu đính kèm';
-    const name = obj.name || obj.title || obj.fileName || 'Hồ sơ đính kèm';
-    return name.length > 25 ? name.substring(0, 25) + '...' : name;
-  };
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
     e.dataTransfer.setData('text/plain', profile._id);
@@ -205,14 +197,14 @@ export function ProfileCard({ profile, onMoveProfile }: ProfileCardProps) {
                   </svg>
                 </span>
                 <a 
-                  href={getFileUrl(profile)} 
+                  href={resolveAttachedFileUrl(profile, roomId)}
                   target="_blank" 
                   rel="noopener noreferrer"
                   style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--accent)', textDecoration: 'none', fontSize: '0.75rem', fontWeight: 500 }}
-                  title={getFileName(profile) || 'Xem tài liệu'}
+                  title={resolveAttachedFileName(profile) || 'Xem tài liệu'}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {getFileName(profile)}
+                  {resolveAttachedFileName(profile)}
                 </a>
               </div>
             </div>

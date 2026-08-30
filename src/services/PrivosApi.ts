@@ -1,6 +1,3 @@
-import fs from 'fs';
-import path from 'path';
-
 /**
  * Uploads a file (or raw string content as file) to a PrivOS room via REST API.
  * Uses X-User-Id and X-Auth-Token for authentication.

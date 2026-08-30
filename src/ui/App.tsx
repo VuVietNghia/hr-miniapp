@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { PrivosAppProvider, usePrivosContext, usePrivosApp } from '@privos/app-react';
+import { useState, useEffect, useMemo } from 'react';
+import { PrivosAppProvider, usePrivosContext, usePrivosApp } from '@privos_ai/app-react';
 import { ThemeProvider, ThemeToggle } from './theme-provider';
 import CompanyHome from './company-home';
 import RecruitmentPanel from './recruitment-panel';
@@ -11,72 +11,77 @@ import CVScoredTab from './cv-scored/CVScoredTab';
 import JDChatbotTab from './jd-chatbot-functional';
 import EmailTab from './email-history/EmailTab';
 import { createInterviewEmailTemplateRepository } from './email-templates/interview-email-template-default';
+import { createRoomClients } from './platform/create-room-clients';
 import { ensureTemplatesExistGlobal } from './pipeline-service';
 import { usePayrollAccessPolling } from './payroll/access/usePayrollAccessPolling';
 import {
-  canSelectPayrollTab,
-  filterPayrollTab,
-  removePayrollFromVisited,
-  resolveTabAfterPayrollRevocation,
-} from './payroll/access/payroll-navigation-policy';
-
-type Tab = 'home' | 'email' | 'recruitment' | 'pipeline' | 'cvScored' | 'chatbotJD' | 'lifecycle' | 'payroll' | 'botDrafting';
-type SectionId = 'hr' | 'admin';
-
-type TabSection = {
-  id: SectionId;
-  label: string;
-  tabs: { id: Tab; label: string }[];
-};
-
-const TAB_SECTIONS: TabSection[] = [
-  {
-    id: 'hr',
-    label: 'HR',
-    tabs: [
-      { id: 'recruitment', label: 'Tuy\u1ec3n d\u1ee5ng' },
-      { id: 'pipeline', label: 'CV Pipeline' },
-      { id: 'cvScored', label: 'CV \u0111\u00e3 ch\u1ea5m' },
-      { id: 'chatbotJD', label: 'Chỉnh sửa JD' },
-    ],
-  },
-  {
-    id: 'admin',
-    label: 'H\u00e0nh ch\u00ednh',
-    tabs: [
-      { id: 'lifecycle', label: 'H\u1ed3 s\u01a1 NS' },
-      { id: 'payroll', label: 'Qu\u1ea3n l\u00fd L\u01b0\u01a1ng' },
-      { id: 'botDrafting', label: 'Bot so\u1ea1n th\u1ea3o' },
-    ],
-  },
-];
+  canAccessPayroll,
+  resolveSandboxFeaturePolicy,
+  resolveFeatureCapabilities,
+} from './access/feature-capabilities';
+import {
+  PRIMARY_TABS,
+  TAB_SECTIONS,
+  applyPayrollAvailability,
+  createNavigationState,
+  filterNavigationSections,
+  selectNavigationTab,
+  shouldMountTab,
+  type NavigationState,
+  type SectionId,
+  type Tab,
+  type TabSection,
+} from './navigation';
 
 function ThemedApp() {
   const app = usePrivosApp();
-  const { theme, roomId, userRoles } = usePrivosContext();
-  const [tab, setTab] = useState<Tab>('home');
-  const [visitedTabs, setVisitedTabs] = useState<Set<Tab>>(() => new Set<Tab>(['home']));
+  const { theme, roomId, effectiveScopes } = usePrivosContext();
+  const [navigation, setNavigation] = useState<NavigationState>(createNavigationState);
   const [openSection, setOpenSection] = useState<SectionId | null>(null);
-  const canAccessPayroll = usePayrollAccessPolling(app, userRoles);
-  const payrollAccessRoles = canAccessPayroll ? ['owner'] : [];
-  const visibleTabSections = TAB_SECTIONS.map((section) => ({
-    ...section,
-    tabs: filterPayrollTab(section.tabs, payrollAccessRoles),
-  }));
+  const featureCapabilities = useMemo(
+    () => resolveFeatureCapabilities(effectiveScopes),
+    [effectiveScopes],
+  );
+  const sandboxPolicy = useMemo(
+    () => resolveSandboxFeaturePolicy(effectiveScopes),
+    [effectiveScopes],
+  );
+  const generalDraftingCapabilities = useMemo(() => ({
+    ...featureCapabilities,
+    draftingAvailable: sandboxPolicy.botKeyActionsAvailable
+      && sandboxPolicy.wakeActionsAvailable
+      && sandboxPolicy.generationActionsAvailable,
+  }), [featureCapabilities, sandboxPolicy]);
+  const roomClients = useMemo(() => app ? createRoomClients(app) : null, [app]);
+  const templatePlatformReadable = Boolean(
+    roomClients?.files.capabilities.folderScopedRead
+    && roomClients.folders.capabilities.findByPath,
+  );
+  const templatePlatformWritable = Boolean(
+    roomClients?.files.capabilities.folderScopedWrite
+    && roomClients.folders.capabilities.ensurePath,
+  );
+  const hasVerifiedPayrollOwner = usePayrollAccessPolling(app);
+  const payrollAvailable = canAccessPayroll(featureCapabilities, hasVerifiedPayrollOwner);
+  const payrollAccessRoles = payrollAvailable ? ['owner'] : [];
+  const visibleTabSections = filterNavigationSections(TAB_SECTIONS, payrollAvailable);
+  const tab = navigation.activeTab;
+  const visitedTabs = navigation.visitedTabs;
 
   useEffect(() => {
-    if (app && roomId) {
+    if (app && roomId && featureCapabilities.filesWritable && featureCapabilities.listsWritable && templatePlatformWritable) {
       ensureTemplatesExistGlobal(app, roomId, true).catch(console.error);
     }
-  }, [app, roomId]);
+  }, [app, roomId, featureCapabilities.filesWritable, featureCapabilities.listsWritable, templatePlatformWritable]);
 
   useEffect(() => {
-    if (!app || !roomId) return;
+    if (!app || !roomId || !featureCapabilities.filesReadable || !featureCapabilities.filesWritable
+      || !templatePlatformReadable || !templatePlatformWritable) return;
     const repository = createInterviewEmailTemplateRepository(app, roomId);
     repository.ensureInitialized().catch(error => {
       console.error('[InterviewEmailTemplates] Initialization failed', error);
     });
-  }, [app, roomId]);
+  }, [app, roomId, featureCapabilities.filesReadable, featureCapabilities.filesWritable, templatePlatformReadable, templatePlatformWritable]);
 
   useEffect(() => {
     if (tab === 'lifecycle') {
@@ -85,25 +90,11 @@ function ThemedApp() {
   }, [tab]);
 
   useEffect(() => {
-    if (canAccessPayroll) return;
-
-    setTab((previousTab) => resolveTabAfterPayrollRevocation(previousTab));
-    setVisitedTabs((previousVisitedTabs) => {
-      if (!previousVisitedTabs.has('payroll')) return previousVisitedTabs;
-      return removePayrollFromVisited(previousVisitedTabs);
-    });
-  }, [canAccessPayroll]);
+    setNavigation((previous) => applyPayrollAvailability(previous, payrollAvailable));
+  }, [payrollAvailable]);
 
   const handleSelectTab = (selectedTab: Tab) => {
-    if (!canSelectPayrollTab(selectedTab, payrollAccessRoles)) return;
-
-    setTab(selectedTab);
-    setVisitedTabs((prev) => {
-      if (prev.has(selectedTab)) return prev;
-      const next = new Set(prev);
-      next.add(selectedTab);
-      return next;
-    });
+    setNavigation((previous) => selectNavigationTab(previous, selectedTab, payrollAvailable));
   };
 
   const isSectionActive = (section: TabSection) => section.tabs.some((t) => t.id === tab);
@@ -114,24 +105,24 @@ function ThemedApp() {
         <nav className="app-tabs" aria-label="Dashboard navigation" onMouseLeave={() => setOpenSection(null)}>
           <button
             type="button"
-            className={`nav-primary-btn${tab === 'home' ? ' nav-primary-active' : ''}`}
+            className={`nav-primary-btn${tab === PRIMARY_TABS[0].id ? ' nav-primary-active' : ''}`}
             onClick={() => {
-              handleSelectTab('home');
+              handleSelectTab(PRIMARY_TABS[0].id);
               setOpenSection(null);
             }}
           >
-            Company
+            {PRIMARY_TABS[0].label}
           </button>
 
           <button
             type="button"
-            className={`nav-primary-btn${tab === 'email' ? ' nav-primary-active' : ''}`}
+            className={`nav-primary-btn${tab === PRIMARY_TABS[1].id ? ' nav-primary-active' : ''}`}
             onClick={() => {
-              handleSelectTab('email');
+              handleSelectTab(PRIMARY_TABS[1].id);
               setOpenSection(null);
             }}
           >
-            Email
+            {PRIMARY_TABS[1].label}
           </button>
 
           {visibleTabSections.map((section) => {
@@ -178,34 +169,37 @@ function ThemedApp() {
         <ThemeToggle />
       </div>
       <div className={tab === 'home' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'home'}>
-        <CompanyHome />
+        {sandboxPolicy.degradedReasons.map(reason => (
+          <div key={reason} className="hr-status-banner hr-status-error">{reason}</div>
+        ))}
+        <CompanyHome capabilities={generalDraftingCapabilities} />
       </div>
       {visitedTabs.has('email') && (
         <div className={tab === 'email' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'email'}>
-          <EmailTab active={tab === 'email'} />
+          <EmailTab active={tab === 'email'} capabilities={featureCapabilities} />
         </div>
       )}
       {visitedTabs.has('recruitment') && (
         <div className={tab === 'recruitment' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'recruitment'}>
-          <RecruitmentPanel />
+          <RecruitmentPanel capabilities={featureCapabilities} />
         </div>
       )}
 
       {visitedTabs.has('pipeline') && (
         <div className={tab === 'pipeline' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'pipeline'}>
-          <PipelineDashboard />
+          <PipelineDashboard capabilities={featureCapabilities} sandboxPolicy={sandboxPolicy} />
         </div>
       )}
 
       {visitedTabs.has('cvScored') && (
         <div className={tab === 'cvScored' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'cvScored'}>
-          <CVScoredTab />
+          <CVScoredTab capabilities={featureCapabilities} />
         </div>
       )}
 
       {visitedTabs.has('chatbotJD') && (
         <div className={tab === 'chatbotJD' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'chatbotJD'}>
-          <JDChatbotTab />
+          <JDChatbotTab capabilities={generalDraftingCapabilities} />
         </div>
       )}
 
@@ -213,19 +207,19 @@ function ThemedApp() {
 
       {visitedTabs.has('lifecycle') && (
         <div className={tab === 'lifecycle' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'lifecycle'}>
-          <LifecycleDashboard />
+          <LifecycleDashboard capabilities={featureCapabilities} />
         </div>
       )}
 
-      {canAccessPayroll && visitedTabs.has('payroll') && (
+      {shouldMountTab(navigation, 'payroll', payrollAvailable) && (
         <div className={tab === 'payroll' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'payroll'}>
-          <PayrollTab key={roomId} roomId={roomId} userRoles={payrollAccessRoles} />
+          <PayrollTab key={roomId} roomId={roomId} userRoles={payrollAccessRoles} capabilities={featureCapabilities} />
         </div>
       )}
 
       {visitedTabs.has('botDrafting') && (
         <div className={tab === 'botDrafting' ? 'app-tab-panel active' : 'app-tab-panel'} aria-hidden={tab !== 'botDrafting'}>
-          <BotDraftingTab />
+          <BotDraftingTab capabilities={featureCapabilities} sandboxPolicy={sandboxPolicy} />
         </div>
       )}
     </ThemeProvider>

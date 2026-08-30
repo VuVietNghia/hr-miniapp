@@ -1,4 +1,4 @@
-import { IDocumentDiffService, DiffToken, DiffTokenType } from '../types';
+import { IDocumentDiffService, DiffToken } from '../types';
 
 /**
  * Service xử lý so sánh khác biệt (Document Diff) và chuẩn hóa tên tệp tiếng Việt

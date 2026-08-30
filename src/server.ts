@@ -1,73 +1,59 @@
-/**
- * Entry point: connects to Privos via WebSocket relay.
- * No HTTP server needed — UI is delivered inline via MCP resources/read.
- * On first run (no credentials), starts the pairing flow.
- */
-import 'dotenv/config';
-import fs from 'fs';
-import path from 'path';
+import { pathToFileURL } from 'node:url';
 
-import { connectRelay, pairWithPrivos } from './relay-client';
-import { handleMcpMessage, setDevPublicUrl } from './mcp-message-handlers';
-import _pkg from '../package.json';
-const pkg = _pkg as Record<string, any>;
+import type { AppMcpHandler } from '@privos_ai/app-server';
 
-/** Read icon file as data URI for pairing metadata */
-function getIconDataUri(): string | undefined {
-	const iconPath = pkg.icon?.startsWith('/') ? path.join(__dirname, '..', pkg.icon) : undefined;
-	if (!iconPath || !fs.existsSync(iconPath)) return undefined;
-	const ext = path.extname(iconPath).slice(1);
-	const mime = ext === 'svg' ? 'image/svg+xml' : `image/${ext}`;
-	const data = fs.readFileSync(iconPath).toString('base64');
-	return `data:${mime};base64,${data}`;
+import {
+  createApplicationServices,
+  type ApplicationServiceGraph,
+} from './composition/create-application-services';
+import { startDevelopmentRelay } from './relay-transport';
+import { startPrivosRuntime } from './runtime/start-privos-runtime';
+
+export interface ApplicationStartDependencies {
+  environment: Readonly<NodeJS.ProcessEnv>;
+  createServices: () => Readonly<ApplicationServiceGraph>;
+  startRuntime: (handler: AppMcpHandler) => Promise<unknown>;
+  startRelay: (handler: AppMcpHandler) => Promise<unknown>;
+  startDevUi?: () => Promise<Readonly<{ publicUrl: string }>>;
 }
 
-async function start() {
-	let privosUrl = process.env.PRIVOS_URL;
-	let clientId = process.env.CLIENT_ID;
-	let clientSecret = process.env.CLIENT_SECRET;
-
-	// Dev mode (npm run dev): serve UI live from a Vite dev server over a public
-	// tunnel so the iframe gets HMR + breakpoints. Production keeps the inline bundle.
-	if (process.env.PRIVOS_DEV_UI === '1') {
-		const { startDevUiServer } = await import('./dev-server');
-		const dev = await startDevUiServer();
-		setDevPublicUrl(dev.publicUrl);
-	}
-
-	// First run: no credentials — start pairing flow
-	if (!privosUrl || !clientId || !clientSecret) {
-		console.log('\nNo Privos credentials found. Starting pairing flow...');
-		console.log('Get a pairing URL from: Privos Admin → Apps → Register Relay App\n');
-
-		const creds = await pairWithPrivos({
-			name: pkg.title || pkg.name,
-			description: pkg.description,
-			version: pkg.version,
-			icon: getIconDataUri(),
-			// Requested scopes — PrivOS grants this subset and uses it to gate the app's
-			// REST calls (app.rest()). See package.json `scopes`.
-			scopes: Array.isArray(pkg.scopes) ? pkg.scopes : undefined,
-		});
-
-		privosUrl = creds.privosUrl;
-		clientId = creds.clientId;
-		clientSecret = creds.clientSecret;
-
-		console.log('\nConnecting with saved credentials...\n');
-	}
-
-	await connectRelay({
-		privosUrl,
-		clientId,
-		clientSecret,
-		onMessage: handleMcpMessage,
-	});
-
-	console.log('Relay app running — connected to Privos');
+function isDevelopmentRelay(environment: Readonly<NodeJS.ProcessEnv>): boolean {
+  return environment.NODE_ENV !== 'production' && environment.PRIVOS_TRANSPORT === 'relay';
 }
 
-start().catch((err) => {
-	console.error('Failed to start:', err);
-	process.exit(1);
-});
+export async function startApplication(
+  dependencies: ApplicationStartDependencies,
+): Promise<void> {
+  const services = dependencies.createServices();
+  if (isDevelopmentRelay(dependencies.environment)) {
+    if (dependencies.environment.PRIVOS_DEV_UI === '1' && dependencies.startDevUi) {
+      const devUi = await dependencies.startDevUi();
+      services.ui.setDevPublicUrl(devUi.publicUrl);
+    }
+    await dependencies.startRelay(services.mcpHandler);
+    return;
+  }
+  await dependencies.startRuntime(services.mcpHandler);
+}
+
+async function main(): Promise<void> {
+  await import('dotenv/config');
+  await startApplication({
+    environment: process.env,
+    createServices: createApplicationServices,
+    startRuntime: startPrivosRuntime,
+    startRelay: startDevelopmentRelay,
+    startDevUi: async () => {
+      const { startDevUiServer } = await import('./dev-server');
+      return startDevUiServer();
+    },
+  });
+}
+
+const entryPath = process.argv[1];
+if (entryPath !== undefined && import.meta.url === pathToFileURL(entryPath).href) {
+  void main().catch(() => {
+    console.error('Application startup failed.');
+    process.exitCode = 1;
+  });
+}

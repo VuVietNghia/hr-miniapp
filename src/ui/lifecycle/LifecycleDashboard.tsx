@@ -1,16 +1,17 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { usePrivosApp, usePrivosContext } from '@privos/app-react';
+import { usePrivosApp, usePrivosContext } from '@privos_ai/app-react';
 import { EmployeeProfile, PassedCandidate } from './types';
 import { PrivOSLifecycleService } from './services/PrivOSLifecycleService';
+import { createRoomClients } from '../platform/create-room-clients';
 import { LifecycleServiceProvider, useLifecycleService } from './di/LifecycleContext';
 import { EmployeeEmailTemplateProvider } from './di/EmployeeEmailTemplateContext';
 import { BuiltinEmployeeEmailTemplateProvider, type IEmployeeEmailTemplateProvider } from './email/EmployeeEmailTemplateProvider';
 import { KanbanBoard } from './components/KanbanBoard';
 import { ProfileListView } from './components/ProfileListView';
-import { CreateProfileForm } from './components/CreateProfileForm';
 import { CreateDetailedProfileForm } from './components/CreateDetailedProfileForm';
 import { usePolling } from '../hooks/usePolling';
 import '../hr-premium-styles.css';
+import { FEATURE_DEGRADED_BEHAVIOR, type FeatureCapabilities } from '../access/feature-capabilities';
 
 function areCandidatesEqual(prev: PassedCandidate[], next: PassedCandidate[]): boolean {
   if (prev.length !== next.length) return false;
@@ -45,11 +46,9 @@ function areProfilesEqual(prev: EmployeeProfile[], next: EmployeeProfile[]): boo
   });
 }
 
-function LifecycleContent() {
-  console.log('[LifecycleDashboard] LifecycleContent mounted');
+function LifecycleContent({ capabilities }: { capabilities: FeatureCapabilities }) {
   const { roomId } = usePrivosContext();
   const service = useLifecycleService();
-  console.log('[LifecycleDashboard] roomId:', roomId, 'service:', !!service);
   
   const [profiles, setProfiles] = useState<EmployeeProfile[]>([]);
   const [passedCandidates, setPassedCandidates] = useState<PassedCandidate[]>([]);
@@ -65,30 +64,31 @@ function LifecycleContent() {
   const isRefreshingCandidatesRef = useRef(false);
 
   const refreshCandidates = useCallback(async (isSilent = false) => {
-    if (!roomId || isRefreshingCandidatesRef.current) return;
+    if (!roomId || !capabilities.listsReadable || isRefreshingCandidatesRef.current) return;
     isRefreshingCandidatesRef.current = true;
     if (!isSilent) setIsLoadingCandidates(true);
     try {
       const candidates = await service.loadPassedCandidates(roomId);
       setPassedCandidates((prev) => (areCandidatesEqual(prev, candidates) ? prev : candidates));
-    } catch (err) {
-      console.error('[LifecycleDashboard] Error loading candidates:', err);
+    } catch {
+      if (!isSilent) {
+        setStatusMsg({ text: 'Không thể tải danh sách ứng viên đạt.', type: 'error' });
+      }
     } finally {
       isRefreshingCandidatesRef.current = false;
       if (!isSilent) setIsLoadingCandidates(false);
     }
-  }, [roomId, service]);
+  }, [roomId, service, capabilities.listsReadable]);
 
   const refreshProfiles = useCallback(async (isSilent = false) => {
-    if (!roomId || isRefreshingProfilesRef.current) return;
+    if (!roomId || !capabilities.listsReadable || isRefreshingProfilesRef.current) return;
     isRefreshingProfilesRef.current = true;
     if (!isSilent) setIsLoading(true);
 
     try {
       const data = await service.loadProfiles(roomId);
       setProfiles((previous) => (areProfilesEqual(previous, data) ? previous : data));
-    } catch (error) {
-      console.error('[LifecycleDashboard] Error loading profiles:', error);
+    } catch {
       if (!isSilent) {
         setStatusMsg({ text: 'Không thể tải danh sách hồ sơ nhân sự.', type: 'error' });
       }
@@ -96,18 +96,18 @@ function LifecycleContent() {
       isRefreshingProfilesRef.current = false;
       if (!isSilent) setIsLoading(false);
     }
-  }, [roomId, service]);
+  }, [roomId, service, capabilities.listsReadable]);
 
   // Đồng bộ hồ sơ mỗi giây khi tab đang hiển thị, không hiển thị loading lại trên UI.
   usePolling(
     useCallback(() => refreshProfiles(true), [refreshProfiles]),
-    { enabled: Boolean(roomId), interval: 1000, immediate: false }
+    { enabled: Boolean(roomId) && capabilities.listsReadable, interval: 1000, immediate: false }
   );
 
   // Đồng bộ ứng viên đạt mỗi giây chỉ khi form tạo hồ sơ đang mở.
   usePolling(
     useCallback(() => refreshCandidates(true), [refreshCandidates]),
-    { enabled: isCreating && Boolean(roomId), interval: 1000, immediate: false }
+    { enabled: isCreating && Boolean(roomId) && capabilities.listsReadable, interval: 1000, immediate: false }
   );
 
   useEffect(() => {
@@ -117,8 +117,18 @@ function LifecycleContent() {
     }
   }, [roomId, refreshCandidates, refreshProfiles]);
 
-  const handleCreateSubmit = async (data: Omit<EmployeeProfile, '_id' | 'status'> & { attachedFileObj?: any }) => {
-    if (!roomId) return;
+  useEffect(() => {
+    if (!capabilities.listsWritable || !capabilities.filesWritable) setIsCreating(false);
+  }, [capabilities.listsWritable, capabilities.filesWritable]);
+
+  useEffect(() => {
+    if (capabilities.listsReadable) return;
+    setProfiles([]);
+    setPassedCandidates([]);
+  }, [capabilities.listsReadable]);
+
+  const handleCreateSubmit = async (data: Omit<EmployeeProfile, '_id' | 'status'>) => {
+    if (!roomId || !capabilities.listsWritable || !capabilities.filesWritable) return;
     setStatusMsg({ text: `Đang khởi tạo hồ sơ cho "${data.name}"...`, type: 'info' });
     
     // Create via service
@@ -135,7 +145,7 @@ function LifecycleContent() {
   };
 
   const handleMoveProfile = async (profileId: string, newStatus: string) => {
-    if (!roomId) return;
+    if (!roomId || !capabilities.listsWritable || !service.capabilities.stageMovement) return;
     
     const targetProfile = profiles.find(p => p._id === profileId);
     if (!targetProfile || targetProfile.status === newStatus) return;
@@ -152,12 +162,11 @@ function LifecycleContent() {
     try {
       await service.updateProfileStatus(roomId, profileId, newStatus);
       setTimeout(() => setStatusMsg(null), 3000);
-    } catch (err) {
-      console.error('[LifecycleDashboard] Error updating profile status:', err);
+    } catch {
       // Revert optimistic update on failure
       setProfiles(prev => prev.map(p => p._id === profileId ? { ...p, status: oldStatus } : p));
       setStatusMsg({ 
-        text: `Lỗi khi đồng bộ trạng thái cho "${targetProfile.name}". Đã khôi phục lại vị trí cũ.`, 
+        text: 'Không thể đồng bộ trạng thái. Đã khôi phục vị trí cũ.',
         type: 'error' 
       });
       setTimeout(() => setStatusMsg(null), 5000);
@@ -238,6 +247,7 @@ function LifecycleContent() {
         <div className="header-actions" style={{ display: 'flex', gap: '10px' }}>
           <button 
             className="hr-btn hr-btn-accent" 
+            disabled={!capabilities.listsWritable || !capabilities.filesWritable}
             onClick={() => {
               const nextState = !isCreating;
               setIsCreating(nextState);
@@ -250,6 +260,19 @@ function LifecycleContent() {
           </button>
         </div>
       </header>
+
+      {!capabilities.listsReadable && (
+        <div className="hr-status-banner hr-status-error">Lifecycle List views are unavailable until List read permission is granted.</div>
+      )}
+      {capabilities.listsReadable && !capabilities.listsQueryable && (
+        <div className="hr-status-banner hr-status-info">{FEATURE_DEGRADED_BEHAVIOR.listsQueryable}</div>
+      )}
+      {!capabilities.listsWritable && (
+        <div className="hr-status-banner hr-status-error">{FEATURE_DEGRADED_BEHAVIOR.listsWritable}</div>
+      )}
+      {!capabilities.filesWritable && (
+        <div className="hr-status-banner hr-status-error">{FEATURE_DEGRADED_BEHAVIOR.filesWritable}</div>
+      )}
 
       {isCreating && (
         <CreateDetailedProfileForm 
@@ -264,6 +287,10 @@ function LifecycleContent() {
         <div className={`hr-status-banner hr-status-${statusMsg.type}`}>
           {statusMsg.text}
         </div>
+      )}
+
+      {(!capabilities.listsWritable || !service.capabilities.stageMovement) && (
+        <div className="hr-status-banner hr-status-error">Di chuyển stage lifecycle đang tắt vì capability chưa được xác minh.</div>
       )}
 
       {/* Search & Filter Toolbar */}
@@ -343,13 +370,13 @@ function LifecycleContent() {
           profiles={filteredProfiles} 
           isLoading={isLoading} 
           selectedColumnStatus={selectedStatus}
-          onMoveProfile={handleMoveProfile}
+          onMoveProfile={capabilities.listsWritable && service.capabilities.stageMovement ? handleMoveProfile : undefined}
         />
       ) : (
         <ProfileListView 
           profiles={filteredProfiles}
           isLoading={isLoading}
-          onMoveProfile={handleMoveProfile}
+          onMoveProfile={capabilities.listsWritable && service.capabilities.stageMovement ? handleMoveProfile : undefined}
         />
       )}
     </div>
@@ -357,28 +384,23 @@ function LifecycleContent() {
 }
 
 export interface LifecycleDashboardProps {
+  capabilities: FeatureCapabilities;
   emailTemplateProvider?: IEmployeeEmailTemplateProvider;
 }
 
-export default function LifecycleDashboard({ emailTemplateProvider }: LifecycleDashboardProps = {}) {
-  console.log('[LifecycleDashboard] Default export mounted');
+export default function LifecycleDashboard({ capabilities, emailTemplateProvider }: LifecycleDashboardProps) {
   const app = usePrivosApp();
   const { roomId } = usePrivosContext();
-  console.log('[LifecycleDashboard] Default export - app:', !!app, 'roomId:', roomId);
 
   const service = useMemo(() => {
     if (!app) return null;
-    console.log('[LifecycleDashboard] Creating PrivOSLifecycleService');
-    return new PrivOSLifecycleService(app);
+    return new PrivOSLifecycleService(createRoomClients(app).lists);
   }, [app]);
   const resolvedEmailTemplateProvider = useMemo(
     () => emailTemplateProvider ?? new BuiltinEmployeeEmailTemplateProvider(),
     [emailTemplateProvider]
   );
-  console.log('[LifecycleDashboard] Default export - service:', !!service);
-
   if (!app || !roomId || !service) {
-    console.log('[LifecycleDashboard] Default export - Missing dependencies, showing connecting state');
     return (
       <div className="lifecycle-connecting">
         <div className="spinner"></div>
@@ -386,12 +408,10 @@ export default function LifecycleDashboard({ emailTemplateProvider }: LifecycleD
       </div>
     );
   }
-  console.log('[LifecycleDashboard] Default export - Rendering LifecycleContent');
-
   return (
     <LifecycleServiceProvider service={service}>
       <EmployeeEmailTemplateProvider provider={resolvedEmailTemplateProvider}>
-        <LifecycleContent />
+        <LifecycleContent capabilities={capabilities} />
       </EmployeeEmailTemplateProvider>
     </LifecycleServiceProvider>
   );

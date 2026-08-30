@@ -1,79 +1,88 @@
-import { PayrollRecord, IPayrollService } from '../types';
-import { McpApp } from '@privos/app-react';
+import type { McpApp } from '@privos_ai/app-react';
+
+import {
+  buildPayrollCreateToolPayload,
+  buildPayrollDeleteToolPayload,
+  buildPayrollQueryToolPayload,
+  buildPayrollUpdateToolPayload,
+} from '../../../payroll/payroll-tool-payloads';
+import {
+  parsePayrollRecordInput,
+  parseStoredPayrollRecord,
+  type PayrollRecordInput,
+} from '../../../payroll/payroll-types';
+import type { IPayrollService, PayrollRecord } from '../types';
+
+type PayrollApp = Pick<McpApp, 'callServerTool'>;
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function decodeToolText(value: unknown): unknown {
+  if (!isRecord(value) || !Array.isArray(value.content)) return value;
+  const first = value.content[0];
+  if (!isRecord(first) || typeof first.text !== 'string') return value;
+  try {
+    return JSON.parse(first.text) as unknown;
+  } catch {
+    throw new Error('Payroll query returned malformed JSON');
+  }
+}
+
+function readPayrollRecords(value: unknown, roomId: string): PayrollRecord[] {
+  const decoded = decodeToolText(value);
+  const records = Array.isArray(decoded)
+    ? decoded
+    : isRecord(decoded) && Array.isArray(decoded.records)
+      ? decoded.records
+      : undefined;
+  if (records === undefined) throw new Error('Payroll query returned malformed records');
+  return records.map((record) => parseStoredPayrollRecord(record, roomId));
+}
+
+function businessRecord(record: PayrollRecord): PayrollRecordInput {
+  return parsePayrollRecordInput({
+    employeeId: record.employeeId,
+    baseSalary: record.baseSalary,
+    taxId: record.taxId,
+    bankAccount: record.bankAccount,
+    ...(record.bankName === undefined ? {} : { bankName: record.bankName }),
+    ...(record.contractType === undefined ? {} : { contractType: record.contractType }),
+    ...(record.applyProbationRate === undefined
+      ? {}
+      : { applyProbationRate: record.applyProbationRate }),
+    ...(record.probationRate === undefined ? {} : { probationRate: record.probationRate }),
+  });
+}
 
 export class PayrollService implements IPayrollService {
-  private readonly app: McpApp;
-  private readonly roomId: string;
-  private readonly collectionName = 'payroll_records';
-
-  constructor(app: McpApp, roomId: string) {
-    if (!app) throw new Error("PayrollService requires a valid McpApp instance.");
-    if (!roomId) throw new Error("PayrollService requires a roomId.");
-    
-    this.app = app;
-    this.roomId = roomId;
+  constructor(
+    private readonly app: PayrollApp,
+    private readonly roomId: string,
+  ) {
+    if (!app) throw new Error('PayrollService requires a valid McpApp instance.');
+    if (!roomId.trim()) throw new Error('PayrollService requires a roomId.');
   }
 
   async initializeSchema(): Promise<void> {
-    try {
-      await this.app.callServerTool({
-        name: 'privos.db.registerCollection',
-        arguments: {
-          collection: this.collectionName,
-          fields: [
-            { name: 'employeeId', type: 'string', required: true },
-            { name: 'baseSalary', type: 'number', required: true },
-            { name: 'taxId', type: 'string' },
-            { name: 'bankAccount', type: 'string' },
-            { name: 'roomId', type: 'string', required: true }
-          ]
-        }
-      });
-    } catch (err) {
-      console.warn("Could not register schema, might already exist or not supported.", err);
-    }
+    // The backend repository owns schema verification and registration.
   }
 
   async getRecords(): Promise<PayrollRecord[]> {
-    try {
-      const res: any = await this.app.callServerTool({
-        name: 'hrm.payroll.query',
-        arguments: {
-          collection: this.collectionName,
-          where: [{ field: 'roomId', op: '==', value: this.roomId }]
-        }
-      });
-      const parsed = typeof res?.content?.[0]?.text === 'string' 
-        ? JSON.parse(res.content[0].text) 
-        : { records: [] };
-      return parsed.records || [];
-    } catch (err) {
-      console.error("Failed to fetch payroll records:", err);
-      throw err;
-    }
+    const result: unknown = await this.app.callServerTool(buildPayrollQueryToolPayload());
+    return readPayrollRecords(result, this.roomId);
   }
 
   async saveRecord(record: PayrollRecord): Promise<void> {
-    const { _id, _createdAt, _updatedAt, ...rest } = record as any;
-    const data = { ...rest, roomId: this.roomId };
-    
-    if (record._id) {
-      await this.app.callServerTool({
-        name: 'hrm.payroll.update',
-        arguments: { collection: this.collectionName, id: record._id, data }
-      });
-    } else {
-      await this.app.callServerTool({
-        name: 'hrm.payroll.create',
-        arguments: { collection: this.collectionName, data }
-      });
-    }
+    const input = businessRecord(record);
+    const payload = record._id
+      ? buildPayrollUpdateToolPayload(record._id, input)
+      : buildPayrollCreateToolPayload(input);
+    await this.app.callServerTool(payload);
   }
 
   async deleteRecord(id: string): Promise<void> {
-    await this.app.callServerTool({
-      name: 'hrm.payroll.delete',
-      arguments: { collection: this.collectionName, id }
-    });
+    await this.app.callServerTool(buildPayrollDeleteToolPayload(id));
   }
 }

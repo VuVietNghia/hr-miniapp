@@ -107,12 +107,6 @@ function deriveCategory(score: number, hardGate: CvHardGate): CvCategory {
   return 'KHÔNG ĐẠT';
 }
 
-function assertIntegerInRange(value: unknown, min: number, max: number, field: string): asserts value is number {
-  if (!Number.isInteger(value) || (value as number) < min || (value as number) > max) {
-    throw new Error(`${field} phải là số nguyên từ ${min} đến ${max}.`);
-  }
-}
-
 function allowedEvidencePoints(maxPoints: number): Set<number> {
   return new Set([0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round(maxPoints * ratio)));
 }
